@@ -1,0 +1,73 @@
+name: General Question
+description: Ask a general question about the project, requirements, setup, or workflow
+title: "[QUESTION] "
+labels: ["question"]
+
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Ask your question clearly and directly.
+      placeholder: What do you want to know?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What is this question mainly about?
+      options:
+        - Requirements
+        - Design / Architecture
+        - Implementation
+        - Testing
+        - Documentation / Wiki
+        - DevOps / CI
+        - Repository / Git Workflow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide background information so others can answer quickly.
+      placeholder: Relevant files, links, screenshots, or what you tried so far...
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What I Tried
+      description: Briefly list what you already checked/tried (optional but recommended).
+      placeholder: |
+        - Checked README
+        - Looked at wiki page ...
+        - Tried command ...
+    validations:
+      required: false
+
+  - type: input
+    id: related
+    attributes:
+      label: Related Links (Issue/PR/Commit/Wiki)
+      description: Paste any relevant URLs (optional).
+      placeholder: https://github.com/.../issues/123
+    validations:
+      required: false
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      description: How urgent is getting an answer?
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
