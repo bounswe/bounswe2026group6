@@ -1,0 +1,42 @@
+name: Documentation Improvement
+description: Suggest an improvement to project documentation
+title: "[DOC] "
+labels: ["documentation"]
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current Issue
+      description: What is unclear, missing, or outdated?
+      placeholder: Describe the documentation issue...
+    validations:
+      required: true
+
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Proposed Improvement
+      description: What should be added, changed, or removed?
+      placeholder: Describe your suggested improvement...
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Affected Location
+      description: Which file or wiki page is affected?
+      placeholder: e.g., README.md, API Docs, Wiki Page
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: Who is mainly affected?
+      options:
+        - New Contributors
+        - Developers
+        - Users
+        - DevOps
+        - General Readability
