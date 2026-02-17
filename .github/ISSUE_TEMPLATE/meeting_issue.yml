@@ -1,0 +1,50 @@
+name: "Meeting"
+description: "Create a meeting issue"
+title: "[MEETING] - Meeting "
+labels: ["meeting"]
+body:
+  - type: input
+    id: meeting_number
+    attributes:
+      label: "Meeting #"
+      placeholder: "8"
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: "📅 Date"
+      placeholder: "29/10/2025"
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: "⏰ Time"
+      placeholder: "21:00"
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: "📍 Location"
+      placeholder: "https://meet.google.com/..."
+    validations:
+      required: true
+  - type: textarea
+    id: agenda
+    attributes:
+      label: "Agenda"
+      value: |
+        - Current status of the application
+        - Planning the next steps following the Infrastructure Milestone
+        - Discussing possible design choices (e.g. badges, moderation)
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: "Additional Notes"
+      value: "No response"
+    validations:
+      required: false
