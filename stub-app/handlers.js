@@ -18,7 +18,43 @@ function onButton3Click() {
 }
 
 function onButton4Click() {
-  console.log("Button 4 clicked -- implement me!");
+  const newTab = window.open("", "_blank");
+
+  if (!newTab) {
+    alert("Popup engellendi. Lütfen popuplara izin ver.");
+    return;
+  }
+
+  newTab.document.write("<pre>Loading API data...</pre>");
+
+  fetch("https://jsonplaceholder.typicode.com/posts/1")
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error("HTTP error: " + response.status);
+      }
+      return response.json();
+    })
+    .then((data) => {
+      newTab.document.body.innerHTML = `
+        <pre>
+Button 4 API Result
+
+Explanation:
+- userId: Postu oluşturan kullanıcının id'si
+- id: Postun kendi id'si
+- title: Post başlığı
+- body: Post içeriği
+
+API Response:
+${JSON.stringify(data, null, 2)}
+        </pre>
+      `;
+    })
+    .catch((error) => {
+      newTab.document.body.innerHTML = `
+        <pre>API call failed: ${error.message}</pre>
+      `;
+    });
 }
 
 function onButton5Click() {
