@@ -5,12 +5,14 @@
  * Update BUTTON_LABELS to set the text displayed on each button.
  */
 
-const NUM_BUTTONS = 5;
+const NUM_BUTTONS = 7;
 
 const BUTTON_LABELS = [
   "Button 1",
   "Button 2: Random Advice - Gülce Tahtasız",
-  "Button 3",
-  "Button 4",
+  "Mehmet Can Gürbüz 3- Wheather API", 
+  "KaganCan-4-RANDOMJSON",
   "Button 5",
+  "BeratSayın - Random Advice",
+  "Button 7"
 ];
