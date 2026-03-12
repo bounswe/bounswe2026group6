@@ -10,7 +10,25 @@ function onButton1Click() {
 }
 
 function onButton2Click() {
-  console.log("Button 2 clicked -- implement me!");
+    const apiUrl = "https://api.adviceslip.com/advice";
+
+  fetch(apiUrl)
+    .then(response => response.json())
+    .then(data => {
+
+      const advice = data.slip.advice;
+
+      alert(
+        "Random Advice:\n\n" +
+        advice +
+        "\n\nData from AdviceSlip API"
+      );
+
+    })
+    .catch(error => {
+      alert("API alınamadı: " + error);
+    });
+
 }
 
 function onButton3Click() {
