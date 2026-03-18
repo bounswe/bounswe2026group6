@@ -2,6 +2,13 @@
 
 Minimal shared backend scaffold for the Neighborhood Emergency Preparedness Hub.
 
+## Backend Team
+
+- Rojhat Delibaş
+- Mehmet Can Gürbüz
+- Alper Kartkaya
+- Berat Sayın
+
 ## Scope
 
 This is a light initialization layer so the backend subgroup can start from the same structure before splitting implementation work.
