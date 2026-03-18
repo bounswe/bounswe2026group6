@@ -6,12 +6,20 @@ Minimal shared backend scaffold for the Neighborhood Emergency Preparedness Hub.
 
 This is a light initialization layer so the backend subgroup can start from the same structure before splitting implementation work.
 
-Current module split:
+For MVP, these areas are meant as practical work split guidelines, not strict architectural boundaries. Keep shared setup and small cross-cutting helpers simple instead of forcing hard separations too early.
 
-- `src/modules/auth` - registration, login, email verification
-- `src/modules/profiles` - profile, privacy, health, location
-- `src/modules/help-requests` - request creation and tracking
-- `src/modules/availability` - volunteer availability and assignment flow
+Suggested MVP work split:
+
+- `src/modules/auth` - signup, login, email verification, basic access control
+- `src/modules/profiles` - profile, privacy, health, and location data
+- `src/modules/help-requests` - request creation, request tracking, and status flow
+- `src/modules/availability` - volunteer availability, matching, and assignment flow
+
+Shared foundation should stay shared:
+
+- `src/config` and `src/db` for common setup
+- `src/routes` for top-level API wiring
+- small reusable helpers can stay common if splitting them adds unnecessary complexity
 
 ## Run locally
 
