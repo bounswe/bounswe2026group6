@@ -32,7 +32,7 @@ CMPE354 Group 6 repository.
 
 ## Team Notes
 
-- Backend ortak API kurallari ve hata sozlesmesi icin `backend/README.md` dosyasindaki `Shared API Conventions` bolumunu referans alin.
+- For shared backend API rules and the error contract, refer to the `Shared API Conventions` section in `backend/README.md`.
 
 ## Current Runnable Scope
 
