@@ -28,6 +28,29 @@ Shared foundation should stay shared:
 - `src/routes` for top-level API wiring
 - small reusable helpers can stay common if splitting them adds unnecessary complexity
 
+## Backend Structure Example
+
+Use this lightweight module structure for new backend features.
+
+```text
+src/
+	modules/
+		profiles/
+			routes.js       # Route definitions only
+			controller.js   # HTTP request/response handling
+			service.js      # Business logic
+			repository.js   # SQL and database access
+			validators.js   # Input and payload validation helpers
+```
+
+Layer responsibilities:
+
+- `routes` calls controller functions and keeps endpoint mapping simple.
+- `controller` parses request, calls service, and formats success/error responses.
+- `service` contains application logic and orchestration.
+- `repository` is the only layer that runs SQL queries.
+- `validators` centralizes reusable validation rules.
+
 ## Run locally
 
 Current recommended development flow is:
