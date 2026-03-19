@@ -9,6 +9,7 @@ CMPE354 Group 6 repository.
 **Description:** Helps individuals prepare for emergencies and connects neighbors for mutual aid; works offline during actual disasters.
 
 **Technical Challenges:**
+
 - Offline-first architecture with service workers
 - Data synchronization conflicts
 - Progressive web app optimization
@@ -28,3 +29,54 @@ CMPE354 Group 6 repository.
 ├── infra/      # Docker, compose, nginx, scripts, and infrastructure-related files
 └── .github/    # Issue templates and workflows
 ```
+
+## Team Notes
+
+- Backend ortak API kurallari ve hata sozlesmesi icin `backend/README.md` dosyasindaki `Shared API Conventions` bolumunu referans alin.
+
+## Current Runnable Scope
+
+- PostgreSQL is runnable via Docker Compose from `infra/dcompose`.
+- Backend scaffold is runnable locally with Node.js from `backend/`.
+- `web/` and `android/` are currently project skeletons.
+
+## Prerequisites
+
+- Git
+- Docker Desktop (or Docker Engine + Compose plugin)
+- Node.js 20 LTS (recommended) and npm
+
+## Quick Start (Project)
+
+1. Clone and enter repository.
+2. Start database with Docker Compose:
+
+```bash
+cd infra/dcompose
+cp .env.example .env
+docker compose -f docker-compose-dev.yml up -d
+```
+
+3. Start backend API in another terminal:
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+4. Verify service health:
+
+```text
+GET http://localhost:3000/health
+```
+
+## Common Notes For Everyone
+
+- Keep secrets in local `.env` files; never commit real credentials.
+- Database schema source of truth: `infra/docker/postgres/init.sql`.
+- Default ports:
+  : backend `3000`
+  : postgres `5432`
+- Backend API conventions and error contract live in `backend/README.md` under `Shared API Conventions`.

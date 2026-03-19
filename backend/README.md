@@ -30,9 +30,33 @@ Shared foundation should stay shared:
 
 ## Run locally
 
-1. Copy `backend/.env.example` to `backend/.env`
-2. Install dependencies with `npm install`
-3. Start the server with `npm run dev`
+Current recommended development flow is:
+
+- PostgreSQL in Docker (`infra/dcompose`)
+- Backend on host with Node.js (`backend/`)
+
+1. Start PostgreSQL first:
+
+```bash
+cd infra/dcompose
+cp .env.example .env
+docker compose -f docker-compose-dev.yml up -d
+```
+
+2. Start backend:
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+3. Verify API health:
+
+```text
+GET http://localhost:3000/health
+```
 
 The server exposes:
 
@@ -43,6 +67,21 @@ The server exposes:
 - `GET /api/help-requests`
 - `GET /api/availability`
 
+## Shared API Conventions
+
+Use these as lightweight team defaults during MVP development.
+
+- Error response format: `{ "code": "SOME_ERROR", "message": "Human readable message" }`
+- Common status codes: `400` validation, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `500` internal error
+- Auth expectation: protected endpoints should read current user from `req.user.userId`
+- Naming: prefer kebab-case for route paths (example: `/help-requests`)
+- DB ownership rule: never let a user read or update another user's profile data without explicit authorization
+
 ## Database note
 
 The shared PostgreSQL schema already lives in `infra/docker/postgres/init.sql`. This scaffold only prepares configuration and a reusable DB pool helper without implementing feature logic yet.
+
+## Environment Notes
+
+- When backend runs on host and DB runs in Docker, set `POSTGRES_HOST=localhost` in `backend/.env`.
+- If backend later runs as a Docker service in the same compose network, use `POSTGRES_HOST=postgres`.
