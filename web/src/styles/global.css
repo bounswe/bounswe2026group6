@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --primary-100: #fdecec;
+    --primary-500: #d84a4a;
+    --primary-600: #c53e3e;
+    --primary-700: #a93232;
+
+    --background-page: #f8f8f9;
+    --surface-card: #ffffff;
+    --border-subtle: #e7e7ea;
+    --divider: #eeeef1;
+
+    --text-primary: #2b2b33;
+    --text-secondary: #737380;
+    --text-muted: #a3a3ad;
+    --text-on-primary: #ffffff;
+
+    --success: #2ebd85;
+    --warning: #f4b740;
+    --error: #d84a4a;
+    --info: #b23b3b;
+
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 16px;
+    --radius-pill: 999px;
+
+    --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.06);
+    --shadow-overlay: 0 20px 40px rgba(0, 0, 0, 0.12);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+    background: var(--background-page);
+    color: var(--text-primary);
+}
+
+body {
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body,
+input,
+button,
+textarea,
+select {
+    font: inherit;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+button {
+    border: 0;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+img,
+svg,
+video,
+canvas {
+    display: block;
+    max-width: 100%;
+}
+
+input,
+textarea,
+select {
+    color: var(--text-primary);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted);
+}
+
+:focus-visible {
+    outline: 2px solid var(--primary-500);
+    outline-offset: 2px;
+}
+
+::selection {
+    background: var(--primary-100);
+    color: var(--text-primary);
+}
+
+/* Utility-like shared base classes */
+
+.page-bg {
+    background: var(--background-page);
+}
+
+.surface-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-card);
+}
+
+.text-primary {
+    color: var(--text-primary);
+}
+
+.text-secondary {
+    color: var(--text-secondary);
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+.border-subtle {
+    border-color: var(--border-subtle);
+}
+
+.border-divider {
+    border-color: var(--divider);
+}
+
+.shadow-card {
+    box-shadow: var(--shadow-card);
+}
+
+.shadow-overlay {
+    box-shadow: var(--shadow-overlay);
+}
