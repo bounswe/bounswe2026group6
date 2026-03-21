@@ -24,6 +24,16 @@ const env = {
     user: process.env.POSTGRES_USER || 'neph_user',
     password: process.env.POSTGRES_PASSWORD || 'neph_pass',
   },
+  jwt: {
+    secret: process.env.JWT_SECRET || 'dev-secret-123',
+  },
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: readNumber(process.env.SMTP_PORT, 587),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+  },
+  appUrl: process.env.APP_URL || 'http://localhost:3000',
 };
 
 module.exports = {
