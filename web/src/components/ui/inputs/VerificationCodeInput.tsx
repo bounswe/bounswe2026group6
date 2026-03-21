@@ -17,11 +17,12 @@ export function VerificationCodeInput({
     className,
 }: VerificationCodeInputProps) {
     const inputsRef = React.useRef<Array<HTMLInputElement | null>>([]);
-
     const values = Array.from({ length }, (_, i) => value[i] || "");
 
     const handleChange = (index: number, nextChar: string) => {
-        const char = nextChar.slice(-1);
+        const rawChar = nextChar.slice(-1);
+        const char = rawChar.replace(/\D/g, "");
+
         const nextValues = [...values];
         nextValues[index] = char;
 
@@ -42,6 +43,22 @@ export function VerificationCodeInput({
         }
     };
 
+    const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+        e.preventDefault();
+
+        const pasted = e.clipboardData
+            .getData("text")
+            .replace(/\D/g, "")
+            .slice(0, length);
+
+        if (!pasted) return;
+
+        onChange(pasted);
+
+        const nextFocusIndex = Math.min(pasted.length, length - 1);
+        inputsRef.current[nextFocusIndex]?.focus();
+    };
+
     return (
         <div className={cn("flex gap-2", className)}>
             {values.map((digit, index) => (
@@ -52,10 +69,12 @@ export function VerificationCodeInput({
                     }}
                     type="text"
                     inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={1}
                     value={digit}
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
+                    onPaste={handlePaste}
                     className="h-12 w-12 rounded-[10px] border border-[#E7E7EA] bg-white text-center text-lg font-semibold text-[#2B2B33] outline-none transition-colors focus:border-[#D84A4A]"
                 />
             ))}
