@@ -1,4 +1,256 @@
 const { query } = require('../../db/pool');
+const { randomUUID } = require('crypto');
+
+function makeId(prefix) {
+  return `${prefix}_${randomUUID().replace(/-/g, '')}`;
+}
+
+async function findActiveUserById(userId) {
+  const sql = `
+    SELECT user_id
+    FROM users
+    WHERE user_id = $1
+      AND is_deleted = FALSE
+    LIMIT 1;
+  `;
+
+  const result = await query(sql, [userId]);
+  return result.rows[0] || null;
+}
+
+async function findProfileByUserId(userId) {
+  const sql = `
+    SELECT profile_id, user_id, first_name, last_name, phone_number
+    FROM user_profiles
+    WHERE user_id = $1
+    LIMIT 1;
+  `;
+
+  const result = await query(sql, [userId]);
+  return result.rows[0] || null;
+}
+
+function buildUpdateClause(fieldMap, data, firstParamIndex) {
+  const entries = Object.entries(fieldMap)
+    .filter(([inputKey]) => Object.prototype.hasOwnProperty.call(data, inputKey));
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const setParts = entries.map(([, columnName], index) => `${columnName} = $${firstParamIndex + index}`);
+  const values = entries.map(([inputKey]) => data[inputKey]);
+
+  return {
+    setClause: setParts.join(', '),
+    values,
+  };
+}
+
+async function createProfileByUserId(userId, data) {
+  const profileId = makeId('prf');
+  const sql = `
+    INSERT INTO user_profiles (profile_id, user_id, first_name, last_name, phone_number)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING profile_id, user_id, first_name, last_name, phone_number;
+  `;
+
+  const values = [profileId, userId, data.firstName, data.lastName, data.phoneNumber ?? null];
+  const result = await query(sql, values);
+  return result.rows[0];
+}
+
+async function updateProfileByUserId(userId, data) {
+  const clause = buildUpdateClause(
+    {
+      firstName: 'first_name',
+      lastName: 'last_name',
+      phoneNumber: 'phone_number',
+    },
+    data,
+    1,
+  );
+
+  if (!clause) {
+    return findProfileByUserId(userId);
+  }
+
+  const sql = `
+    UPDATE user_profiles
+    SET ${clause.setClause}
+    WHERE user_id = $${clause.values.length + 1}
+    RETURNING profile_id, user_id, first_name, last_name, phone_number;
+  `;
+
+  const values = [...clause.values, userId];
+  const result = await query(sql, values);
+  return result.rows[0] || null;
+}
+
+async function upsertPhysicalInfo(profileId, data) {
+  const sql = `
+    INSERT INTO physical_info (physical_id, profile_id, age, gender, height, weight)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (profile_id)
+    DO UPDATE SET
+      age = COALESCE(EXCLUDED.age, physical_info.age),
+      gender = COALESCE(EXCLUDED.gender, physical_info.gender),
+      height = COALESCE(EXCLUDED.height, physical_info.height),
+      weight = COALESCE(EXCLUDED.weight, physical_info.weight)
+    RETURNING profile_id;
+  `;
+
+  const values = [
+    makeId('phy'),
+    profileId,
+    data.age ?? null,
+    data.gender ?? null,
+    data.height ?? null,
+    data.weight ?? null,
+  ];
+
+  await query(sql, values);
+}
+
+async function upsertHealthInfo(profileId, data, providedFields = []) {
+  const provided = new Set(providedFields);
+  const hasMedicalConditions = provided.has('medicalConditions');
+  const hasChronicDiseases = provided.has('chronicDiseases');
+  const hasAllergies = provided.has('allergies');
+  const hasMedications = provided.has('medications');
+  const hasBloodType = provided.has('bloodType');
+
+  const sql = `
+    INSERT INTO health_info (
+      health_id,
+      profile_id,
+      medical_conditions,
+      chronic_diseases,
+      allergies,
+      medications,
+      blood_type
+    )
+    VALUES (
+      $1,
+      $2,
+      CASE WHEN $8 THEN COALESCE($3, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END,
+      CASE WHEN $9 THEN COALESCE($4, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END,
+      CASE WHEN $10 THEN COALESCE($5, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END,
+      CASE WHEN $11 THEN COALESCE($6, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END,
+      CASE WHEN $12 THEN $7 ELSE NULL END
+    )
+    ON CONFLICT (profile_id)
+    DO UPDATE SET
+      medical_conditions = CASE WHEN $8 THEN EXCLUDED.medical_conditions ELSE health_info.medical_conditions END,
+      chronic_diseases = CASE WHEN $9 THEN EXCLUDED.chronic_diseases ELSE health_info.chronic_diseases END,
+      allergies = CASE WHEN $10 THEN EXCLUDED.allergies ELSE health_info.allergies END,
+      medications = CASE WHEN $11 THEN EXCLUDED.medications ELSE health_info.medications END,
+      blood_type = CASE WHEN $12 THEN EXCLUDED.blood_type ELSE health_info.blood_type END
+    RETURNING profile_id;
+  `;
+
+  const values = [
+    makeId('hlth'),
+    profileId,
+    data.medicalConditions,
+    data.chronicDiseases,
+    data.allergies,
+    data.medications,
+    data.bloodType,
+    hasMedicalConditions,
+    hasChronicDiseases,
+    hasAllergies,
+    hasMedications,
+    hasBloodType,
+  ];
+
+  await query(sql, values);
+}
+
+async function upsertLocationProfile(profileId, data) {
+  const sql = `
+    INSERT INTO location_profiles (
+      location_profile_id,
+      profile_id,
+      address,
+      city,
+      country,
+      latitude,
+      longitude
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (profile_id)
+    DO UPDATE SET
+      address = COALESCE(EXCLUDED.address, location_profiles.address),
+      city = COALESCE(EXCLUDED.city, location_profiles.city),
+      country = COALESCE(EXCLUDED.country, location_profiles.country),
+      latitude = COALESCE(EXCLUDED.latitude, location_profiles.latitude),
+      longitude = COALESCE(EXCLUDED.longitude, location_profiles.longitude),
+      last_updated = CURRENT_TIMESTAMP
+    RETURNING profile_id;
+  `;
+
+  const values = [
+    makeId('loc'),
+    profileId,
+    data.address ?? null,
+    data.city ?? null,
+    data.country ?? null,
+    data.latitude ?? null,
+    data.longitude ?? null,
+  ];
+
+  await query(sql, values);
+}
+
+async function upsertPrivacySettings(profileId, data, providedFields = []) {
+  const provided = new Set(providedFields);
+  const hasProfileVisibility = provided.has('profileVisibility');
+  const hasHealthInfoVisibility = provided.has('healthInfoVisibility');
+  const hasLocationVisibility = provided.has('locationVisibility');
+  const hasLocationSharingEnabled = provided.has('locationSharingEnabled');
+
+  const sql = `
+    INSERT INTO privacy_settings (
+      settings_id,
+      profile_id,
+      profile_visibility,
+      health_info_visibility,
+      location_visibility,
+      location_sharing_enabled
+    )
+    VALUES (
+      $1,
+      $2,
+      CASE WHEN $7 THEN $3 ELSE 'PRIVATE' END,
+      CASE WHEN $8 THEN $4 ELSE 'PRIVATE' END,
+      CASE WHEN $9 THEN $5 ELSE 'PRIVATE' END,
+      CASE WHEN $10 THEN $6 ELSE FALSE END
+    )
+    ON CONFLICT (profile_id)
+    DO UPDATE SET
+      profile_visibility = CASE WHEN $7 THEN EXCLUDED.profile_visibility ELSE privacy_settings.profile_visibility END,
+      health_info_visibility = CASE WHEN $8 THEN EXCLUDED.health_info_visibility ELSE privacy_settings.health_info_visibility END,
+      location_visibility = CASE WHEN $9 THEN EXCLUDED.location_visibility ELSE privacy_settings.location_visibility END,
+      location_sharing_enabled = CASE WHEN $10 THEN EXCLUDED.location_sharing_enabled ELSE privacy_settings.location_sharing_enabled END
+    RETURNING profile_id;
+  `;
+
+  const values = [
+    makeId('set'),
+    profileId,
+    data.profileVisibility,
+    data.healthInfoVisibility,
+    data.locationVisibility,
+    data.locationSharingEnabled,
+    hasProfileVisibility,
+    hasHealthInfoVisibility,
+    hasLocationVisibility,
+    hasLocationSharingEnabled,
+  ];
+
+  await query(sql, values);
+}
 
 async function findProfileBundleByUserId(userId) {
   const sql = `
@@ -44,5 +296,13 @@ async function findProfileBundleByUserId(userId) {
 }
 
 module.exports = {
+  findActiveUserById,
+  findProfileByUserId,
+  createProfileByUserId,
+  updateProfileByUserId,
+  upsertPhysicalInfo,
+  upsertHealthInfo,
+  upsertLocationProfile,
+  upsertPrivacySettings,
   findProfileBundleByUserId,
 };
