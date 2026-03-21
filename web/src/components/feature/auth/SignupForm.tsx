@@ -22,6 +22,7 @@ export function SignupForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const shouldRestoreDraft = searchParams.get("restore") === "1";
+    const redirectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [showEmailForm, setShowEmailForm] = React.useState(false);
     const [fullName, setFullName] = React.useState("");
@@ -51,14 +52,33 @@ export function SignupForm() {
             setEmail(parsed.email || "");
             setCountryCode(parsed.countryCode || "+90");
             setPhone(parsed.phone || "");
-            setPassword(parsed.password || "");
-            setConfirmPassword(parsed.confirmPassword || "");
             setAcceptedTerms(parsed.acceptedTerms || false);
             setShowEmailForm(true);
         } catch {
             // ignore invalid draft
         }
     }, [shouldRestoreDraft]);
+
+    React.useEffect(() => {
+        return () => {
+            if (redirectTimeoutRef.current) {
+                clearTimeout(redirectTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const saveSignupDraft = () => {
+        sessionStorage.setItem(
+            SIGNUP_DRAFT_KEY,
+            JSON.stringify({
+                fullName,
+                email,
+                countryCode,
+                phone,
+                acceptedTerms,
+            })
+        );
+    };
 
     const handlePhoneChange = (value: string) => {
         const digitsOnly = value.replace(/\D/g, "");
@@ -99,10 +119,6 @@ export function SignupForm() {
         try {
             setLoading(true);
 
-            const fullPhoneNumber = `${countryCode}${phone}`;
-
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-
             sessionStorage.setItem(
                 SIGNUP_DRAFT_KEY,
                 JSON.stringify({
@@ -110,24 +126,15 @@ export function SignupForm() {
                     email,
                     countryCode,
                     phone,
-                    password,
-                    confirmPassword,
                     acceptedTerms,
                 })
             );
-
-            console.log("Signup payload:", {
-                fullName,
-                email,
-                phone: fullPhoneNumber,
-                password,
-            });
 
             setInfo(
                 "Account created successfully. Redirecting to email verification..."
             );
 
-            setTimeout(() => {
+            redirectTimeoutRef.current = setTimeout(() => {
                 router.push(`/verify-email?email=${encodeURIComponent(email)}`);
             }, 700);
         } catch {
@@ -233,14 +240,16 @@ export function SignupForm() {
                             <span>
                                 I agree to the{" "}
                                 <Link
-                                    href="/terms-of-service"
+                                    href="/terms-of-service?from=signup"
+                                    onClick={saveSignupDraft}
                                     className="font-semibold text-[#D84A4A] hover:underline"
                                 >
                                     Terms of Service
                                 </Link>{" "}
                                 and{" "}
                                 <Link
-                                    href="/privacy-policy"
+                                    href="/privacy-policy?from=signup"
+                                    onClick={saveSignupDraft}
                                     className="font-semibold text-[#D84A4A] hover:underline"
                                 >
                                     Privacy Policy

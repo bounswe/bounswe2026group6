@@ -44,11 +44,7 @@ export function LoginForm() {
 
             await new Promise((resolve) => setTimeout(resolve, 1000));
 
-            console.log("Login payload:", {
-                email,
-                password,
-                rememberMe,
-            });
+
         } catch {
             setError("Login failed. Please try again.");
         } finally {

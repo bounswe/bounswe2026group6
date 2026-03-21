@@ -1,54 +1,57 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
-type SelectOption = {
+type Option = {
     label: string;
     value: string;
-    shortLabel?: string;
 };
 
 type SelectInputProps = React.SelectHTMLAttributes<HTMLSelectElement> & {
-    id: string;
-    label: string;
-    options: SelectOption[];
+    label?: string;
     error?: string;
+    options: Option[];
     helperText?: string;
     placeholder?: string;
 };
 
 export function SelectInput({
-    id,
     label,
-    options,
     error,
+    options,
     helperText,
-    placeholder,
     className,
+    id,
+    placeholder = "Select an option",
     value,
     ...props
 }: SelectInputProps) {
     const selectedOption = options.find((option) => option.value === value);
+    const displayValue = selectedOption ? selectedOption.value : "";
 
     return (
-        <div className="flex w-full flex-col gap-1.5">
-            <label htmlFor={id} className="text-sm font-medium text-[#2B2B33]">
-                {label}
-            </label>
+        <div className="flex w-full flex-col gap-2">
+            {label ? (
+                <label htmlFor={id} className="text-sm font-medium text-[#2B2B33]">
+                    {label}
+                </label>
+            ) : null}
 
             <div
                 className={cn(
-                    "relative h-12 w-full rounded-[10px] border border-[#E7E7EA] bg-white transition-colors focus-within:border-[#D84A4A]",
-                    error ? "border-[#D84A4A]" : ""
+                    "relative h-11 w-full rounded-[10px] border bg-white transition-colors",
+                    "border-[#E7E7EA] focus-within:border-[#D84A4A]",
+                    error && "border-[#D84A4A]",
+                    className
                 )}
             >
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-4 pr-10">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-3">
                     <span
                         className={cn(
                             "truncate text-sm",
-                            selectedOption ? "text-[#2B2B33]" : "text-[#A3A3AD]"
+                            displayValue ? "text-[#2B2B33]" : "text-[#A3A3AD]"
                         )}
                     >
-                        {selectedOption?.shortLabel || placeholder || "Select"}
+                        {displayValue || placeholder}
                     </span>
 
                     <svg
@@ -70,19 +73,14 @@ export function SelectInput({
                 <select
                     id={id}
                     value={value}
-                    className={cn(
-                        "absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0",
-                        className
-                    )}
+                    className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
                     {...props}
                 >
-                    {placeholder ? (
-                        <option value="">{placeholder}</option>
-                    ) : null}
+                    <option value="">{placeholder}</option>
 
-                    {options.map((option, index) => (
+                    {options.map((option) => (
                         <option
-                            key={`${option.value}-${option.label}-${index}`}
+                            key={`${option.label}-${option.value}`}
                             value={option.value}
                         >
                             {option.label}

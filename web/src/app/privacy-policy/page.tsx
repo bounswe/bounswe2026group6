@@ -3,13 +3,24 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 
-export default function PrivacyPolicyPage() {
+type PrivacyPolicyPageProps = {
+    searchParams?: Promise<{
+        from?: string;
+    }>;
+};
+
+export default async function PrivacyPolicyPage({
+    searchParams,
+}: PrivacyPolicyPageProps) {
+    const params = await searchParams;
+    const backHref = params?.from === "signup" ? "/signup?restore=1" : "/signup";
+
     return (
         <div className="min-h-screen bg-[#F8F8F9] py-10">
             <PageContainer>
                 <div className="mx-auto max-w-3xl">
                     <Link
-                        href="/signup"
+                        href={backHref}
                         className="text-sm font-medium text-[#D84A4A] hover:underline"
                     >
                         ← Back to Sign Up

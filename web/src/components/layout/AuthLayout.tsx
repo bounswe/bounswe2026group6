@@ -1,7 +1,7 @@
 import * as React from "react";
 import { AuthCard } from "@/components/ui/display/AuthCard";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { AuthShowcase } from "@/components/feature/auth/AuthShowCase";
+import { AuthShowcase } from "@/components/feature/auth/AuthShowcase";
 
 type AuthLayoutProps = {
     title?: string;
