@@ -1,0 +1,214 @@
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const {
+  findUserByEmail,
+  createUser,
+  markEmailVerified,
+  findUserById,
+  findAdminByUserId,
+  listUsers,
+  listHelpRequests,
+  listAnnouncements,
+  getBasicStats,
+} = require('./repository');
+const { sendVerificationEmail } = require('../../config/mailer');
+
+const { env } = require('../../config/env');
+const JWT_SECRET = env.jwt.secret;
+const ACCESS_TOKEN_EXPIRES_IN = '7d';
+const EMAIL_VERIFICATION_EXPIRES_IN = '1d';
+
+function buildAccessTokenPayload(user, adminRecord) {
+  return {
+    userId: user.user_id,
+    email: user.email,
+    isAdmin: Boolean(adminRecord),
+    adminRole: adminRecord ? adminRecord.role : null,
+  };
+}
+
+function signAccessToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+  });
+}
+
+function signEmailVerificationToken(user) {
+  return jwt.sign(
+    {
+      type: 'email-verification',
+      userId: user.user_id,
+      email: user.email,
+    },
+    JWT_SECRET,
+    { expiresIn: EMAIL_VERIFICATION_EXPIRES_IN }
+  );
+}
+
+async function signupUser({ email, password, acceptedTerms }) {
+
+   const normalizedEmail = email.toLowerCase().trim();
+  //console.log('signupUser called with:', email);
+  
+  const existingUser = await findUserByEmail(normalizedEmail);
+  //console.log('existingUser:', existingUser);
+
+  if (existingUser) {
+    const error = new Error('Email already exists');
+    error.code = 'EMAIL_ALREADY_EXISTS';
+    throw error;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const userId = uuidv4();
+  //console.log('creating user...');
+
+  const createdUser = await createUser({
+    userId,
+    email: normalizedEmail,
+    passwordHash,
+    acceptedTerms: Boolean(acceptedTerms),
+  });
+  //console.log('user created:', createdUser);
+
+  const verificationToken = signEmailVerificationToken(createdUser);
+  //console.log('sending email to:', createdUser.email);
+
+  try {
+    await sendVerificationEmail(createdUser.email, verificationToken);
+    //console.log('email sent successfully');
+  } catch (emailError) {
+    console.error('Email sending failed:', emailError);
+    throw emailError;
+  }
+
+  return {
+    message: 'User created successfully. Please check your email to verify your account.',
+    user: {
+      userId: createdUser.user_id,
+      email: createdUser.email,
+      isEmailVerified: createdUser.is_email_verified,
+      acceptedTerms: createdUser.accepted_terms,
+      createdAt: createdUser.created_at,
+    },
+  };
+}
+
+async function loginUser({ email, password }) {
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await findUserByEmail(normalizedEmail);
+
+  if (!user || user.is_deleted) {
+    const error = new Error('Invalid email or password');
+    error.code = 'INVALID_CREDENTIALS';
+    throw error;
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.password_hash);
+
+  if (!passwordMatches) {
+    const error = new Error('Invalid email or password');
+    error.code = 'INVALID_CREDENTIALS';
+    throw error;
+  }
+
+  if (!user.is_email_verified) {
+    const error = new Error('Email is not verified');
+    error.code = 'EMAIL_NOT_VERIFIED';
+    throw error;
+  }
+
+  const adminRecord = await findAdminByUserId(user.user_id);
+  const tokenPayload = buildAccessTokenPayload(user, adminRecord);
+  const accessToken = signAccessToken(tokenPayload);
+
+  return {
+    message: 'Login successful',
+    accessToken,
+    user: {
+      userId: user.user_id,
+      email: user.email,
+      isEmailVerified: user.is_email_verified,
+      isAdmin: Boolean(adminRecord),
+      adminRole: adminRecord ? adminRecord.role : null,
+    },
+  };
+}
+
+async function verifyUserEmail(token) {
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (_error) {
+    const error = new Error('Invalid or expired verification token');
+    error.code = 'INVALID_VERIFICATION_TOKEN';
+    throw error;
+  }
+
+  if (decoded.type !== 'email-verification' || !decoded.userId) {
+    const error = new Error('Invalid verification token');
+    error.code = 'INVALID_VERIFICATION_TOKEN';
+    throw error;
+  }
+
+  const updatedUser = await markEmailVerified(decoded.userId);
+
+  return {
+    message: 'Email verified successfully',
+    user: {
+      userId: updatedUser.user_id,
+      email: updatedUser.email,
+      isEmailVerified: updatedUser.is_email_verified,
+    },
+  };
+}
+
+async function getCurrentUser(userId) {
+  const user = await findUserById(userId);
+  const adminRecord = await findAdminByUserId(userId);
+
+  if (!user || user.is_deleted) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  return {
+    userId: user.user_id,
+    email: user.email,
+    isEmailVerified: user.is_email_verified,
+    acceptedTerms: user.accepted_terms,
+    createdAt: user.created_at,
+    isAdmin: Boolean(adminRecord),
+    adminRole: adminRecord ? adminRecord.role : null,
+  };
+}
+
+async function getUsersForAdmin() {
+  return listUsers();
+}
+
+async function getHelpRequestsForAdmin() {
+  return listHelpRequests();
+}
+
+async function getAnnouncementsForAdmin() {
+  return listAnnouncements();
+}
+
+async function getStatsForAdmin() {
+  return getBasicStats();
+}
+
+module.exports = {
+  signupUser,
+  loginUser,
+  verifyUserEmail,
+  getCurrentUser,
+  getUsersForAdmin,
+  getHelpRequestsForAdmin,
+  getAnnouncementsForAdmin,
+  getStatsForAdmin,
+};
