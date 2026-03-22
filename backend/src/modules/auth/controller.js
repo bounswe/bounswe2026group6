@@ -7,6 +7,7 @@ const {
   getHelpRequestsForAdmin,
   getAnnouncementsForAdmin,
   getStatsForAdmin,
+  resendVerificationEmail,
 } = require('./service');
 const {
   validateSignupInput,
@@ -174,6 +175,37 @@ async function getAdminStats(_req, res) {
   }
 }
 
+async function resendVerification(req, res) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Email is required',
+      });
+    }
+
+    const result = await resendVerificationEmail(email);
+    return res.status(200).json(result);
+  } catch (error) {
+    if (
+      error.code === 'USER_NOT_FOUND' ||
+      error.code === 'EMAIL_ALREADY_VERIFIED'
+    ) {
+      return res.status(400).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
 module.exports = {
   getAuthInfo,
   signup,
@@ -184,4 +216,5 @@ module.exports = {
   getAdminHelpRequests,
   getAdminAnnouncements,
   getAdminStats,
+  resendVerification,
 };

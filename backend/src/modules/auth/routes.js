@@ -20,6 +20,7 @@ const {
   getAdminHelpRequests,
   getAdminAnnouncements,
   getAdminStats,
+  resendVerification,
 } = require('./controller');
 const { requireAuth, requireAdmin } = require('./middleware');
 
@@ -30,6 +31,7 @@ authRouter.get('/', getAuthInfo);
 authRouter.post('/signup', authLimiter, signup);
 authRouter.post('/login', authLimiter, login);
 authRouter.get('/verify-email', verifyEmail);
+authRouter.post('/resend-verification', authLimiter, resendVerification);
 
 authRouter.get('/me', requireAuth, getMe);
 
