@@ -1,7 +1,8 @@
 const {
   findActiveUserById,
   findProfileByUserId,
-  upsertProfileByUserId,
+  createProfileByUserId,
+  updateProfileByUserId,
   upsertPhysicalInfo,
   upsertHealthInfo,
   upsertLocationProfile,
@@ -74,7 +75,14 @@ async function ensureActiveUser(userId) {
 async function patchMyProfile(userId, data) {
   await ensureActiveUser(userId);
 
-  await upsertProfileByUserId(userId, data, Object.keys(data));
+  const profile = await findProfileByUserId(userId);
+
+  if (!profile) {
+    await createProfileByUserId(userId, data);
+  } else {
+    await updateProfileByUserId(userId, data);
+  }
+
   return getMyProfile(userId);
 }
 
