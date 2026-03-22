@@ -22,7 +22,7 @@ export function ToggleSwitch({
             onClick={() => onCheckedChange(!checked)}
             className={cn(
                 "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                checked ? "bg-[#D84A4A]" : "bg-[#D1D5DB]",
+                checked ? "bg-red-500" : "bg-gray-300",
                 disabled && "cursor-not-allowed opacity-60"
             )}
         >

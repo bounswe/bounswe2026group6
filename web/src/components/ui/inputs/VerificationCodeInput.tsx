@@ -56,7 +56,7 @@ export function VerificationCodeInput({
                     value={digit}
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
-                    className="h-12 w-12 rounded-[10px] border border-[#E7E7EA] bg-white text-center text-lg font-semibold text-[#2B2B33] outline-none transition-colors focus:border-[#D84A4A]"
+                    className="h-12 w-12 rounded-[10px] border border-gray-200 bg-white text-center text-lg font-semibold text-gray-800 outline-none transition-colors focus:border-red-500"
                 />
             ))}
         </div>
