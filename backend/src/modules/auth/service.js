@@ -202,6 +202,30 @@ async function getStatsForAdmin() {
   return getBasicStats();
 }
 
+async function resendVerificationEmail(email) {
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await findUserByEmail(normalizedEmail);
+
+  if (!user || user.is_deleted) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  if (user.is_email_verified) {
+    const error = new Error('Email is already verified');
+    error.code = 'EMAIL_ALREADY_VERIFIED';
+    throw error;
+  }
+
+  const verificationToken = signEmailVerificationToken(user);
+  await sendVerificationEmail(user.email, verificationToken);
+
+  return {
+    message: 'Verification email sent. Please check your inbox.',
+  };
+}
+
 module.exports = {
   signupUser,
   loginUser,
@@ -211,4 +235,5 @@ module.exports = {
   getHelpRequestsForAdmin,
   getAnnouncementsForAdmin,
   getStatsForAdmin,
+  resendVerificationEmail,
 };
