@@ -1,4 +1,5 @@
 const express = require('express');
+const { requireAuth } = require('../auth/middleware');
 const {
   getMe,
   patchMe,
@@ -18,12 +19,12 @@ profilesRouter.get('/', (_request, response) => {
   });
 });
 
-profilesRouter.get('/me', getMe);
-profilesRouter.patch('/me', patchMe);
-profilesRouter.patch('/me/physical', patchPhysical);
-profilesRouter.patch('/me/health', patchHealth);
-profilesRouter.patch('/me/location', patchLocation);
-profilesRouter.patch('/me/privacy', patchPrivacy);
+profilesRouter.get('/me', requireAuth, getMe);
+profilesRouter.patch('/me', requireAuth, patchMe);
+profilesRouter.patch('/me/physical', requireAuth, patchPhysical);
+profilesRouter.patch('/me/health', requireAuth, patchHealth);
+profilesRouter.patch('/me/location', requireAuth, patchLocation);
+profilesRouter.patch('/me/privacy', requireAuth, patchPrivacy);
 
 module.exports = {
   profilesRouter,
