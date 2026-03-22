@@ -1,4 +1,14 @@
-const { findProfileBundleByUserId } = require('./repository');
+const {
+  findActiveUserById,
+  findProfileByUserId,
+  createProfileByUserId,
+  updateProfileByUserId,
+  upsertPhysicalInfo,
+  upsertHealthInfo,
+  upsertLocationProfile,
+  upsertPrivacySettings,
+  findProfileBundleByUserId,
+} = require('./repository');
 
 function mapProfileRow(row) {
   return {
@@ -49,6 +59,75 @@ async function getMyProfile(userId) {
   return mapProfileRow(row);
 }
 
+async function hasProfile(userId) {
+  const profile = await findProfileByUserId(userId);
+  return Boolean(profile);
+}
+
+async function ensureActiveUser(userId) {
+  const user = await findActiveUserById(userId);
+  if (!user) {
+    const error = new Error('USER_NOT_FOUND');
+    throw error;
+  }
+}
+
+async function patchMyProfile(userId, data) {
+  await ensureActiveUser(userId);
+
+  const profile = await findProfileByUserId(userId);
+
+  if (!profile) {
+    await createProfileByUserId(userId, data);
+  } else {
+    await updateProfileByUserId(userId, data);
+  }
+
+  return getMyProfile(userId);
+}
+
+async function getProfileIdOrThrow(userId) {
+  await ensureActiveUser(userId);
+
+  const profile = await findProfileByUserId(userId);
+  if (!profile) {
+    const error = new Error('PROFILE_NOT_FOUND');
+    throw error;
+  }
+
+  return profile.profile_id;
+}
+
+async function patchMyPhysical(userId, data, providedFields = []) {
+  const profileId = await getProfileIdOrThrow(userId);
+  await upsertPhysicalInfo(profileId, data, providedFields);
+  return getMyProfile(userId);
+}
+
+async function patchMyHealth(userId, data, providedFields = []) {
+  const profileId = await getProfileIdOrThrow(userId);
+  await upsertHealthInfo(profileId, data, providedFields);
+  return getMyProfile(userId);
+}
+
+async function patchMyLocation(userId, data, providedFields = []) {
+  const profileId = await getProfileIdOrThrow(userId);
+  await upsertLocationProfile(profileId, data, providedFields);
+  return getMyProfile(userId);
+}
+
+async function patchMyPrivacy(userId, data, providedFields = []) {
+  const profileId = await getProfileIdOrThrow(userId);
+  await upsertPrivacySettings(profileId, data, providedFields);
+  return getMyProfile(userId);
+}
+
 module.exports = {
   getMyProfile,
+  hasProfile,
+  patchMyProfile,
+  patchMyPhysical,
+  patchMyHealth,
+  patchMyLocation,
+  patchMyPrivacy,
 };

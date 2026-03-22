@@ -1,5 +1,13 @@
 const express = require('express');
-const { getMe, notImplemented } = require('./controller');
+const { requireAuth } = require('../auth/middleware');
+const {
+  getMe,
+  patchMe,
+  patchPhysical,
+  patchHealth,
+  patchLocation,
+  patchPrivacy,
+} = require('./controller');
 
 const profilesRouter = express.Router();
 
@@ -11,12 +19,12 @@ profilesRouter.get('/', (_request, response) => {
   });
 });
 
-profilesRouter.get('/me', getMe);
-profilesRouter.patch('/me', notImplemented);
-profilesRouter.patch('/me/physical', notImplemented);
-profilesRouter.patch('/me/health', notImplemented);
-profilesRouter.patch('/me/location', notImplemented);
-profilesRouter.patch('/me/privacy', notImplemented);
+profilesRouter.get('/me', requireAuth, getMe);
+profilesRouter.patch('/me', requireAuth, patchMe);
+profilesRouter.patch('/me/physical', requireAuth, patchPhysical);
+profilesRouter.patch('/me/health', requireAuth, patchHealth);
+profilesRouter.patch('/me/location', requireAuth, patchLocation);
+profilesRouter.patch('/me/privacy', requireAuth, patchPrivacy);
 
 module.exports = {
   profilesRouter,
