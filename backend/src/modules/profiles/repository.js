@@ -60,6 +60,38 @@ async function createProfileByUserId(userId, data) {
   return result.rows[0];
 }
 
+async function upsertProfileByUserId(userId, data, providedFields = []) {
+  const provided = new Set(providedFields);
+  const hasFirstName = provided.has('firstName');
+  const hasLastName = provided.has('lastName');
+  const hasPhoneNumber = provided.has('phoneNumber');
+
+  const sql = `
+    INSERT INTO user_profiles (profile_id, user_id, first_name, last_name, phone_number)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (user_id)
+    DO UPDATE SET
+      first_name = CASE WHEN $6 THEN EXCLUDED.first_name ELSE user_profiles.first_name END,
+      last_name = CASE WHEN $7 THEN EXCLUDED.last_name ELSE user_profiles.last_name END,
+      phone_number = CASE WHEN $8 THEN EXCLUDED.phone_number ELSE user_profiles.phone_number END
+    RETURNING profile_id, user_id, first_name, last_name, phone_number;
+  `;
+
+  const values = [
+    makeId('prf'),
+    userId,
+    data.firstName,
+    data.lastName,
+    data.phoneNumber ?? null,
+    hasFirstName,
+    hasLastName,
+    hasPhoneNumber,
+  ];
+
+  const result = await query(sql, values);
+  return result.rows[0] || null;
+}
+
 async function updateProfileByUserId(userId, data) {
   const clause = buildUpdateClause(
     {
@@ -87,16 +119,22 @@ async function updateProfileByUserId(userId, data) {
   return result.rows[0] || null;
 }
 
-async function upsertPhysicalInfo(profileId, data) {
+async function upsertPhysicalInfo(profileId, data, providedFields = []) {
+  const provided = new Set(providedFields);
+  const hasAge = provided.has('age');
+  const hasGender = provided.has('gender');
+  const hasHeight = provided.has('height');
+  const hasWeight = provided.has('weight');
+
   const sql = `
     INSERT INTO physical_info (physical_id, profile_id, age, gender, height, weight)
     VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (profile_id)
     DO UPDATE SET
-      age = COALESCE(EXCLUDED.age, physical_info.age),
-      gender = COALESCE(EXCLUDED.gender, physical_info.gender),
-      height = COALESCE(EXCLUDED.height, physical_info.height),
-      weight = COALESCE(EXCLUDED.weight, physical_info.weight)
+      age = CASE WHEN $7 THEN EXCLUDED.age ELSE physical_info.age END,
+      gender = CASE WHEN $8 THEN EXCLUDED.gender ELSE physical_info.gender END,
+      height = CASE WHEN $9 THEN EXCLUDED.height ELSE physical_info.height END,
+      weight = CASE WHEN $10 THEN EXCLUDED.weight ELSE physical_info.weight END
     RETURNING profile_id;
   `;
 
@@ -107,6 +145,10 @@ async function upsertPhysicalInfo(profileId, data) {
     data.gender ?? null,
     data.height ?? null,
     data.weight ?? null,
+    hasAge,
+    hasGender,
+    hasHeight,
+    hasWeight,
   ];
 
   await query(sql, values);
@@ -167,7 +209,14 @@ async function upsertHealthInfo(profileId, data, providedFields = []) {
   await query(sql, values);
 }
 
-async function upsertLocationProfile(profileId, data) {
+async function upsertLocationProfile(profileId, data, providedFields = []) {
+  const provided = new Set(providedFields);
+  const hasAddress = provided.has('address');
+  const hasCity = provided.has('city');
+  const hasCountry = provided.has('country');
+  const hasLatitude = provided.has('latitude');
+  const hasLongitude = provided.has('longitude');
+
   const sql = `
     INSERT INTO location_profiles (
       location_profile_id,
@@ -181,11 +230,11 @@ async function upsertLocationProfile(profileId, data) {
     VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (profile_id)
     DO UPDATE SET
-      address = COALESCE(EXCLUDED.address, location_profiles.address),
-      city = COALESCE(EXCLUDED.city, location_profiles.city),
-      country = COALESCE(EXCLUDED.country, location_profiles.country),
-      latitude = COALESCE(EXCLUDED.latitude, location_profiles.latitude),
-      longitude = COALESCE(EXCLUDED.longitude, location_profiles.longitude),
+      address = CASE WHEN $8 THEN EXCLUDED.address ELSE location_profiles.address END,
+      city = CASE WHEN $9 THEN EXCLUDED.city ELSE location_profiles.city END,
+      country = CASE WHEN $10 THEN EXCLUDED.country ELSE location_profiles.country END,
+      latitude = CASE WHEN $11 THEN EXCLUDED.latitude ELSE location_profiles.latitude END,
+      longitude = CASE WHEN $12 THEN EXCLUDED.longitude ELSE location_profiles.longitude END,
       last_updated = CURRENT_TIMESTAMP
     RETURNING profile_id;
   `;
@@ -198,6 +247,11 @@ async function upsertLocationProfile(profileId, data) {
     data.country ?? null,
     data.latitude ?? null,
     data.longitude ?? null,
+    hasAddress,
+    hasCity,
+    hasCountry,
+    hasLatitude,
+    hasLongitude,
   ];
 
   await query(sql, values);
@@ -299,6 +353,7 @@ module.exports = {
   findActiveUserById,
   findProfileByUserId,
   createProfileByUserId,
+  upsertProfileByUserId,
   updateProfileByUserId,
   upsertPhysicalInfo,
   upsertHealthInfo,

@@ -1,8 +1,7 @@
 const {
   findActiveUserById,
   findProfileByUserId,
-  createProfileByUserId,
-  updateProfileByUserId,
+  upsertProfileByUserId,
   upsertPhysicalInfo,
   upsertHealthInfo,
   upsertLocationProfile,
@@ -75,14 +74,7 @@ async function ensureActiveUser(userId) {
 async function patchMyProfile(userId, data) {
   await ensureActiveUser(userId);
 
-  const existingProfile = await findProfileByUserId(userId);
-
-  if (!existingProfile) {
-    await createProfileByUserId(userId, data);
-    return getMyProfile(userId);
-  }
-
-  await updateProfileByUserId(userId, data);
+  await upsertProfileByUserId(userId, data, Object.keys(data));
   return getMyProfile(userId);
 }
 
@@ -98,9 +90,9 @@ async function getProfileIdOrThrow(userId) {
   return profile.profile_id;
 }
 
-async function patchMyPhysical(userId, data) {
+async function patchMyPhysical(userId, data, providedFields = []) {
   const profileId = await getProfileIdOrThrow(userId);
-  await upsertPhysicalInfo(profileId, data);
+  await upsertPhysicalInfo(profileId, data, providedFields);
   return getMyProfile(userId);
 }
 
@@ -110,9 +102,9 @@ async function patchMyHealth(userId, data, providedFields = []) {
   return getMyProfile(userId);
 }
 
-async function patchMyLocation(userId, data) {
+async function patchMyLocation(userId, data, providedFields = []) {
   const profileId = await getProfileIdOrThrow(userId);
-  await upsertLocationProfile(profileId, data);
+  await upsertLocationProfile(profileId, data, providedFields);
   return getMyProfile(userId);
 }
 

@@ -93,7 +93,7 @@ async function patchPhysical(request, response) {
   }
 
   try {
-    const profile = await patchMyPhysical(userId, validation.data);
+    const profile = await patchMyPhysical(userId, validation.data, Object.keys(validation.data));
     return response.status(200).json(profile);
   } catch (error) {
     return mapServiceError(response, error);
@@ -133,7 +133,7 @@ async function patchLocation(request, response) {
   }
 
   try {
-    const profile = await patchMyLocation(userId, validation.data);
+    const profile = await patchMyLocation(userId, validation.data, Object.keys(validation.data));
     return response.status(200).json(profile);
   } catch (error) {
     return mapServiceError(response, error);
