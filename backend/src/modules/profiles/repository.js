@@ -276,9 +276,9 @@ async function upsertPrivacySettings(profileId, data, providedFields = []) {
     VALUES (
       $1,
       $2,
-      CASE WHEN $7 THEN $3 ELSE 'PRIVATE' END,
-      CASE WHEN $8 THEN $4 ELSE 'PRIVATE' END,
-      CASE WHEN $9 THEN $5 ELSE 'PRIVATE' END,
+      CASE WHEN $7 THEN $3::visibility_level ELSE 'PRIVATE'::visibility_level END,
+      CASE WHEN $8 THEN $4::visibility_level ELSE 'PRIVATE'::visibility_level END,
+      CASE WHEN $9 THEN $5::visibility_level ELSE 'PRIVATE'::visibility_level END,
       CASE WHEN $10 THEN $6 ELSE FALSE END
     )
     ON CONFLICT (profile_id)
