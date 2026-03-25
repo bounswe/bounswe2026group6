@@ -1,18 +1,51 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-
 import { TextInput } from "@/components/ui/inputs/TextInput";
 import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
-import { AuthCard } from "@/components/ui/display/AuthCard";
-
 import { ProfileInfoRow } from "../../ui/display/ProfileInfoRow";
 import { SaveActionBar } from "../../ui/display/SaveActionBar";
 
-const locationData: Record<string, any> = {
+type ProfileForm = {
+  gender: string;
+  height: string;
+  weight: string;
+  birthDate: string;
+  medicalHistory: string;
+  country: string;
+  city: string;
+  district: string;
+  neighborhood: string;
+  extraAddress: string;
+  shareLocation: boolean;
+};
+
+type Neighborhood = {
+  label: string;
+  value: string;
+};
+
+type District = {
+  label: string;
+  neighborhoods: Neighborhood[];
+};
+
+type City = {
+  label: string;
+  districts: Record<string, District>;
+};
+
+type Country = {
+  label: string;
+  cities: Record<string, City>;
+};
+
+type LocationData = Record<string, Country>;
+
+
+const locationData: LocationData = {
   tr: {
     label: "Turkey",
     cities: {
@@ -50,10 +83,9 @@ const locationData: Record<string, any> = {
   },
 };
 
-export default function CompleteProfileForm() {
-  const router = useRouter();
 
-  const [form, setForm] = React.useState({
+  export default function CompleteProfileForm() {
+    const [form, setForm] = React.useState<ProfileForm>({
     gender: "",
     height: "",
     weight: "",
@@ -70,89 +102,69 @@ export default function CompleteProfileForm() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
 
-  const countryData = locationData[form.country];
+
+  const countryData = locationData[form.country] ?? undefined;
 
   const countryOptions = Object.entries(locationData).map(
-    ([key, val]: any) => ({
+    ([key, val]) => ({
       label: val.label,
       value: key,
     })
   );
 
   const cityOptions =
-    form.country &&
-    Object.entries(countryData?.cities || {}).map(
-      ([key, val]: any) => ({
+  form.country && countryData
+    ? Object.entries(countryData.cities).map(([key, val]) => ({
         label: val.label,
         value: key,
-      })
-    );
+      }))
+    : [];
 
   const districtOptions =
-    form.city &&
-    Object.entries(
-      countryData?.cities?.[form.city]?.districts || {}
-    ).map(([key, val]: any) => ({
-      label: val.label,
-      value: key,
-    }));
+  form.city && countryData?.cities?.[form.city]
+    ? Object.entries(
+        countryData.cities[form.city].districts
+      ).map(([key, val]) => ({
+        label: val.label,
+        value: key,
+      }))
+    : [];
 
   const neighborhoodOptions =
-    form.district &&
-    countryData?.cities?.[form.city]?.districts?.[
-      form.district
-    ]?.neighborhoods || [];
+  form.city &&
+  form.district &&
+  countryData?.cities?.[form.city]?.districts?.[form.district]
+    ? countryData.cities[form.city].districts[form.district].neighborhoods
+    : [];
+
 
   const handleSave = async () => {
-    setError("");
+  setError("");
 
-    if (
-      !form.height ||
-      !form.weight ||
-      !form.country ||
-      !form.birthDate
-    ) {
-      setError("Please fill in all required fields.");
-      return;
-    }
+  const isAddressIncomplete =
+    !form.country || !form.city || !form.district || !form.neighborhood;
 
-    setLoading(true);
+  if (!form.height || !form.weight || !form.birthDate || isAddressIncomplete) {
+    setError("Please fill in all required fields.");
+    return;
+  }
 
-    await new Promise((r) => setTimeout(r, 600));
+  setLoading(true);
+  await new Promise((r) => setTimeout(r, 600));
 
-    //  SIGNUP DATA + PROFILE MERGE
-    const existingUser = localStorage.getItem("user");
+  const existingUser = localStorage.getItem("user");
+  const parsed = existingUser ? JSON.parse(existingUser) : {};
+  const finalData = { ...parsed, ...form };
 
-    let finalData = { ...form };
+  // TODO: localStorage is used temporarily for demo purposes.
+  // Replace with a proper API call before production.
+  localStorage.setItem("user", JSON.stringify(finalData));
 
-    if (existingUser) {
-      const parsed = JSON.parse(existingUser);
-
-      finalData = {
-        ...parsed, // email & phone
-        ...form,   // profile data
-      };
-    }
-
-    localStorage.setItem("user", JSON.stringify(finalData));
-
-    setLoading(false);
-  };
+  setLoading(false);
+};
 
   return (
-    <AuthCard className="w-full max-w-md mx-auto">
-      <div className="flex flex-col gap-5">
-
-        {/* HEADER */}
-        <div>
-          <h2 className="text-xl font-semibold">
-            Complete Your Profile
-          </h2>
-          <p className="text-sm text-[#737380]">
-            Fill in your personal information
-          </p>
-        </div>
-
+    <div className="w-full max-w-md mx-auto flex flex-col gap-5">
 
         {/* HEIGHT & WEIGHT */}
         <div className="grid grid-cols-2 gap-4">
@@ -316,7 +328,7 @@ export default function CompleteProfileForm() {
           </span>
 
           <ToggleSwitch
-            checked={form.shareLocation}
+            checked={form.shareLocation ?? false}
             onCheckedChange={(val) =>
               setForm({ ...form, shareLocation: val })
             }
@@ -325,7 +337,7 @@ export default function CompleteProfileForm() {
 
         {/* ERROR */}
         {error && (
-          <p className="text-sm text-[#D84A4A]">
+          <p className="text-sm text-red-500">
             {error}
           </p>
         )}
@@ -333,6 +345,6 @@ export default function CompleteProfileForm() {
         {/* SAVE */}
         <SaveActionBar onSave={handleSave} loading={loading} />
       </div>
-    </AuthCard>
+
   );
 }

@@ -10,7 +10,50 @@ import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 
-const locationData: Record<string, any> = {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Neighborhood = { label: string; value: string };
+type District = { label: string; neighborhoods: Neighborhood[] };
+type City = { label: string; districts: Record<string, District> };
+type Country = { label: string; cities: Record<string, City> };
+type LocationData = Record<string, Country>;
+
+type UploadedFile = { name: string; data: string };
+
+type ProfileData = {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  height?: string;
+  weight?: string;
+  gender?: string;
+  birthDate?: string;
+  medicalHistory?: string;
+  chronicDiseases?: string;
+  chronicDiseasesFiles?: UploadedFile[];
+  chronicDiseasesVerified?: boolean;
+  allergies?: string;
+  allergiesFiles?: UploadedFile[];
+  allergiesVerified?: boolean;
+  country?: string;
+  city?: string;
+  district?: string;
+  neighborhood?: string;
+  extraAddress?: string;
+  shareLocation?: boolean;
+};
+
+// Fix 4: explicit map instead of string replace — typo-proof
+const verifiedFieldMap = {
+  chronicDiseasesFiles: "chronicDiseasesVerified",
+  allergiesFiles: "allergiesVerified",
+} as const;
+
+// ─── Location Data ─────────────────────────────────────────────────────────────
+// TODO: Move this to a shared lib/locationData.ts and import in both
+//       CompleteProfileForm and ProfileView to avoid duplication.
+
+const locationData: LocationData = {
   tr: {
     label: "Turkey",
     cities: {
@@ -38,9 +81,7 @@ const locationData: Record<string, any> = {
         districts: {
           cankaya: {
             label: "Çankaya",
-            neighborhoods: [
-              { label: "Anıttepe", value: "anittepe" },
-            ],
+            neighborhoods: [{ label: "Anıttepe", value: "anittepe" }],
           },
         },
       },
@@ -48,107 +89,107 @@ const locationData: Record<string, any> = {
   },
 };
 
+// ─── Component ─────────────────────────────────────────────────────────────────
+
 export default function ProfileView() {
-  const [profile, setProfile] = React.useState<any>(null);
+  const [profile, setProfile] = React.useState<ProfileData | null>(null);
   const [uploading, setUploading] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<number>(0);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     const stored = localStorage.getItem("user");
-    if (stored) setProfile(JSON.parse(stored));
+    setProfile(stored ? (JSON.parse(stored) as ProfileData) : null);
+    setLoading(false);
   }, []);
 
-  if (!profile) {
+  // ── Guards ──────────────────────────────────────────────────────────────────
+
+  if (loading) {
     return <p className="text-sm text-gray-500">Loading...</p>;
   }
 
-  const handleSave = () => {
-    const existing = JSON.parse(localStorage.getItem("user") || "{}");
+  if (!profile) {
+    return <p className="text-sm text-gray-500">No profile data found</p>;
+  }
 
-    localStorage.setItem(
-    "user",
-    JSON.stringify({
-        ...existing,
-        ...profile,
-    })
-    );
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleSave = () => {
+    // TODO: Replace localStorage with a proper API call before production.
+    const existing = JSON.parse(localStorage.getItem("user") || "{}") as ProfileData;
+    localStorage.setItem("user", JSON.stringify({ ...existing, ...profile }));
   };
 
-  // MULTI FILE UPLOAD
-  const handleFileUpload = (field: string, file: File) => {
-  setUploading(field);
-  setProgress(100);
+  // Fix 4: use verifiedFieldMap instead of string replace
+  const handleFileUpload = (field: keyof typeof verifiedFieldMap, file: File) => {
+    setUploading(field);
+    setProgress(100);
 
-  const reader = new FileReader();
+    // TODO: Replace with actual file upload to backend/storage service.
+    // Only storing file metadata here — base64 is intentionally NOT stored
+    // in localStorage to avoid hitting browser storage limits.
+    const verifiedField = verifiedFieldMap[field];
 
-  reader.onload = () => {
-    setProfile((prev: any) => {
-      const existing = prev[field] || [];
-
+    // Fix 2: functional updater for null safety
+    setProfile((prev) => {
+      if (!prev) return prev;
+      const existing = (prev[field] as UploadedFile[]) || [];
       return {
         ...prev,
-        [field]: [
-          ...existing,
-          {
-            data: reader.result,
-            name: file.name,
-          },
-        ],
-        [`${field.replace("Files", "")}Verified`]: false,
+        [field]: [...existing, { name: file.name, data: "" }],
+        [verifiedField]: false,
       };
     });
 
     setUploading(null);
   };
 
-  reader.readAsDataURL(file);
-};
-
-  const removeFile = (field: string, index: number) => {
-    setProfile((prev: any) => {
-      const updated = [...(prev[field] || [])];
+  const removeFile = (field: keyof typeof verifiedFieldMap, index: number) => {
+    setProfile((prev) => {
+      if (!prev) return prev;
+      const updated = [...((prev[field] as UploadedFile[]) || [])];
       updated.splice(index, 1);
-
-      return {
-        ...prev,
-        [field]: updated,
-      };
+      return { ...prev, [field]: updated };
     });
   };
 
-  // location logic
-  const countryData = locationData[profile.country];
+  // ── Location Options ────────────────────────────────────────────────────────
 
-  const countryOptions = Object.entries(locationData).map(
-    ([key, val]: any) => ({
-      label: val.label,
-      value: key,
-    })
-  );
+  // Fix 1: runtime key guard + keyof cast
+  const countryData =
+    profile.country && profile.country in locationData
+      ? locationData[profile.country as keyof LocationData]
+      : undefined;
 
-  const cityOptions =
-    profile.country &&
-    Object.entries(countryData?.cities || {}).map(
-      ([key, val]: any) => ({
+  const countryOptions = Object.entries(locationData).map(([key, val]) => ({
+    label: val.label,
+    value: key,
+  }));
+
+  const cityOptions = countryData
+    ? Object.entries(countryData.cities).map(([key, val]) => ({
         label: val.label,
         value: key,
-      })
-    );
+      }))
+    : [];
 
   const districtOptions =
-    profile.city &&
-    Object.entries(
-      countryData?.cities?.[profile.city]?.districts || {}
-    ).map(([key, val]: any) => ({
-      label: val.label,
-      value: key,
-    }));
+    profile.city && countryData?.cities?.[profile.city]
+      ? Object.entries(countryData.cities[profile.city].districts).map(([key, val]) => ({
+          label: val.label,
+          value: key,
+        }))
+      : [];
 
   const neighborhoodOptions =
+    profile.city &&
     profile.district &&
-    countryData?.cities?.[profile.city]?.districts?.[
-      profile.district
-    ]?.neighborhoods || [];
+    countryData?.cities?.[profile.city]?.districts?.[profile.district]
+      ? countryData.cities[profile.city].districts[profile.district].neighborhoods
+      : [];
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex gap-10">
@@ -156,14 +197,9 @@ export default function ProfileView() {
       {/* LEFT */}
       <div className="w-64 flex flex-col items-center gap-4">
         <Avatar size="lg" />
-
         <div className="text-center">
-          <h2 className="text-lg font-semibold">
-            {profile.fullName || "User"}
-          </h2>
-          <p className="text-sm text-gray-500">
-            {profile.email || "No email"}
-          </p>
+          <h2 className="text-lg font-semibold">{profile.fullName || "User"}</h2>
+          <p className="text-sm text-gray-500">{profile.email || "No email"}</p>
         </div>
       </div>
 
@@ -172,17 +208,15 @@ export default function ProfileView() {
 
         {/* ACCOUNT */}
         <SectionCard>
-            <SectionHeader title="Account Information" />
-            
-        <p className="text-xs text-gray-400 mb-3">
+          <SectionHeader title="Account Information" />
+          <p className="text-xs text-gray-400 mb-3">
             Your contact details are used for account access and emergency communication.
-        </p>
+          </p>
           <div className="flex flex-col gap-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Email</span>
               <span>{profile.email || "-"}</span>
             </div>
-
             <div className="flex justify-between">
               <span className="text-gray-500">Phone</span>
               <span>{profile.phone || "-"}</span>
@@ -192,36 +226,33 @@ export default function ProfileView() {
 
         {/* PHYSICAL */}
         <SectionCard>
-            <SectionHeader title="Physical Information" />
-        <p className="text-xs text-gray-400 mb-3">
+          <SectionHeader title="Physical Information" />
+          <p className="text-xs text-gray-400 mb-3">
             This information helps responders assess your physical condition in emergencies.
-        </p>
+          </p>
           <div className="grid grid-cols-2 gap-4">
-
             <TextInput
               id="height"
               label="Height (cm)"
               value={profile.height || ""}
               onChange={(e) =>
-                setProfile({ ...profile, height: e.target.value })
+                setProfile((prev) => prev ? { ...prev, height: e.target.value } : prev)
               }
             />
-
             <TextInput
               id="weight"
               label="Weight (kg)"
               value={profile.weight || ""}
               onChange={(e) =>
-                setProfile({ ...profile, weight: e.target.value })
+                setProfile((prev) => prev ? { ...prev, weight: e.target.value } : prev)
               }
             />
-
             <SelectInput
               id="gender"
               label="Gender"
               value={profile.gender || ""}
               onChange={(e) =>
-                setProfile({ ...profile, gender: e.target.value })
+                setProfile((prev) => prev ? { ...prev, gender: e.target.value } : prev)
               }
               options={[
                 { label: "Select", value: "" },
@@ -230,54 +261,43 @@ export default function ProfileView() {
                 { label: "Other", value: "other" },
               ]}
             />
-
             <TextInput
               id="birthDate"
               label="Date of Birth"
               type="date"
               value={profile.birthDate || ""}
               onChange={(e) =>
-                setProfile({ ...profile, birthDate: e.target.value })
+                setProfile((prev) => prev ? { ...prev, birthDate: e.target.value } : prev)
               }
             />
-
           </div>
         </SectionCard>
 
         {/* MEDICAL */}
         <SectionCard>
-            <SectionHeader title="Medical Information" />
-        <p className="text-xs text-gray-400 mb-3">
+          <SectionHeader title="Medical Information" />
+          <p className="text-xs text-gray-400 mb-3">
             In emergency situations, this information may help responders make faster and safer medical decisions.
-        </p>
+          </p>
 
           <TextArea
             id="medicalHistory"
             label="Medical History"
             value={profile.medicalHistory || ""}
             onChange={(e) =>
-              setProfile({
-                ...profile,
-                medicalHistory: e.target.value,
-              })
+              setProfile((prev) => prev ? { ...prev, medicalHistory: e.target.value } : prev)
             }
           />
 
-          {/* CHRONIC */}
-          
+          {/* CHRONIC DISEASES */}
           <div className="mt-4">
             <div className="flex justify-between mb-1">
-              <span className="whitespace-nowrap">
-                Chronic Diseases
-                </span>
-              
-
-              <div className="flex gap-2 text-xs">
-
-                <p className="text-xs text-gray-400 ml-20">
-            If you declare a chronic condition, you must upload a supporting medical document (e.g., prescription, medical report, or diagnosis).
-            </p>
-
+              <span className="whitespace-nowrap">Chronic Diseases</span>
+              <div className="flex gap-2 text-xs items-center">
+                {/* Fix 5: removed flex layout classes from <p> */}
+                <p className="text-xs text-gray-400">
+                  If you declare a chronic condition, you must upload a supporting medical document.
+                </p>
                 <input
                   type="file"
                   id="chronic-upload"
@@ -287,7 +307,6 @@ export default function ProfileView() {
                     handleFileUpload("chronicDiseasesFiles", e.target.files[0])
                   }
                 />
-
                 <label htmlFor="chronic-upload" className="cursor-pointer text-blue-600">
                   Upload
                 </label>
@@ -298,28 +317,25 @@ export default function ProfileView() {
               id="chronic"
               value={profile.chronicDiseases || ""}
               onChange={(e) =>
-                setProfile({ ...profile, chronicDiseases: e.target.value })
+                setProfile((prev) => prev ? { ...prev, chronicDiseases: e.target.value } : prev)
               }
             />
 
             {uploading === "chronicDiseasesFiles" && (
-              <div className="mt-2 text-xs">
-                Uploading... {progress}%
-              </div>
+              <div className="mt-2 text-xs">Uploading... {progress}%</div>
             )}
 
-            {profile.chronicDiseasesFiles?.map((file: any, index: number) => (
+            {profile.chronicDiseasesFiles?.map((file, index) => (
               <div key={index} className="mt-2 flex justify-between text-xs text-gray-600">
                 <div className="flex flex-col">
-                <span>📄 {file.name}</span>
-
-                <span className="text-xs mt-1">
+                  <span>📄 {file.name}</span>
+                  <span className="text-xs mt-1">
                     {profile.chronicDiseasesVerified ? (
-                    <span className="text-green-600">Verified</span>
+                      <span className="text-green-600">Verified</span>
                     ) : (
-                    <span className="text-red-500">Pending Verification</span>
+                      <span className="text-red-500">Pending Verification</span>
                     )}
-                </span>
+                  </span>
                 </div>
                 <button
                   onClick={() => removeFile("chronicDiseasesFiles", index)}
@@ -335,13 +351,11 @@ export default function ProfileView() {
           <div className="mt-4">
             <div className="flex justify-between mb-1">
               <span>Allergies</span>
-
-              <div className="flex gap-2 text-xs">
-
-                <p className="text-xs text-gray-400 mb-2">
-                You may optionally add allergies. Verification is not required but recommended.
+              <div className="flex gap-2 text-xs items-center">
+                {/* Fix 5: removed flex layout classes from <p> */}
+                <p className="text-xs text-gray-400">
+                  You may optionally add allergies. Verification is not required but recommended.
                 </p>
-
                 <input
                   type="file"
                   id="allergy-upload"
@@ -351,7 +365,6 @@ export default function ProfileView() {
                     handleFileUpload("allergiesFiles", e.target.files[0])
                   }
                 />
-
                 <label htmlFor="allergy-upload" className="cursor-pointer text-blue-600">
                   Upload
                 </label>
@@ -362,28 +375,25 @@ export default function ProfileView() {
               id="allergy"
               value={profile.allergies || ""}
               onChange={(e) =>
-                setProfile({ ...profile, allergies: e.target.value })
+                setProfile((prev) => prev ? { ...prev, allergies: e.target.value } : prev)
               }
             />
 
             {uploading === "allergiesFiles" && (
-              <div className="mt-2 text-xs">
-                Uploading... {progress}%
-              </div>
+              <div className="mt-2 text-xs">Uploading... {progress}%</div>
             )}
 
-            {profile.allergiesFiles?.map((file: any, index: number) => (
+            {profile.allergiesFiles?.map((file, index) => (
               <div key={index} className="mt-2 flex justify-between text-xs text-gray-600">
                 <div className="flex flex-col">
-                <span>📄 {file.name}</span>
-
-                <span className="text-xs mt-1">
-                    {profile.chronicDiseasesVerified ? (
-                    <span className="text-green-600">Verified</span>
+                  <span>📄 {file.name}</span>
+                  <span className="text-xs mt-1">
+                    {profile.allergiesVerified ? (
+                      <span className="text-green-600">Verified</span>
                     ) : (
-                    <span className="text-red-500">Pending Verification</span>
+                      <span className="text-red-500">Pending Verification</span>
                     )}
-                </span>
+                  </span>
                 </div>
                 <button
                   onClick={() => removeFile("allergiesFiles", index)}
@@ -394,120 +404,93 @@ export default function ProfileView() {
               </div>
             ))}
           </div>
-
         </SectionCard>
 
         {/* LOCATION */}
         <SectionCard>
-            <SectionHeader title="Location" />
-  <p className="text-xs text-gray-400 mb-3">
-    Your location may help emergency services reach you faster.
-  </p>
+          <SectionHeader title="Location" />
+          <p className="text-xs text-gray-400 mb-3">
+            Your location may help emergency services reach you faster.
+          </p>
 
           <div className="grid grid-cols-2 gap-4">
-            
-
             <SelectInput
               id="country"
               label="Country"
               value={profile.country || ""}
-              options={[
-                { label: "Select Country", value: "" },
-                ...countryOptions,
-              ]}
+              options={[{ label: "Select Country", value: "" }, ...countryOptions]}
               onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  country: e.target.value,
-                  city: "",
-                  district: "",
-                  neighborhood: "",
-                })
+                setProfile((prev) =>
+                  prev
+                    ? { ...prev, country: e.target.value, city: "", district: "", neighborhood: "" }
+                    : prev
+                )
               }
             />
 
+            {/* Fix 3: disabled until parent is selected */}
             <SelectInput
               id="city"
               label="City"
               value={profile.city || ""}
-              options={[
-                { label: "Select City", value: "" },
-                ...(cityOptions || []),
-              ]}
+              disabled={!profile.country}
+              options={[{ label: "Select City", value: "" }, ...cityOptions]}
               onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  city: e.target.value,
-                  district: "",
-                  neighborhood: "",
-                })
+                setProfile((prev) =>
+                  prev
+                    ? { ...prev, city: e.target.value, district: "", neighborhood: "" }
+                    : prev
+                )
               }
             />
-
             <SelectInput
               id="district"
               label="District"
               value={profile.district || ""}
-              options={[
-                { label: "Select District", value: "" },
-                ...(districtOptions || []),
-              ]}
+              disabled={!profile.city}
+              options={[{ label: "Select District", value: "" }, ...districtOptions]}
               onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  district: e.target.value,
-                  neighborhood: "",
-                })
+                setProfile((prev) =>
+                  prev ? { ...prev, district: e.target.value, neighborhood: "" } : prev
+                )
               }
             />
-
             <SelectInput
               id="neighborhood"
               label="Neighborhood"
               value={profile.neighborhood || ""}
-              options={[
-                { label: "Select Neighborhood", value: "" },
-                ...(neighborhoodOptions || []),
-              ]}
+              disabled={!profile.district}
+              options={[{ label: "Select Neighborhood", value: "" }, ...neighborhoodOptions]}
               onChange={(e) =>
-                setProfile({
-                  ...profile,
-                  neighborhood: e.target.value,
-                })
+                setProfile((prev) =>
+                  prev ? { ...prev, neighborhood: e.target.value } : prev
+                )
               }
             />
             <TextInput
-                id="extraAddress"
-                label="Extra Address"
-                value={profile.extraAddress || ""}
-                onChange={(e) =>
-                    setProfile({
-                    ...profile,
-                    extraAddress: e.target.value,
-                    })
-                }
-                />
-
+              id="extraAddress"
+              label="Extra Address"
+              value={profile.extraAddress || ""}
+              onChange={(e) =>
+                setProfile((prev) => prev ? { ...prev, extraAddress: e.target.value } : prev)
+              }
+            />
           </div>
 
           <div className="flex justify-between items-center mt-4">
             <span className="text-sm">Share Current Location</span>
-
             <ToggleSwitch
               checked={profile.shareLocation || false}
               onCheckedChange={(val) =>
-                setProfile({ ...profile, shareLocation: val })
+                setProfile((prev) => prev ? { ...prev, shareLocation: val } : prev)
               }
             />
           </div>
-
         </SectionCard>
 
         {/* SAVE */}
         <div className="flex justify-end">
-          <PrimaryButton onClick={handleSave}>
-            Save Changes
-          </PrimaryButton>
+          <PrimaryButton onClick={handleSave}>Save Changes</PrimaryButton>
         </div>
 
       </div>
