@@ -79,8 +79,8 @@ export function VerifyEmailForm() {
                     </p>
 
                     <div className="mt-5">
-                        <PrimaryButton onClick={() => router.push("/login")}>
-                            Continue to Log In
+                        <PrimaryButton onClick={() => router.push("/complete-profile")}>
+                            Continue to Profile Setup
                         </PrimaryButton>
                     </div>
                 </div>

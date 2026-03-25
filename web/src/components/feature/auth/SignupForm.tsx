@@ -117,26 +117,35 @@ export function SignupForm() {
         }
 
         try {
-            setLoading(true);
+        setLoading(true);
 
-            sessionStorage.setItem(
-                SIGNUP_DRAFT_KEY,
-                JSON.stringify({
-                    fullName,
-                    email,
-                    countryCode,
-                    phone,
-                    acceptedTerms,
-                })
-            );
+        sessionStorage.setItem(
+            SIGNUP_DRAFT_KEY,
+            JSON.stringify({
+                fullName,
+                email,
+                countryCode,
+                phone,
+                acceptedTerms,
+            })
+        );
+        localStorage.setItem(
+            "user",
+            JSON.stringify({
+                fullName,
+                email,
+                phone,
+            })
+        );
 
-            setInfo(
-                "Account created successfully. Redirecting to email verification..."
-            );
+        setInfo(
+            "Account created successfully. Redirecting to email verification..."
+        );
 
-            redirectTimeoutRef.current = setTimeout(() => {
-                router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-            }, 700);
+        redirectTimeoutRef.current = setTimeout(() => {
+            router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        }, 700);
+        
         } catch {
             setError("Signup failed. Please try again.");
         } finally {
