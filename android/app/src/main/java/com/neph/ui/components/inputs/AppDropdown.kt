@@ -14,7 +14,12 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.ui.unit.dp
+
+//import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.unit.dp
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +33,7 @@ data class DropdownOption(
     val value: String
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppDropdown(
     value: String,
@@ -37,13 +43,15 @@ fun AppDropdown(
     modifier: Modifier = Modifier,
     placeholder: String = "Select an option",
     enabled: Boolean = true,
-    error: String? = null
+    error: String? = null,
+    selectedTextMapper: (DropdownOption) -> String = { it.label }
 ) {
     val spacing = LocalNephSpacing.current
     val isError = !error.isNullOrBlank()
     var expanded by remember { mutableStateOf(false) }
 
-    val selectedLabel = options.firstOrNull { it.value == value }?.label.orEmpty()
+    val selectedOption = options.firstOrNull { it.value == value }
+    val selectedLabel = selectedOption?.let(selectedTextMapper).orEmpty()
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -103,7 +111,7 @@ fun AppDropdown(
                 onDismissRequest = { expanded = false },
                 modifier = Modifier
                     .wrapContentHeight()
-                    .heightIn(max = androidx.compose.ui.unit.dp(280))
+                    .heightIn(max = 280.dp)
             ) {
                 options.forEach { option ->
                     DropdownMenuItem(

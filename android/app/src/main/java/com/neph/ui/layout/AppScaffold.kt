@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.neph.ui.theme.LocalNephSpacing
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun AppScaffold(
@@ -44,7 +45,7 @@ fun AppScaffold(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .widthIn(max = androidx.compose.ui.unit.dp(960))
+                        .widthIn(max = 960.dp)
                         .align(Alignment.TopCenter)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(spacing.xl)

@@ -32,7 +32,7 @@ fun VerificationCodeField(
 
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs)
     ) {
         repeat(length) { index ->
             val char = value.getOrNull(index)?.toString().orEmpty()
@@ -55,18 +55,18 @@ fun VerificationCodeField(
                     }
                 },
                 modifier = Modifier
-                    .width(52.dp)
+                    .width(44.dp)
                     .focusRequester(focusRequesters[index]),
                 enabled = enabled,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.titleMedium.copy(
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 ),
                 placeholder = {
                     Text(
                         text = "•",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
