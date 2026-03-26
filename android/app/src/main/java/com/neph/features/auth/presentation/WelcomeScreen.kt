@@ -42,11 +42,7 @@ fun WelcomeScreen(
                 onClick = onContinueAsGuest
             )
 
-            Text(
-                text = "Guest mode is currently a placeholder in this MVP.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
         }
     }
 }

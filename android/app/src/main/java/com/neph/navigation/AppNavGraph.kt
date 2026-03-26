@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.neph.features.auth.presentation.ForgotPasswordScreen
 import com.neph.features.auth.presentation.LoginScreen
+import com.neph.features.auth.presentation.PrivacyPolicyScreen
 import com.neph.features.auth.presentation.SignupScreen
 import com.neph.features.auth.presentation.TermsOfServiceScreen
 import com.neph.features.auth.presentation.VerifyEmailScreen
@@ -64,7 +65,7 @@ fun AppNavGraph(
                     navController.navigate(Routes.TermsOfService.route)
                 },
                 onNavigateToPrivacy = {
-                    navController.navigate(Routes.Privacy.route)
+                    navController.navigate(Routes.PrivacyPolicy.route)
                 }
             )
         }
@@ -92,6 +93,14 @@ fun AppNavGraph(
 
         composable(Routes.TermsOfService.route) {
             TermsOfServiceScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Routes.PrivacyPolicy.route) {
+            PrivacyPolicyScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }
