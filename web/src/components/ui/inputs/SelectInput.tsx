@@ -10,6 +10,7 @@ type SelectInputProps = React.SelectHTMLAttributes<HTMLSelectElement> & {
     label?: string;
     error?: string;
     options: Option[];
+    helperText?: string;
     placeholder?: string;
 };
 
@@ -17,38 +18,82 @@ export function SelectInput({
     label,
     error,
     options,
+    helperText,
     className,
     id,
     placeholder = "Select an option",
+    value,
     ...props
 }: SelectInputProps) {
+    const selectedOption = options.find((option) => option.value === value);
+    const displayValue = selectedOption ? selectedOption.value : "";
+
     return (
         <div className="flex w-full flex-col gap-2">
             {label ? (
-                <label htmlFor={id} className="text-sm font-medium text-[#2B2B33]">
+                <label htmlFor={id} className="text-sm font-medium text-gray-800">
                     {label}
                 </label>
             ) : null}
 
-            <select
-                id={id}
+            <div
                 className={cn(
-                    "h-11 w-full rounded-[10px] border bg-white px-3 text-sm text-[#2B2B33]",
-                    "border-[#E7E7EA] outline-none transition-colors focus:border-[#D84A4A]",
-                    error && "border-[#D84A4A]",
+                    "relative h-11 w-full rounded-[10px] border bg-white transition-colors",
+                    "border-gray-200 focus-within:border-red-500",
+                    error && "border-red-500",
                     className
                 )}
-                {...props}
             >
-                <option value="">{placeholder}</option>
-                {options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                        {option.label}
-                    </option>
-                ))}
-            </select>
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-3">
+                    <span
+                        className={cn(
+                            "truncate text-sm",
+                            displayValue ? "text-gray-800" : "text-gray-400"
+                        )}
+                    >
+                        {displayValue || placeholder}
+                    </span>
 
-            {error ? <p className="text-xs text-[#D84A4A]">{error}</p> : null}
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-gray-400"
+                    >
+                        <path d="m6 9 6 6 6-6" />
+                    </svg>
+                </div>
+
+                <select
+                    id={id}
+                    value={value}
+                    className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+                    {...props}
+                >
+                    <option value="">{placeholder}</option>
+
+                    {options.map((option) => (
+                        <option
+                            key={`${option.label}-${option.value}`}
+                            value={option.value}
+                        >
+                            {option.label}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            {error ? (
+                <p className="text-xs text-red-500">{error}</p>
+            ) : helperText ? (
+                <p className="text-xs text-gray-400">{helperText}</p>
+            ) : null}
         </div>
     );
 }

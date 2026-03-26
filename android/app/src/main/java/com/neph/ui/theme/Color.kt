@@ -22,4 +22,10 @@ object NephColors {
     val Warning = Color(0xFFF4B740)
     val Error = Color(0xFFD84A4A)
     val Info = Color(0xFFB23B3B)
+
+    val DarkBackground = Color(0xFF18181B)
+    val DarkSurface = Color(0xFF1F1F24)
+    val DarkSurfaceVariant = Color(0xFF2B2B33)
+    val DarkOutline = Color(0xFF3A3A42)
+    val DarkOutlineVariant = Color(0xFF2F2F36)
 }

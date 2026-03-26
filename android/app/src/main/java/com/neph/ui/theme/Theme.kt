@@ -7,7 +7,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.graphics.Color
 
 private val LightColorScheme: ColorScheme = lightColorScheme(
     primary = NephColors.Primary,
@@ -54,12 +53,12 @@ private val DarkColorScheme: ColorScheme = darkColorScheme(
     tertiary = NephColors.Info,
     onTertiary = NephColors.TextOnPrimary,
 
-    background = Color(0xFF18181B),
+    background = NephColors.DarkBackground,
     onBackground = NephColors.SurfaceCard,
 
-    surface = Color(0xFF1F1F24),
+    surface = NephColors.DarkSurface,
     onSurface = NephColors.SurfaceCard,
-    surfaceVariant = Color(0xFF2B2B33),
+    surfaceVariant = NephColors.DarkSurfaceVariant,
     onSurfaceVariant = NephColors.TextMuted,
 
     error = NephColors.Error,
@@ -67,8 +66,8 @@ private val DarkColorScheme: ColorScheme = darkColorScheme(
     errorContainer = NephColors.PrimaryDarker,
     onErrorContainer = NephColors.TextOnPrimary,
 
-    outline = Color(0xFF3A3A42),
-    outlineVariant = Color(0xFF2F2F36)
+    outline = NephColors.DarkOutline,
+    outlineVariant = NephColors.DarkOutlineVariant
 )
 
 @Composable

@@ -20,7 +20,7 @@ export function PasswordInput({
     return (
         <div className="flex w-full flex-col gap-2">
             {label ? (
-                <label htmlFor={id} className="text-sm font-medium text-[#2B2B33]">
+                <label htmlFor={id} className="text-sm font-medium text-gray-800">
                     {label}
                 </label>
             ) : null}
@@ -30,10 +30,10 @@ export function PasswordInput({
                     id={id}
                     type={show ? "text" : "password"}
                     className={cn(
-                        "h-11 w-full rounded-[10px] border bg-white px-3 pr-12 text-sm text-[#2B2B33]",
-                        "border-[#E7E7EA] placeholder:text-[#A3A3AD]",
-                        "outline-none transition-colors focus:border-[#D84A4A]",
-                        error && "border-[#D84A4A]",
+                        "h-11 w-full rounded-[10px] border bg-white px-3 pr-12 text-sm text-gray-800",
+                        "border-gray-200 placeholder:text-gray-400",
+                        "outline-none transition-colors focus:border-red-500",
+                        error && "border-red-500",
                         className
                     )}
                     {...props}
@@ -42,13 +42,15 @@ export function PasswordInput({
                 <button
                     type="button"
                     onClick={() => setShow((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-[#737380]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-500"
                 >
                     {show ? "Hide" : "Show"}
                 </button>
             </div>
 
-            {error ? <p className="text-xs text-[#D84A4A]">{error}</p> : null}
+            {error ? (
+                <p className="text-xs text-red-500">{error}</p>
+            ) : null}
         </div>
     );
 }

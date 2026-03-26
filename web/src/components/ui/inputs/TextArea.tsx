@@ -16,7 +16,7 @@ export function TextArea({
     return (
         <div className="flex w-full flex-col gap-2">
             {label ? (
-                <label htmlFor={id} className="text-sm font-medium text-[#2B2B33]">
+                <label htmlFor={id} className="text-sm font-medium text-gray-800">
                     {label}
                 </label>
             ) : null}
@@ -24,17 +24,19 @@ export function TextArea({
             <textarea
                 id={id}
                 className={cn(
-                    "min-h-[110px] w-full rounded-[10px] border bg-white px-3 py-3 text-sm text-[#2B2B33]",
-                    "border-[#E7E7EA] placeholder:text-[#A3A3AD]",
-                    "outline-none transition-colors focus:border-[#D84A4A]",
+                    "min-h-[110px] w-full rounded-[10px] border bg-white px-3 py-3 text-sm text-gray-800",
+                    "border-gray-200 placeholder:text-gray-400",
+                    "outline-none transition-colors focus:border-red-500",
                     "resize-none",
-                    error && "border-[#D84A4A]",
+                    error && "border-red-500",
                     className
                 )}
                 {...props}
             />
 
-            {error ? <p className="text-xs text-[#D84A4A]">{error}</p> : null}
+            {error ? (
+                <p className="text-xs text-red-500">{error}</p>
+            ) : null}
         </div>
     );
 }

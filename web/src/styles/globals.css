@@ -71,12 +71,12 @@ a {
     text-decoration: none;
 }
 
-button {
+/* button {
     border: 0;
     background: none;
     padding: 0;
     cursor: pointer;
-}
+} */
 
 button:disabled {
     cursor: not-allowed;

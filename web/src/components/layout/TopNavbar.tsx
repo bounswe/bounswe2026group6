@@ -9,9 +9,9 @@ const navItems = [
 
 export function TopNavbar() {
     return (
-        <header className="border-b border-[#E7E7EA] bg-white">
+        <header className="border-b border-gray-200 bg-white">
             <PageContainer className="flex h-16 items-center justify-between">
-                <Link href="/" className="text-lg font-bold text-[#D84A4A]">
+                <Link href="/" className="text-lg font-bold text-red-500">
                     NEPH
                 </Link>
 
@@ -20,14 +20,14 @@ export function TopNavbar() {
                         <Link
                             key={item.href}
                             href={item.href}
-                            className="text-sm font-medium text-[#2B2B33] transition-colors hover:text-[#D84A4A]"
+                            className="text-sm font-medium text-gray-800 transition-colors hover:text-red-500"
                         >
                             {item.label}
                         </Link>
                     ))}
                 </nav>
 
-                <button className="text-sm font-medium text-[#D84A4A]">Logout</button>
+                <button className="text-sm font-medium text-red-500">Logout</button>
             </PageContainer>
         </header>
     );
