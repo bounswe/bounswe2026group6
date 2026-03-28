@@ -230,4 +230,58 @@ describe('profiles integration', () => {
 		expect(response.body.profile.userId).toBe(userId);
 		expect(response.body.expertise[0].profession).toBe('Doctor');
 	});
+
+	test('PATCH /api/profiles/me/profession clears profession when null is sent', async () => {
+		const app = createApp();
+		const userId = 'user_prof_3';
+		await seedActiveUser(userId, 'prof3@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		await request(app)
+			.patch('/api/profiles/me/profession')
+			.set('Authorization', `Bearer ${token}`)
+			.send({ profession: 'Paramedic' });
+
+		const response = await request(app)
+			.patch('/api/profiles/me/profession')
+			.set('Authorization', `Bearer ${token}`)
+			.send({ profession: null });
+
+		expect(response.status).toBe(200);
+		expect(response.body.expertise[0].profession).toBeNull();
+	});
+
+	test('PUT /api/profiles/me/expertise-areas returns 400 when more than 5 values are sent', async () => {
+		const app = createApp();
+		const userId = 'user_exp_1';
+		await seedActiveUser(userId, 'exp1@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const response = await request(app)
+			.put('/api/profiles/me/expertise-areas')
+			.set('Authorization', `Bearer ${token}`)
+			.send({ expertiseAreas: ['A', 'B', 'C', 'D', 'E', 'F'] });
+
+		expect(response.status).toBe(400);
+		expect(response.body.code).toBe('VALIDATION_ERROR');
+	});
+
+	test('PUT /api/profiles/me/expertise-areas returns 200 and stores parsed expertise areas', async () => {
+		const app = createApp();
+		const userId = 'user_exp_2';
+		await seedActiveUser(userId, 'exp2@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const response = await request(app)
+			.put('/api/profiles/me/expertise-areas')
+			.set('Authorization', `Bearer ${token}`)
+			.send({ expertiseAreas: ['First Aid', 'Logistics'] });
+
+		expect(response.status).toBe(200);
+		expect(response.body.profile.userId).toBe(userId);
+		expect(response.body.expertise[0].expertiseAreas).toEqual(['First Aid', 'Logistics']);
+	});
 });

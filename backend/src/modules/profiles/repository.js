@@ -5,6 +5,27 @@ function makeId(prefix) {
   return `${prefix}_${randomUUID().replace(/-/g, '')}`;
 }
 
+function parseExpertiseAreas(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+      return parsed;
+    }
+  } catch (_error) {
+    // Backward compatibility: older records might store a single plain text value.
+  }
+
+  return [String(rawValue)];
+}
+
+function serializeExpertiseAreas(expertiseAreas) {
+  return JSON.stringify(expertiseAreas || []);
+}
+
 async function findActiveUserById(userId) {
   const sql = `
     SELECT user_id
@@ -320,6 +341,7 @@ async function listExpertiseByProfileId(profileId) {
     expertiseId: row.expertise_id,
     profession: row.profession,
     expertiseArea: row.expertise_area,
+    expertiseAreas: parseExpertiseAreas(row.expertise_area),
     isVerified: row.is_verified,
   }));
 }
@@ -348,7 +370,7 @@ async function upsertProfession(profileId, data) {
         )
         VALUES ($1, $2, $3, $4, FALSE);
       `,
-      [makeId('exp'), profileId, data.profession ?? null, data.expertiseArea ?? null],
+      [makeId('exp'), profileId, data.profession ?? null, null],
     );
     return;
   }
@@ -356,16 +378,51 @@ async function upsertProfession(profileId, data) {
   await query(
     `
       UPDATE expertise
-      SET profession = COALESCE($2, profession),
-          expertise_area = CASE WHEN $3 THEN $4 ELSE expertise_area END
+      SET profession = $2
       WHERE expertise_id = $1;
     `,
-    [
-      current.rows[0].expertise_id,
-      data.profession,
-      Object.prototype.hasOwnProperty.call(data, 'expertiseArea'),
-      data.expertiseArea ?? null,
-    ],
+    [current.rows[0].expertise_id, data.profession],
+  );
+}
+
+async function upsertExpertiseAreas(profileId, expertiseAreas) {
+  const current = await query(
+    `
+      SELECT expertise_id
+      FROM expertise
+      WHERE profile_id = $1
+      ORDER BY expertise_id ASC
+      LIMIT 1;
+    `,
+    [profileId],
+  );
+
+  const serializedAreas = serializeExpertiseAreas(expertiseAreas);
+
+  if (current.rows.length === 0) {
+    await query(
+      `
+        INSERT INTO expertise (
+          expertise_id,
+          profile_id,
+          profession,
+          expertise_area,
+          is_verified
+        )
+        VALUES ($1, $2, NULL, $3, FALSE);
+      `,
+      [makeId('exp'), profileId, serializedAreas],
+    );
+    return;
+  }
+
+  await query(
+    `
+      UPDATE expertise
+      SET expertise_area = $2
+      WHERE expertise_id = $1;
+    `,
+    [current.rows[0].expertise_id, serializedAreas],
   );
 }
 
@@ -424,5 +481,6 @@ module.exports = {
   upsertPrivacySettings,
   listExpertiseByProfileId,
   upsertProfession,
+  upsertExpertiseAreas,
   findProfileBundleByUserId,
 };

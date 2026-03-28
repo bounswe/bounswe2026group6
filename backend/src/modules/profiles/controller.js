@@ -7,6 +7,7 @@ const {
   patchMyLocation,
   patchMyPrivacy,
   patchMyProfession,
+  patchMyExpertiseAreas,
 } = require('./service');
 const {
   readUserId,
@@ -16,6 +17,7 @@ const {
   validateLocationPatch,
   validatePrivacyPatch,
   validateProfessionPatch,
+  validateExpertiseAreasPatch,
 } = require('./validators');
 
 function sendError(response, status, code, message) {
@@ -182,6 +184,26 @@ async function patchProfession(request, response) {
   }
 }
 
+async function putExpertiseAreas(request, response) {
+  const userId = readUserId(request);
+
+  if (!userId) {
+    return sendAuthError(response);
+  }
+
+  const validation = validateExpertiseAreasPatch(request.body);
+  if (!validation.ok) {
+    return sendError(response, 400, validation.code, validation.message);
+  }
+
+  try {
+    const profile = await patchMyExpertiseAreas(userId, validation.data);
+    return response.status(200).json(profile);
+  } catch (error) {
+    return mapServiceError(response, error);
+  }
+}
+
 module.exports = {
   getMe,
   patchMe,
@@ -190,4 +212,5 @@ module.exports = {
   patchLocation,
   patchPrivacy,
   patchProfession,
+  putExpertiseAreas,
 };

@@ -8,6 +8,7 @@ const {
   patchLocation,
   patchPrivacy,
   patchProfession,
+  putExpertiseAreas,
 } = require('./controller');
 
 const profilesRouter = express.Router();
@@ -15,7 +16,7 @@ const profilesRouter = express.Router();
 profilesRouter.get('/', (_request, response) => {
   response.status(200).json({
     module: 'profiles',
-    scope: ['profile', 'privacy', 'health', 'location', 'profession'],
+    scope: ['profile', 'privacy', 'health', 'location', 'profession', 'expertiseAreas'],
     status: 'ready for implementation',
   });
 });
@@ -27,6 +28,7 @@ profilesRouter.patch('/me/health', requireAuth, patchHealth);
 profilesRouter.patch('/me/location', requireAuth, patchLocation);
 profilesRouter.patch('/me/privacy', requireAuth, patchPrivacy);
 profilesRouter.patch('/me/profession', requireAuth, patchProfession);
+profilesRouter.put('/me/expertise-areas', requireAuth, putExpertiseAreas);
 
 module.exports = {
   profilesRouter,
