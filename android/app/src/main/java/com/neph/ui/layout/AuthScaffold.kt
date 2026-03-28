@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.neph.ui.components.display.AuthCard
 import com.neph.ui.theme.LocalNephSpacing
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun AuthScaffold(
@@ -36,7 +38,9 @@ fun AuthScaffold(
             modifier = Modifier
                 .widthIn(max = 420.dp)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = spacing.xl)
+                .padding(top = spacing.xl),
             verticalArrangement = Arrangement.spacedBy(spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
