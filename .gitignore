@@ -54,6 +54,7 @@ android/local.properties
 # Test artifacts
 playwright-report/
 test-results/
+.playwright-browsers/
 
 # Runtime
 *.pid
