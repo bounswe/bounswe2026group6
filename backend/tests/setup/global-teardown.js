@@ -1,5 +1,10 @@
 'use strict';
 
 module.exports = async function globalTeardown() {
-  // Reserved for future DB/container cleanup.
+  try {
+    const { pool } = require('../../src/db/pool');
+    await pool.end();
+  } catch (_error) {
+    // Pool may not be initialized in some test runs.
+  }
 };
