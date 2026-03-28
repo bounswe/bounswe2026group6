@@ -8,6 +8,7 @@ const {
   upsertLocationProfile,
   upsertPrivacySettings,
   upsertProfession,
+  upsertExpertiseAreas,
   findProfileBundleByUserId,
   listExpertiseByProfileId,
 } = require('./repository');
@@ -133,6 +134,12 @@ async function patchMyProfession(userId, data) {
   return getMyProfile(userId);
 }
 
+async function patchMyExpertiseAreas(userId, data) {
+  const profileId = await getProfileIdOrThrow(userId);
+  await upsertExpertiseAreas(profileId, data.expertiseAreas);
+  return getMyProfile(userId);
+}
+
 module.exports = {
   getMyProfile,
   hasProfile,
@@ -142,4 +149,5 @@ module.exports = {
   patchMyLocation,
   patchMyPrivacy,
   patchMyProfession,
+  patchMyExpertiseAreas,
 };

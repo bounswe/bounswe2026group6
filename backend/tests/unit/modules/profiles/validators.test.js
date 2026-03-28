@@ -7,6 +7,7 @@ const {
 	validateLocationPatch,
 	validatePrivacyPatch,
 	validateProfessionPatch,
+	validateExpertiseAreasPatch,
 } = require('../../../../src/modules/profiles/validators');
 
 describe('profiles validators', () => {
@@ -99,14 +100,14 @@ describe('profiles validators', () => {
 			const result = validateProfessionPatch({});
 
 			expect(result.ok).toBe(false);
-			expect(result.message).toContain('At least one profession field');
+			expect(result.message).toBe('profession must be provided');
 		});
 
-		test('trims profession and accepts optional expertiseArea', () => {
-			const result = validateProfessionPatch({ profession: '  Doctor  ', expertiseArea: ' ER ' });
+		test('trims profession', () => {
+			const result = validateProfessionPatch({ profession: '  Doctor  ' });
 
 			expect(result.ok).toBe(true);
-			expect(result.data).toEqual({ profession: 'Doctor', expertiseArea: 'ER' });
+			expect(result.data).toEqual({ profession: 'Doctor' });
 		});
 
 		test('rejects profession longer than 200 characters', () => {
@@ -115,6 +116,70 @@ describe('profiles validators', () => {
 
 			expect(result.ok).toBe(false);
 			expect(result.message).toBe('profession must be at most 200 characters');
+		});
+	});
+
+	describe('validateExpertiseAreasPatch', () => {
+		test('accepts up to 5 unique expertise areas', () => {
+			const result = validateExpertiseAreasPatch({
+				expertiseAreas: [' First Aid ', 'Logistics', 'Search and Rescue'],
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data).toEqual({
+				expertiseAreas: ['First Aid', 'Logistics', 'Search and Rescue'],
+			});
+		});
+
+		test('rejects more than 5 items', () => {
+			const result = validateExpertiseAreasPatch({
+				expertiseAreas: ['A', 'B', 'C', 'D', 'E', 'F'],
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toContain('at most 5');
+		});
+
+		test('rejects duplicate values', () => {
+			const result = validateExpertiseAreasPatch({
+				expertiseAreas: ['First Aid', 'First Aid'],
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toContain('duplicates');
+		});
+
+		test('rejects item longer than 35 characters', () => {
+			const result = validateExpertiseAreasPatch({
+				expertiseAreas: ['a'.repeat(36)],
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toContain('at most 35 characters');
+		});
+
+		test('accepts 5 items that fit within storage limit', () => {
+			const result = validateExpertiseAreasPatch({
+				expertiseAreas: ['First Aid', 'Logistics', 'Rescue', 'Medical', 'Radio'],
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data.expertiseAreas).toHaveLength(5);
+		});
+
+		test('accepts 5 max-length items (boundary: 191 chars serialized fits VARCHAR 200)', () => {
+			const result = validateExpertiseAreasPatch({
+				expertiseAreas: [
+					'a'.repeat(35),
+					'b'.repeat(35),
+					'c'.repeat(35),
+					'd'.repeat(35),
+					'e'.repeat(35),
+				],
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data.expertiseAreas).toHaveLength(5);
 		});
 	});
 });

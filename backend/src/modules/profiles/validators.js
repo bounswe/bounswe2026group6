@@ -176,40 +176,84 @@ function validateProfessionPatch(body) {
     return { ok: false, code: 'VALIDATION_ERROR', message: 'Payload must be an object' };
   }
 
-  const data = pickAllowed(body, ['profession', 'expertiseArea']);
+  const data = pickAllowed(body, ['profession']);
 
   if (Object.keys(data).length === 0) {
-    return { ok: false, code: 'VALIDATION_ERROR', message: 'At least one profession field must be provided' };
+    return { ok: false, code: 'VALIDATION_ERROR', message: 'profession must be provided' };
   }
 
   if (data.profession !== undefined) {
-    if (typeof data.profession !== 'string' || data.profession.trim() === '') {
-      return { ok: false, code: 'VALIDATION_ERROR', message: 'profession must be a non-empty string' };
+    if (data.profession !== null && typeof data.profession !== 'string') {
+      return { ok: false, code: 'VALIDATION_ERROR', message: 'profession must be a string or null' };
     }
 
-    data.profession = data.profession.trim();
+    if (typeof data.profession === 'string') {
+      data.profession = data.profession.trim();
+      if (data.profession === '') {
+        return { ok: false, code: 'VALIDATION_ERROR', message: 'profession cannot be empty. Use null to clear it' };
+      }
+    }
 
-    if (data.profession.length > 200) {
+    if (typeof data.profession === 'string' && data.profession.length > 200) {
       return { ok: false, code: 'VALIDATION_ERROR', message: 'profession must be at most 200 characters' };
     }
   }
 
-  if (data.expertiseArea !== undefined) {
-    if (data.expertiseArea !== null && typeof data.expertiseArea !== 'string') {
-      return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseArea must be a string or null' };
-    }
+  return { ok: true, data };
+}
 
-    if (typeof data.expertiseArea === 'string') {
-      const trimmedArea = data.expertiseArea.trim();
-      data.expertiseArea = trimmedArea || null;
-
-      if (data.expertiseArea !== null && data.expertiseArea.length > 200) {
-        return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseArea must be at most 200 characters' };
-      }
-    }
+function validateExpertiseAreasPatch(body) {
+  if (!isPlainObject(body)) {
+    return { ok: false, code: 'VALIDATION_ERROR', message: 'Payload must be an object' };
   }
 
-  return { ok: true, data };
+  const data = pickAllowed(body, ['expertiseAreas']);
+
+  if (!Object.prototype.hasOwnProperty.call(data, 'expertiseAreas')) {
+    return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseAreas must be provided' };
+  }
+
+  if (!Array.isArray(data.expertiseAreas)) {
+    return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseAreas must be an array of strings' };
+  }
+
+  if (data.expertiseAreas.length > 5) {
+    return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseAreas can contain at most 5 items' };
+  }
+
+  const normalized = [];
+  for (const item of data.expertiseAreas) {
+    if (typeof item !== 'string') {
+      return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseAreas must be an array of strings' };
+    }
+
+    const trimmed = item.trim();
+    if (!trimmed) {
+      return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseAreas items cannot be empty' };
+    }
+
+    if (trimmed.length > 35) {
+      return { ok: false, code: 'VALIDATION_ERROR', message: 'each expertise area must be at most 35 characters' };
+    }
+
+    normalized.push(trimmed);
+  }
+
+  const unique = Array.from(new Set(normalized));
+  if (unique.length !== normalized.length) {
+    return { ok: false, code: 'VALIDATION_ERROR', message: 'expertiseAreas cannot contain duplicates' };
+  }
+
+  // expertise.expertise_area column is VARCHAR(200), and values are stored as JSON string.
+  if (JSON.stringify(unique).length > 200) {
+    return {
+      ok: false,
+      code: 'VALIDATION_ERROR',
+      message: 'expertiseAreas is too long for storage. Choose shorter area names',
+    };
+  }
+
+  return { ok: true, data: { expertiseAreas: unique } };
 }
 
 module.exports = {
@@ -220,4 +264,5 @@ module.exports = {
   validateLocationPatch,
   validatePrivacyPatch,
   validateProfessionPatch,
+  validateExpertiseAreasPatch,
 };
