@@ -261,60 +261,65 @@ fun EditProfileScreen(
                 }
             }
 
-            // ───── PROFESSION ─────
-            val professionOptions = listOf(
-                "Doctor",
-                "Firefighter",
-                "Nurse",
-                "Engineer",
-                "Volunteer"
-            )
+            SectionCard {
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
 
-            Text("Profession", style = MaterialTheme.typography.titleMedium)
-
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                professionOptions.forEach { option ->
-                    FilterChip(
-                        selected = profile.profession == option,
-                        onClick = {
-                            val next =
-                                if (profile.profession == option) null else option
-                            profile = profile.copy(profession = next)
-                        },
-                        label = { Text(option) }
+                    // ───── PROFESSION ─────
+                    val professionOptions = listOf(
+                        "Doctor",
+                        "Firefighter",
+                        "Nurse",
+                        "Engineer",
+                        "Volunteer"
                     )
-                }
-            }
 
-            val expertiseOptions = listOf(
-                "First Aid",
-                "Driving",
-                "Search & Rescue",
-                "Cooking",
-                "Logistics"
-            )
+                    Text("Profession", style = MaterialTheme.typography.titleMedium)
 
-            Text("Expertise (optional)", style = MaterialTheme.typography.titleMedium)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        professionOptions.forEach { option ->
+                            FilterChip(
+                                selected = profile.profession == option,
+                                onClick = {
+                                    val next =
+                                        if (profile.profession == option) null else option
+                                    profile = profile.copy(profession = next)
+                                },
+                                label = { Text(option) }
+                            )
+                        }
+                    }
 
-            Column {
-                expertiseOptions.forEach { skill ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = profile.expertise.contains(skill),
-                            onCheckedChange = { checked ->
-                                val next = if (checked) {
-                                    profile.expertise + skill
-                                } else {
-                                    profile.expertise - skill
-                                }
-                                profile = profile.copy(expertise = next)
+                    val expertiseOptions = listOf(
+                        "First Aid",
+                        "Driving",
+                        "Search & Rescue",
+                        "Cooking",
+                        "Logistics"
+                    )
+
+                    Text("Expertise (optional)", style = MaterialTheme.typography.titleMedium)
+
+                    Column {
+                        expertiseOptions.forEach { skill ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = profile.expertise.contains(skill),
+                                    onCheckedChange = { checked ->
+                                        val next = if (checked) {
+                                            profile.expertise + skill
+                                        } else {
+                                            profile.expertise - skill
+                                        }
+                                        profile = profile.copy(expertise = next)
+                                    }
+                                )
+                                Text(skill)
                             }
-                        )
-                        Text(skill)
+                        }
                     }
                 }
             }
