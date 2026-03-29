@@ -1,18 +1,9 @@
-"use client";
-
 import * as React from "react";
-import { usePathname } from "next/navigation";
 
 type PageTransitionProps = {
     children: React.ReactNode;
 };
 
 export function PageTransition({ children }: PageTransitionProps) {
-    const pathname = usePathname();
-
-    return (
-        <div key={pathname} className="page-transition-enter">
-            {children}
-        </div>
-    );
+    return <div className="page-transition-enter">{children}</div>;
 }

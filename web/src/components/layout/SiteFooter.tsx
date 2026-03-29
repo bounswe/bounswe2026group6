@@ -8,8 +8,8 @@ const quickLinks = [
 ];
 
 const policyLinks = [
-    { label: "Terms of Service", href: "/terms-of-service?from=home" },
-    { label: "Privacy Policy", href: "/privacy-policy?from=home" },
+    { label: "Terms of Service", href: "/terms-of-service" },
+    { label: "Privacy Policy", href: "/privacy-policy" },
 ];
 
 export function SiteFooter() {

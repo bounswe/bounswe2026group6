@@ -12,9 +12,21 @@ export function BackButton({ className, fallbackHref = "/home" }: BackButtonProp
     const router = useRouter();
 
     const handleBack = React.useCallback(() => {
-        if (typeof window !== "undefined" && window.history.length > 1) {
-            router.back();
-            return;
+        if (typeof window !== "undefined") {
+            const referrer = document.referrer;
+
+            if (referrer) {
+                try {
+                    const referrerUrl = new URL(referrer);
+
+                    if (referrerUrl.origin === window.location.origin) {
+                        router.back();
+                        return;
+                    }
+                } catch {
+                    // Ignore invalid referrer and use fallback route.
+                }
+            }
         }
 
         router.push(fallbackHref);

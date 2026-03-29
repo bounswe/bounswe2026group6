@@ -1,7 +1,6 @@
 import "../styles/globals.css";
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/layout/SiteFooter";
-import { PageTransition } from "@/components/layout/PageTransition";
 
 export const metadata: Metadata = {
     title: "NEPH",
@@ -16,9 +15,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className="root-layout-body">
-                <main className="root-layout-content">
-                    <PageTransition>{children}</PageTransition>
-                </main>
+                <main className="root-layout-content">{children}</main>
                 <SiteFooter />
             </body>
         </html>
