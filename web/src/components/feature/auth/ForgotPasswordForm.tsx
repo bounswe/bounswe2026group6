@@ -10,6 +10,15 @@ import { Divider } from "@/components/ui/display/Divider";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { isValidEmail } from "@/lib/validators/email";
 
+const FORGOT_PASSWORD_ENDPOINT = "/api/auth/forgot-password";
+
+type ForgotPasswordErrorResponse = {
+    detail?: string;
+    message?: string;
+    error?: string;
+    errors?: Record<string, string[] | string>;
+};
+
 export function ForgotPasswordForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -26,25 +35,72 @@ export function ForgotPasswordForm() {
         e.preventDefault();
         setError("");
         setInfo("");
+        setSuccess(false);
 
-        if (!email.trim()) {
+        const trimmedEmail = email.trim();
+
+        if (!trimmedEmail) {
             setError("Please enter your email address.");
             return;
         }
 
-        if (!isValidEmail(email)) {
-    setError("Please enter a valid email address.");
-    return;
-}
+        if (!isValidEmail(trimmedEmail)) {
+            setError("Please enter a valid email address.");
+            return;
+        }
 
         try {
             setLoading(true);
 
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const response = await fetch(FORGOT_PASSWORD_ENDPOINT, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    email: trimmedEmail,
+                }),
+            });
+
+            if (!response.ok) {
+                let errorMessage =
+                    "We could not start the password reset flow. Please try again.";
+
+                try {
+                    const data =
+                        (await response.json()) as ForgotPasswordErrorResponse;
+
+                    if (typeof data.detail === "string" && data.detail.trim()) {
+                        errorMessage = data.detail;
+                    } else if (typeof data.message === "string" && data.message.trim()) {
+                        errorMessage = data.message;
+                    } else if (typeof data.error === "string" && data.error.trim()) {
+                        errorMessage = data.error;
+                    } else if (data.errors && typeof data.errors === "object") {
+                        const firstFieldError = Object.values(data.errors)[0];
+
+                        if (Array.isArray(firstFieldError) && firstFieldError[0]) {
+                            errorMessage = firstFieldError[0];
+                        } else if (
+                            typeof firstFieldError === "string" &&
+                            firstFieldError.trim()
+                        ) {
+                            errorMessage = firstFieldError;
+                        }
+                    }
+                } catch {
+                    // ignore JSON parse issues and keep fallback message
+                }
+
+                setError(errorMessage);
+                return;
+            }
 
             setSuccess(true);
         } catch {
-            setError("We could not start the password reset flow. Please try again.");
+            setError(
+                "We could not reach the server. Please check your connection and try again."
+            );
         } finally {
             setLoading(false);
         }
@@ -108,8 +164,6 @@ export function ForgotPasswordForm() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                 />
-
-               
 
                 {error ? (
                     <HelperText className="text-[#D84A4A]">{error}</HelperText>

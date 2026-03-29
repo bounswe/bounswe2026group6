@@ -59,3 +59,7 @@ test-results/
 # Runtime
 *.pid
 *.seed
+
+# Agent files
+.sisyphus
+mvp354/

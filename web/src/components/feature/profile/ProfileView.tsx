@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/media/Avatar";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
@@ -9,504 +10,724 @@ import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { HelperText } from "@/components/ui/display/HelperText";
 import { bloodTypeOptions } from "@/lib/bloodTypes";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
+import { ApiError } from "@/lib/api";
+import {
+    BackendProfileResponse,
+    EditableProfileData,
+    buildAddress,
+    fetchMyProfile,
+    mapBackendProfileToEditableProfile,
+    parseListField,
+    patchMyHealth,
+    patchMyLocation,
+    patchMyPhysical,
+    patchMyPrivacy,
+} from "@/lib/profile";
 
 type Neighborhood = { label: string; value: string };
 type District = { label: string; neighborhoods: Neighborhood[] };
 type City = { label: string; districts: Record<string, District> };
 type Country = { label: string; cities: Record<string, City> };
 type LocationData = Record<string, Country>;
-
 type UploadedFile = { name: string; data: string };
+type UploadField = "chronicDiseasesFiles" | "allergiesFiles";
+type EmptyStateAction = "login" | "complete-profile" | null;
 
-type ProfileData = {
-  fullName?: string;
-  email?: string;
-  phone?: string;
-  height?: string;
-  weight?: string;
-  bloodType?: string;
-  gender?: string;
-  birthDate?: string;
-  medicalHistory?: string;
-  chronicDiseases?: string;
-  chronicDiseasesFiles?: UploadedFile[];
-  chronicDiseasesVerified?: boolean;
-  allergies?: string;
-  allergiesFiles?: UploadedFile[];
-  allergiesVerified?: boolean;
-  country?: string;
-  city?: string;
-  district?: string;
-  neighborhood?: string;
-  extraAddress?: string;
-  shareLocation?: boolean;
+type ProfileData = EditableProfileData & {
+    chronicDiseasesFiles: UploadedFile[];
+    chronicDiseasesVerified: boolean;
+    allergiesFiles: UploadedFile[];
+    allergiesVerified: boolean;
 };
-
-// Fix 4: explicit map instead of string replace — typo-proof
-const verifiedFieldMap = {
-  chronicDiseasesFiles: "chronicDiseasesVerified",
-  allergiesFiles: "allergiesVerified",
-} as const;
-
-// ─── Location Data ─────────────────────────────────────────────────────────────
 
 const locationData: LocationData = {
-  tr: {
-    label: "Turkey",
-    cities: {
-      istanbul: {
-        label: "Istanbul",
-        districts: {
-          kadikoy: {
-            label: "Kadıköy",
-            neighborhoods: [
-              { label: "Bostancı", value: "bostanci" },
-              { label: "Erenköy", value: "erenkoy" },
-            ],
-          },
-          besiktas: {
-            label: "Beşiktaş",
-            neighborhoods: [
-              { label: "Balmumcu", value: "balmumcu" },
-              { label: "Kuruçeşme", value: "kurucesme" },
-            ],
-          },
+    tr: {
+        label: "Turkey",
+        cities: {
+            istanbul: {
+                label: "Istanbul",
+                districts: {
+                    kadikoy: {
+                        label: "Kadıköy",
+                        neighborhoods: [
+                            { label: "Bostancı", value: "bostanci" },
+                            { label: "Erenköy", value: "erenkoy" },
+                        ],
+                    },
+                    besiktas: {
+                        label: "Beşiktaş",
+                        neighborhoods: [
+                            { label: "Balmumcu", value: "balmumcu" },
+                            { label: "Kuruçeşme", value: "kurucesme" },
+                        ],
+                    },
+                },
+            },
+            ankara: {
+                label: "Ankara",
+                districts: {
+                    cankaya: {
+                        label: "Çankaya",
+                        neighborhoods: [{ label: "Anıttepe", value: "anittepe" }],
+                    },
+                },
+            },
         },
-      },
-      ankara: {
-        label: "Ankara",
-        districts: {
-          cankaya: {
-            label: "Çankaya",
-            neighborhoods: [{ label: "Anıttepe", value: "anittepe" }],
-          },
-        },
-      },
     },
-  },
 };
 
-// ─── Component ─────────────────────────────────────────────────────────────────
+function findCountryKeyByLabel(label: string) {
+    return (
+        Object.entries(locationData).find(([, country]) => country.label === label)?.[0] ||
+        ""
+    );
+}
+
+function findCityKeyByLabel(countryKey: string, label: string) {
+    const country = locationData[countryKey];
+
+    if (!country) {
+        return "";
+    }
+
+    return (
+        Object.entries(country.cities).find(([, city]) => city.label === label)?.[0] ||
+        ""
+    );
+}
+
+function toProfileData(
+    backendProfile: BackendProfileResponse,
+    email: string
+): ProfileData {
+    const mapped = mapBackendProfileToEditableProfile(backendProfile, email);
+    const countryKey = findCountryKeyByLabel(mapped.country);
+    const cityKey = countryKey ? findCityKeyByLabel(countryKey, mapped.city) : "";
+
+    return {
+        ...mapped,
+        country: countryKey,
+        city: cityKey,
+        chronicDiseasesFiles: [],
+        chronicDiseasesVerified: false,
+        allergiesFiles: [],
+        allergiesVerified: false,
+    };
+}
 
 export default function ProfileView() {
-  const [profile, setProfile] = React.useState<ProfileData | null>(null);
-  const [uploading, setUploading] = React.useState<string | null>(null);
-  const [progress, setProgress] = React.useState<number>(0);
-  const [loading, setLoading] = React.useState(true);
+    const router = useRouter();
+    const [profile, setProfile] = React.useState<ProfileData | null>(null);
+    const [uploading, setUploading] = React.useState<string | null>(null);
+    const [progress] = React.useState<number>(100);
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+    const [error, setError] = React.useState("");
+    const [info, setInfo] = React.useState("");
+    const [emptyStateAction, setEmptyStateAction] =
+        React.useState<EmptyStateAction>(null);
 
-  React.useEffect(() => {
-    const stored = localStorage.getItem("user");
-    setProfile(stored ? (JSON.parse(stored) as ProfileData) : null);
-    setLoading(false);
-  }, []);
+    React.useEffect(() => {
+        async function loadProfile() {
+            const token = getAccessToken();
 
-  // ── Guards ──────────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return <p className="text-sm text-gray-500">Loading...</p>;
-  }
-
-  if (!profile) {
-    return <p className="text-sm text-gray-500">No profile data found</p>;
-  }
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
-
-  const handleSave = () => {
-    // TODO: Replace localStorage with a proper API call before production.
-    const existing = JSON.parse(localStorage.getItem("user") || "{}") as ProfileData;
-    localStorage.setItem("user", JSON.stringify({ ...existing, ...profile }));
-  };
-
-  // Fix 4: use verifiedFieldMap instead of string replace
-  const handleFileUpload = (field: keyof typeof verifiedFieldMap, file: File) => {
-    setUploading(field);
-    setProgress(100);
-
-    // TODO: Replace with actual file upload to backend/storage service.
-    // Only storing file metadata here — base64 is intentionally NOT stored
-    // in localStorage to avoid hitting browser storage limits.
-    const verifiedField = verifiedFieldMap[field];
-
-    // Fix 2: functional updater for null safety
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const existing = (prev[field] as UploadedFile[]) || [];
-      return {
-        ...prev,
-        [field]: [...existing, { name: file.name, data: "" }],
-        [verifiedField]: false,
-      };
-    });
-
-    setUploading(null);
-  };
-
-  const removeFile = (field: keyof typeof verifiedFieldMap, index: number) => {
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const updated = [...((prev[field] as UploadedFile[]) || [])];
-      updated.splice(index, 1);
-      return { ...prev, [field]: updated };
-    });
-  };
-
-  // ── Location Options ────────────────────────────────────────────────────────
-
-  // Fix 1: runtime key guard + keyof cast
-  const countryData =
-    profile.country && profile.country in locationData
-      ? locationData[profile.country as keyof LocationData]
-      : undefined;
-
-  const countryOptions = Object.entries(locationData).map(([key, val]) => ({
-    label: val.label,
-    value: key,
-  }));
-
-  const cityOptions = countryData
-    ? Object.entries(countryData.cities).map(([key, val]) => ({
-        label: val.label,
-        value: key,
-      }))
-    : [];
-
-  const districtOptions =
-    profile.city && countryData?.cities?.[profile.city]
-      ? Object.entries(countryData.cities[profile.city].districts).map(([key, val]) => ({
-          label: val.label,
-          value: key,
-        }))
-      : [];
-
-  const neighborhoodOptions =
-    profile.city &&
-    profile.district &&
-    countryData?.cities?.[profile.city]?.districts?.[profile.district]
-      ? countryData.cities[profile.city].districts[profile.district].neighborhoods
-      : [];
-
-  // ── Render ──────────────────────────────────────────────────────────────────
-
-  return (
-    <div className="flex gap-10">
-
-      {/* LEFT */}
-      <div className="w-64 flex flex-col items-center gap-4">
-        <Avatar size="lg" />
-        <div className="text-center">
-          <h2 className="text-lg font-semibold">{profile.fullName || "User"}</h2>
-          <p className="text-sm text-gray-500">{profile.email || "No email"}</p>
-        </div>
-      </div>
-
-      {/* RIGHT */}
-      <div className="flex-1 flex flex-col gap-6">
-
-        {/* ACCOUNT */}
-        <SectionCard>
-          <SectionHeader title="Account Information" />
-          <p className="text-xs text-gray-400 mb-3">
-            Your contact details are used for account access and emergency communication.
-          </p>
-          <div className="flex flex-col gap-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Email</span>
-              <span>{profile.email || "-"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Phone</span>
-              <span>{profile.phone || "-"}</span>
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* PHYSICAL */}
-        <SectionCard>
-          <SectionHeader title="Physical Information" />
-          <p className="text-xs text-gray-400 mb-3">
-            This information helps responders assess your physical condition in emergencies.
-          </p>
-          <div className="grid grid-cols-2 gap-4">
-            <TextInput
-              id="height"
-              label="Height (cm)"
-              value={profile.height || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, height: e.target.value } : prev)
-              }
-            />
-            <TextInput
-              id="weight"
-              label="Weight (kg)"
-              value={profile.weight || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, weight: e.target.value } : prev)
-              }
-            />
-            <SelectInput
-              id="gender"
-              label="Gender"
-              value={profile.gender || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, gender: e.target.value } : prev)
-              }
-              options={[
-                { label: "Select", value: "" },
-                { label: "Male", value: "male" },
-                { label: "Female", value: "female" },
-                { label: "Other", value: "other" },
-              ]}
-            />
-            <TextInput
-              id="birthDate"
-              label="Date of Birth"
-              type="date"
-              value={profile.birthDate || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, birthDate: e.target.value } : prev)
-              }
-            />
-          </div>
-        </SectionCard>
-
-        {/* MEDICAL */}
-        <SectionCard>
-          <SectionHeader title="Medical Information" />
-          <p className="text-xs text-gray-400 mb-3">
-            In emergency situations, this information may help responders make faster and safer medical decisions.
-          </p>
-
-          <div className="flex flex-col gap-4">
-
-          <SelectInput
-          id="bloodType"
-          label="Blood Type"
-          value={profile.bloodType || ""}
-          options={bloodTypeOptions}
-          onChange={(e) =>
-            setProfile((prev) => prev ? { ...prev, bloodType: e.target.value } : prev)
-          }
-        />
-
-          <TextArea
-            id="medicalHistory"
-            label="Medical History"
-            value={profile.medicalHistory || ""}
-            onChange={(e) =>
-              setProfile((prev) => prev ? { ...prev, medicalHistory: e.target.value } : prev)
+            if (!token) {
+                setError("Please log in to view your profile.");
+                setEmptyStateAction("login");
+                setLoading(false);
+                return;
             }
-          />
 
-          {/* CHRONIC DISEASES */}
-          <div className="mt-4">
-            <div className="flex justify-between mb-1">
-              <span className="whitespace-nowrap">Chronic Diseases</span>
-              <div className="flex gap-2 text-xs items-center">
-                {/* Fix 5: removed flex layout classes from <p> */}
-                <p className="text-xs text-gray-400">
-                  If you declare a chronic condition, you must upload a supporting medical document.
-                </p>
-                <input
-                  type="file"
-                  id="chronic-upload"
-                  className="hidden"
-                  onChange={(e) =>
-                    e.target.files?.[0] &&
-                    handleFileUpload("chronicDiseasesFiles", e.target.files[0])
-                  }
-                />
-                <label htmlFor="chronic-upload" className="cursor-pointer text-blue-600">
-                  Upload
-                </label>
-              </div>
+            try {
+                const [user, backendProfile] = await Promise.all([
+                    fetchCurrentUser(token),
+                    fetchMyProfile(token),
+                ]);
+
+                setProfile(toProfileData(backendProfile, user.email));
+                setEmptyStateAction(null);
+            } catch (err) {
+                if (err instanceof ApiError && err.status === 401) {
+                    clearAccessToken();
+                    setError("Your session has expired. Please log in again.");
+                    setEmptyStateAction("login");
+                } else if (err instanceof ApiError && err.status === 404) {
+                    setProfile(null);
+                    setError("");
+                    setEmptyStateAction("complete-profile");
+                } else {
+                    setError(
+                        err instanceof Error
+                            ? err.message
+                            : "Could not load your profile."
+                    );
+                    setEmptyStateAction(null);
+                }
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        void loadProfile();
+    }, []);
+
+    const handleSave = async () => {
+        if (!profile) {
+            return;
+        }
+
+        const token = getAccessToken();
+
+        if (!token) {
+            setError("Please log in to save your profile.");
+            router.push("/login");
+            return;
+        }
+
+        try {
+            setSaving(true);
+            setError("");
+            setInfo("");
+
+            await patchMyPhysical(token, {
+                gender: profile.gender || null,
+                height: profile.height ? Number(profile.height) : undefined,
+                weight: profile.weight ? Number(profile.weight) : undefined,
+            });
+
+            await patchMyHealth(token, {
+                medicalConditions: parseListField(profile.medicalHistory),
+                chronicDiseases: parseListField(profile.chronicDiseases),
+                allergies: parseListField(profile.allergies),
+                bloodType: profile.bloodType || null,
+            });
+
+            await patchMyLocation(token, {
+                country: locationData[profile.country]?.label || profile.country || null,
+                city:
+                    locationData[profile.country]?.cities[profile.city]?.label ||
+                    profile.city ||
+                    null,
+                address:
+                    buildAddress({
+                        district: profile.district,
+                        neighborhood: profile.neighborhood,
+                        extraAddress: profile.extraAddress,
+                    }) || null,
+            });
+
+            await patchMyPrivacy(token, {
+                locationSharingEnabled: profile.shareLocation,
+            });
+
+            const [user, backendProfile] = await Promise.all([
+                fetchCurrentUser(token),
+                fetchMyProfile(token),
+            ]);
+
+            setProfile((currentProfile) => {
+                const refreshedProfile = toProfileData(backendProfile, user.email);
+
+                return currentProfile
+                    ? {
+                        ...refreshedProfile,
+                        chronicDiseasesFiles: currentProfile.chronicDiseasesFiles,
+                        chronicDiseasesVerified:
+                            currentProfile.chronicDiseasesVerified,
+                        allergiesFiles: currentProfile.allergiesFiles,
+                        allergiesVerified: currentProfile.allergiesVerified,
+                    }
+                    : refreshedProfile;
+            });
+
+            setInfo("Profile updated successfully.");
+        } catch (err) {
+            const baseMessage =
+                err instanceof Error && err.message
+                    ? err.message
+                    : "Could not save your profile.";
+
+            setError(
+                `${baseMessage} Some sections may already be saved because the backend currently updates profile data in separate requests. Please review your profile and try again.`
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleFileUpload = (field: UploadField, file: File) => {
+        setUploading(field);
+
+        setProfile((prev) => {
+            if (!prev) {
+                return prev;
+            }
+
+            if (field === "chronicDiseasesFiles") {
+                return {
+                    ...prev,
+                    chronicDiseasesFiles: [
+                        ...prev.chronicDiseasesFiles,
+                        { name: file.name, data: "" },
+                    ],
+                    chronicDiseasesVerified: false,
+                };
+            }
+
+            return {
+                ...prev,
+                allergiesFiles: [...prev.allergiesFiles, { name: file.name, data: "" }],
+                allergiesVerified: false,
+            };
+        });
+
+        setUploading(null);
+        setInfo(
+            "Document uploads are not connected yet because the backend upload endpoint is not available."
+        );
+    };
+
+    const removeFile = (field: UploadField, index: number) => {
+        setProfile((prev) => {
+            if (!prev) {
+                return prev;
+            }
+
+            if (field === "chronicDiseasesFiles") {
+                const updated = [...prev.chronicDiseasesFiles];
+                updated.splice(index, 1);
+
+                return { ...prev, chronicDiseasesFiles: updated };
+            }
+
+            const updated = [...prev.allergiesFiles];
+            updated.splice(index, 1);
+
+            return { ...prev, allergiesFiles: updated };
+        });
+    };
+
+    if (loading) {
+        return <p className="text-sm text-gray-500">Loading...</p>;
+    }
+
+    if (!profile) {
+        return (
+            <div className="flex max-w-md flex-col gap-4">
+                <HelperText className="text-sm text-gray-500">
+                    {error || "No profile data found."}
+                </HelperText>
+
+                {emptyStateAction === "login" ? (
+                    <PrimaryButton onClick={() => router.push("/login")}>
+                        Log In
+                    </PrimaryButton>
+                ) : null}
+
+                {emptyStateAction === "complete-profile" ? (
+                    <PrimaryButton onClick={() => router.push("/complete-profile")}>
+                        Complete Profile
+                    </PrimaryButton>
+                ) : null}
+            </div>
+        );
+    }
+
+    const countryData = profile.country ? locationData[profile.country] : undefined;
+
+    const countryOptions = Object.entries(locationData).map(([key, value]) => ({
+        label: value.label,
+        value: key,
+    }));
+
+    const cityOptions = countryData
+        ? Object.entries(countryData.cities).map(([key, value]) => ({
+            label: value.label,
+            value: key,
+        }))
+        : [];
+
+    const districtOptions =
+        profile.city && countryData?.cities[profile.city]
+            ? Object.entries(countryData.cities[profile.city].districts).map(
+                ([key, value]) => ({
+                    label: value.label,
+                    value: key,
+                })
+            )
+            : [];
+
+    const neighborhoodOptions =
+        profile.city &&
+            profile.district &&
+            countryData?.cities[profile.city]?.districts[profile.district]
+            ? countryData.cities[profile.city].districts[profile.district].neighborhoods
+            : [];
+
+    return (
+        <div className="flex gap-10">
+            <div className="flex w-64 flex-col items-center gap-4">
+                <Avatar size="lg" />
+                <div className="text-center">
+                    <h2 className="text-lg font-semibold">{profile.fullName || "User"}</h2>
+                    <p className="text-sm text-gray-500">{profile.email || "No email"}</p>
+                </div>
             </div>
 
-            <TextInput
-              id="chronic"
-              value={profile.chronicDiseases || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, chronicDiseases: e.target.value } : prev)
-              }
-            />
+            <div className="flex flex-1 flex-col gap-6">
+                <SectionCard>
+                    <SectionHeader title="Account Information" />
+                    <p className="mb-3 text-xs text-gray-400">
+                        Your contact details are used for account access and emergency
+                        communication.
+                    </p>
+                    <div className="flex flex-col gap-3 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Email</span>
+                            <span>{profile.email || "-"}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Phone</span>
+                            <span>
+                                {[profile.countryCode, profile.phone]
+                                    .filter(Boolean)
+                                    .join(" ") || "-"}
+                            </span>
+                        </div>
+                    </div>
+                </SectionCard>
 
-            {uploading === "chronicDiseasesFiles" && (
-              <div className="mt-2 text-xs">Uploading... {progress}%</div>
-            )}
+                <SectionCard>
+                    <SectionHeader title="Physical Information" />
+                    <p className="mb-3 text-xs text-gray-400">
+                        This information helps responders assess your physical condition in
+                        emergencies.
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <TextInput
+                            id="height"
+                            label="Height (cm)"
+                            value={profile.height}
+                            onChange={(e) =>
+                                setProfile({ ...profile, height: e.target.value })
+                            }
+                        />
+                        <TextInput
+                            id="weight"
+                            label="Weight (kg)"
+                            value={profile.weight}
+                            onChange={(e) =>
+                                setProfile({ ...profile, weight: e.target.value })
+                            }
+                        />
+                        <SelectInput
+                            id="gender"
+                            label="Gender"
+                            value={profile.gender}
+                            onChange={(e) =>
+                                setProfile({ ...profile, gender: e.target.value })
+                            }
+                            options={[
+                                { label: "Select", value: "" },
+                                { label: "Male", value: "male" },
+                                { label: "Female", value: "female" },
+                                { label: "Other", value: "other" },
+                            ]}
+                        />
+                        <div>
+                            <TextInput
+                                id="birthDate"
+                                label="Date of Birth"
+                                type="date"
+                                value={profile.birthDate}
+                                onChange={(e) =>
+                                    setProfile({ ...profile, birthDate: e.target.value })
+                                }
+                            />
+                            <HelperText>
+                                Date of birth is not synced yet because the backend profile
+                                API currently stores age instead.
+                            </HelperText>
+                        </div>
+                    </div>
+                </SectionCard>
 
-            {profile.chronicDiseasesFiles?.map((file, index) => (
-              <div key={index} className="mt-2 flex justify-between text-xs text-gray-600">
-                <div className="flex flex-col">
-                  <span>📄 {file.name}</span>
-                  <span className="text-xs mt-1">
-                    {profile.chronicDiseasesVerified ? (
-                      <span className="text-green-600">Verified</span>
-                    ) : (
-                      <span className="text-red-500">Pending Verification</span>
-                    )}
-                  </span>
+                <SectionCard>
+                    <SectionHeader title="Medical Information" />
+                    <p className="mb-3 text-xs text-gray-400">
+                        In emergency situations, this information may help responders make
+                        faster and safer medical decisions.
+                    </p>
+
+                    <div className="flex flex-col gap-4">
+                        <SelectInput
+                            id="bloodType"
+                            label="Blood Type"
+                            value={profile.bloodType}
+                            options={bloodTypeOptions}
+                            onChange={(e) =>
+                                setProfile({ ...profile, bloodType: e.target.value })
+                            }
+                        />
+
+                        <TextArea
+                            id="medicalHistory"
+                            label="Medical History"
+                            value={profile.medicalHistory}
+                            onChange={(e) =>
+                                setProfile({ ...profile, medicalHistory: e.target.value })
+                            }
+                        />
+
+                        <div className="mt-4">
+                            <div className="mb-1 flex justify-between">
+                                <span className="whitespace-nowrap">Chronic Diseases</span>
+                                <div className="flex items-center gap-2 text-xs">
+                                    <p className="text-xs text-gray-400">
+                                        Upload is shown in the UI, but backend document storage is
+                                        not available yet.
+                                    </p>
+                                    <input
+                                        type="file"
+                                        id="chronic-upload"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                            e.target.files?.[0] &&
+                                            handleFileUpload(
+                                                "chronicDiseasesFiles",
+                                                e.target.files[0]
+                                            )
+                                        }
+                                    />
+                                    <label
+                                        htmlFor="chronic-upload"
+                                        className="cursor-pointer text-blue-600"
+                                    >
+                                        Upload
+                                    </label>
+                                </div>
+                            </div>
+
+                            <TextInput
+                                id="chronic"
+                                value={profile.chronicDiseases}
+                                onChange={(e) =>
+                                    setProfile({
+                                        ...profile,
+                                        chronicDiseases: e.target.value,
+                                    })
+                                }
+                            />
+
+                            {uploading === "chronicDiseasesFiles" ? (
+                                <div className="mt-2 text-xs">Uploading... {progress}%</div>
+                            ) : null}
+
+                            {profile.chronicDiseasesFiles.map((file, index) => (
+                                <div
+                                    key={`${file.name}-${index}`}
+                                    className="mt-2 flex justify-between text-xs text-gray-600"
+                                >
+                                    <div className="flex flex-col">
+                                        <span>📄 {file.name}</span>
+                                        <span className="mt-1 text-xs text-red-500">
+                                            Pending Verification
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            removeFile("chronicDiseasesFiles", index)
+                                        }
+                                        className="text-red-500"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-4">
+                            <div className="mb-1 flex justify-between">
+                                <span>Allergies</span>
+                                <div className="flex items-center gap-2 text-xs">
+                                    <p className="text-xs text-gray-400">
+                                        Verification is not connected yet because the backend upload
+                                        flow is still missing.
+                                    </p>
+                                    <input
+                                        type="file"
+                                        id="allergy-upload"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                            e.target.files?.[0] &&
+                                            handleFileUpload(
+                                                "allergiesFiles",
+                                                e.target.files[0]
+                                            )
+                                        }
+                                    />
+                                    <label
+                                        htmlFor="allergy-upload"
+                                        className="cursor-pointer text-blue-600"
+                                    >
+                                        Upload
+                                    </label>
+                                </div>
+                            </div>
+
+                            <TextInput
+                                id="allergy"
+                                value={profile.allergies}
+                                onChange={(e) =>
+                                    setProfile({ ...profile, allergies: e.target.value })
+                                }
+                            />
+
+                            {uploading === "allergiesFiles" ? (
+                                <div className="mt-2 text-xs">Uploading... {progress}%</div>
+                            ) : null}
+
+                            {profile.allergiesFiles.map((file, index) => (
+                                <div
+                                    key={`${file.name}-${index}`}
+                                    className="mt-2 flex justify-between text-xs text-gray-600"
+                                >
+                                    <div className="flex flex-col">
+                                        <span>📄 {file.name}</span>
+                                        <span className="mt-1 text-xs text-red-500">
+                                            Pending Verification
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeFile("allergiesFiles", index)}
+                                        className="text-red-500"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </SectionCard>
+
+                <SectionCard>
+                    <SectionHeader title="Location" />
+                    <p className="mb-3 text-xs text-gray-400">
+                        Your location may help emergency services reach you faster.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <SelectInput
+                            id="country"
+                            label="Country"
+                            value={profile.country}
+                            options={[{ label: "Select Country", value: "" }, ...countryOptions]}
+                            onChange={(e) =>
+                                setProfile({
+                                    ...profile,
+                                    country: e.target.value,
+                                    city: "",
+                                    district: "",
+                                    neighborhood: "",
+                                })
+                            }
+                        />
+
+                        <SelectInput
+                            id="city"
+                            label="City"
+                            value={profile.city}
+                            disabled={!profile.country}
+                            options={[{ label: "Select City", value: "" }, ...cityOptions]}
+                            onChange={(e) =>
+                                setProfile({
+                                    ...profile,
+                                    city: e.target.value,
+                                    district: "",
+                                    neighborhood: "",
+                                })
+                            }
+                        />
+
+                        <SelectInput
+                            id="district"
+                            label="District"
+                            value={profile.district}
+                            disabled={!profile.city}
+                            options={[
+                                { label: "Select District", value: "" },
+                                ...districtOptions,
+                            ]}
+                            onChange={(e) =>
+                                setProfile({
+                                    ...profile,
+                                    district: e.target.value,
+                                    neighborhood: "",
+                                })
+                            }
+                        />
+
+                        <SelectInput
+                            id="neighborhood"
+                            label="Neighborhood"
+                            value={profile.neighborhood}
+                            disabled={!profile.district}
+                            options={[
+                                { label: "Select Neighborhood", value: "" },
+                                ...neighborhoodOptions,
+                            ]}
+                            onChange={(e) =>
+                                setProfile({
+                                    ...profile,
+                                    neighborhood: e.target.value,
+                                })
+                            }
+                        />
+
+                        <div className="col-span-2">
+                            <TextInput
+                                id="extraAddress"
+                                label="Extra Address"
+                                value={profile.extraAddress}
+                                onChange={(e) =>
+                                    setProfile({
+                                        ...profile,
+                                        extraAddress: e.target.value,
+                                    })
+                                }
+                            />
+                            <HelperText>
+                                District and neighborhood are flattened into a single backend
+                                address field for now.
+                            </HelperText>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between">
+                        <span className="text-sm">Share Current Location</span>
+                        <ToggleSwitch
+                            checked={profile.shareLocation}
+                            onCheckedChange={(value) =>
+                                setProfile({ ...profile, shareLocation: value })
+                            }
+                        />
+                    </div>
+                </SectionCard>
+
+                {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+                {info ? <HelperText>{info}</HelperText> : null}
+
+                <div className="flex justify-end">
+                    <PrimaryButton onClick={handleSave} loading={saving}>
+                        Save Changes
+                    </PrimaryButton>
                 </div>
-                <button
-                  onClick={() => removeFile("chronicDiseasesFiles", index)}
-                  className="text-red-500"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* ALLERGIES */}
-          <div className="mt-4">
-            <div className="flex justify-between mb-1">
-              <span>Allergies</span>
-              <div className="flex gap-2 text-xs items-center">
-                {/* Fix 5: removed flex layout classes from <p> */}
-                <p className="text-xs text-gray-400">
-                  You may optionally add allergies. Verification is not required but recommended.
-                </p>
-                <input
-                  type="file"
-                  id="allergy-upload"
-                  className="hidden"
-                  onChange={(e) =>
-                    e.target.files?.[0] &&
-                    handleFileUpload("allergiesFiles", e.target.files[0])
-                  }
-                />
-                <label htmlFor="allergy-upload" className="cursor-pointer text-blue-600">
-                  Upload
-                </label>
-              </div>
             </div>
-
-            <TextInput
-              id="allergy"
-              value={profile.allergies || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, allergies: e.target.value } : prev)
-              }
-            />
-
-            {uploading === "allergiesFiles" && (
-              <div className="mt-2 text-xs">Uploading... {progress}%</div>
-            )}
-
-            {profile.allergiesFiles?.map((file, index) => (
-              <div key={index} className="mt-2 flex justify-between text-xs text-gray-600">
-                <div className="flex flex-col">
-                  <span>📄 {file.name}</span>
-                  <span className="text-xs mt-1">
-                    {profile.allergiesVerified ? (
-                      <span className="text-green-600">Verified</span>
-                    ) : (
-                      <span className="text-red-500">Pending Verification</span>
-                    )}
-                  </span>
-                </div>
-                <button
-                  onClick={() => removeFile("allergiesFiles", index)}
-                  className="text-red-500"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-          </div>
-        </SectionCard>
-
-        {/* LOCATION */}
-        <SectionCard>
-          <SectionHeader title="Location" />
-          <p className="text-xs text-gray-400 mb-3">
-            Your location may help emergency services reach you faster.
-          </p>
-
-          <div className="grid grid-cols-2 gap-4">
-            <SelectInput
-              id="country"
-              label="Country"
-              value={profile.country || ""}
-              options={[{ label: "Select Country", value: "" }, ...countryOptions]}
-              onChange={(e) =>
-                setProfile((prev) =>
-                  prev
-                    ? { ...prev, country: e.target.value, city: "", district: "", neighborhood: "" }
-                    : prev
-                )
-              }
-            />
-
-            {/* Fix 3: disabled until parent is selected */}
-            <SelectInput
-              id="city"
-              label="City"
-              value={profile.city || ""}
-              disabled={!profile.country}
-              options={[{ label: "Select City", value: "" }, ...cityOptions]}
-              onChange={(e) =>
-                setProfile((prev) =>
-                  prev
-                    ? { ...prev, city: e.target.value, district: "", neighborhood: "" }
-                    : prev
-                )
-              }
-            />
-            <SelectInput
-              id="district"
-              label="District"
-              value={profile.district || ""}
-              disabled={!profile.city}
-              options={[{ label: "Select District", value: "" }, ...districtOptions]}
-              onChange={(e) =>
-                setProfile((prev) =>
-                  prev ? { ...prev, district: e.target.value, neighborhood: "" } : prev
-                )
-              }
-            />
-            <SelectInput
-              id="neighborhood"
-              label="Neighborhood"
-              value={profile.neighborhood || ""}
-              disabled={!profile.district}
-              options={[{ label: "Select Neighborhood", value: "" }, ...neighborhoodOptions]}
-              onChange={(e) =>
-                setProfile((prev) =>
-                  prev ? { ...prev, neighborhood: e.target.value } : prev
-                )
-              }
-            />
-            <TextInput
-              id="extraAddress"
-              label="Extra Address"
-              value={profile.extraAddress || ""}
-              onChange={(e) =>
-                setProfile((prev) => prev ? { ...prev, extraAddress: e.target.value } : prev)
-              }
-            />
-          </div>
-
-          <div className="flex justify-between items-center mt-4">
-            <span className="text-sm">Share Current Location</span>
-            <ToggleSwitch
-              checked={profile.shareLocation || false}
-              onCheckedChange={(val) =>
-                setProfile((prev) => prev ? { ...prev, shareLocation: val } : prev)
-              }
-            />
-          </div>
-        </SectionCard>
-
-        {/* SAVE */}
-        <div className="flex justify-end">
-          <PrimaryButton onClick={handleSave}>Save Changes</PrimaryButton>
         </div>
-
-      </div>
-    </div>
-  );
+    );
 }

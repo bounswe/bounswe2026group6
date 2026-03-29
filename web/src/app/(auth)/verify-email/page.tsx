@@ -5,7 +5,7 @@ export default function VerifyEmailPage() {
     return (
         <AuthLayout
             title="Verify Email"
-            subtitle="Enter the 6-digit verification code sent to your email address."
+            subtitle="Use the verification link sent to your email, or resend it from this page."
         >
             <VerifyEmailForm />
         </AuthLayout>

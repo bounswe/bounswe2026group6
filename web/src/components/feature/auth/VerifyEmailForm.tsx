@@ -2,22 +2,20 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { VerificationCodeInput } from "@/components/ui/inputs/VerificationCodeInput";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { Divider } from "@/components/ui/display/Divider";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
-
-const SIGNUP_DRAFT_KEY = "neph_signup_draft";
+import { resendVerification, verifyEmail } from "@/lib/auth";
 
 export function VerifyEmailForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
     const emailFromQuery = searchParams.get("email") || "";
+    const tokenFromQuery = searchParams.get("token") || "";
 
-    const [code, setCode] = React.useState("");
     const [loading, setLoading] = React.useState(false);
     const [resending, setResending] = React.useState(false);
     const [error, setError] = React.useState("");
@@ -29,20 +27,23 @@ export function VerifyEmailForm() {
         setError("");
         setInfo("");
 
-        if (code.trim().length !== 6) {
-            setError("Please enter the 6-digit verification code.");
+        if (!tokenFromQuery) {
+            setError(
+                "Email verification currently uses the link sent to your inbox."
+            );
             return;
         }
 
         try {
             setLoading(true);
 
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            await verifyEmail(tokenFromQuery);
 
-            sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
             setSuccess(true);
-        } catch {
-            setError("Verification failed. Please try again.");
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Verification failed. Please try again."
+            );
         } finally {
             setLoading(false);
         }
@@ -55,11 +56,16 @@ export function VerifyEmailForm() {
         try {
             setResending(true);
 
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            if (!emailFromQuery) {
+                setError("Email address is required to resend verification.");
+                return;
+            }
 
-            setInfo("A new verification code has been sent.");
-        } catch {
-            setError("Could not resend the code.");
+            const response = await resendVerification(emailFromQuery);
+
+            setInfo(response.message);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not resend the code.");
         } finally {
             setResending(false);
         }
@@ -74,13 +80,13 @@ export function VerifyEmailForm() {
                     </h3>
 
                     <p className="mt-2 text-sm text-[#737380]">
-                        Your account is now verified. You can continue to the login
-                        page.
+                        Your account is now verified. Log in to continue with profile
+                        setup.
                     </p>
 
                     <div className="mt-5">
-                        <PrimaryButton onClick={() => router.push("/complete-profile")}>
-                            Continue to Profile Setup
+                        <PrimaryButton onClick={() => router.push("/login")}>
+                            Continue to Log In
                         </PrimaryButton>
                     </div>
                 </div>
@@ -96,23 +102,21 @@ export function VerifyEmailForm() {
         <>
             <form className="flex flex-col gap-4" onSubmit={handleVerify}>
                 <div className="rounded-[14px] border border-[#E7E7EA] bg-[#FAFAFB] p-4">
-                    <p className="text-sm font-medium text-[#2B2B33]">
-                        Verification code
-                    </p>
-
                     <p className="mt-1 text-sm text-[#737380]">
-                        {emailFromQuery
-                            ? `We sent a verification code to ${emailFromQuery}.`
-                            : "Enter the code sent to your email address."}
+                        {tokenFromQuery
+                            ? "Your verification link is ready. Confirm your email below."
+                            : emailFromQuery
+                                ? `We sent a verification link to ${emailFromQuery}.`
+                                : "Open the verification link from your email, or resend it below."}
                     </p>
                 </div>
 
-                <div className="flex flex-col items-center gap-3">
-                    <VerificationCodeInput value={code} onChange={setCode} />
+                {!tokenFromQuery ? (
                     <HelperText className="text-center">
-                        The code should contain 6 digits.
+                        The current backend verifies email through a tokenized link, not a
+                        6-digit code.
                     </HelperText>
-                </div>
+                ) : null}
 
                 {error ? (
                     <HelperText className="text-center text-[#D84A4A]">
@@ -124,17 +128,21 @@ export function VerifyEmailForm() {
                     <HelperText className="text-center">{info}</HelperText>
                 ) : null}
 
-                <PrimaryButton type="submit" loading={loading}>
-                    Verify Email
-                </PrimaryButton>
+                {tokenFromQuery ? (
+                    <PrimaryButton type="submit" loading={loading}>
+                        Verify Email
+                    </PrimaryButton>
+                ) : null}
 
-                <SecondaryButton
-                    type="button"
-                    onClick={handleResend}
-                    disabled={resending}
-                >
-                    {resending ? "Sending..." : "Resend Code"}
-                </SecondaryButton>
+                {emailFromQuery ? (
+                    <SecondaryButton
+                        type="button"
+                        onClick={handleResend}
+                        disabled={resending}
+                    >
+                        {resending ? "Sending..." : "Resend Verification Email"}
+                    </SecondaryButton>
+                ) : null}
             </form>
 
             <Divider className="my-6" />

@@ -1,5 +1,9 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { clearAccessToken } from "@/lib/auth";
 
 const navItems = [
     { label: "Profile", href: "/profile" },
@@ -8,6 +12,8 @@ const navItems = [
 ];
 
 export function TopNavbar() {
+    const router = useRouter();
+
     return (
         <header className="border-b border-gray-200 bg-white">
             <PageContainer className="flex h-16 items-center justify-between">
@@ -27,7 +33,16 @@ export function TopNavbar() {
                     ))}
                 </nav>
 
-                <button className="text-sm font-medium text-red-500">Logout</button>
+                <button
+                    type="button"
+                    className="text-sm font-medium text-red-500"
+                    onClick={() => {
+                        clearAccessToken();
+                        router.replace("/login");
+                    }}
+                >
+                    Logout
+                </button>
             </PageContainer>
         </header>
     );

@@ -14,9 +14,8 @@ import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
 import { countryCodeOptions } from "@/lib/countryCodes";
+import { SIGNUP_DRAFT_KEY, signup } from "@/lib/auth";
 import { isValidEmail } from "@/lib/validators/email";
-
-const SIGNUP_DRAFT_KEY = "neph_signup_draft";
 
 export function SignupForm() {
     const router = useRouter();
@@ -117,37 +116,36 @@ export function SignupForm() {
         }
 
         try {
-        setLoading(true);
+            setLoading(true);
 
-        sessionStorage.setItem(
-            SIGNUP_DRAFT_KEY,
-            JSON.stringify({
-                fullName,
+            sessionStorage.setItem(
+                SIGNUP_DRAFT_KEY,
+                JSON.stringify({
+                    fullName,
+                    email,
+                    countryCode,
+                    phone,
+                    acceptedTerms,
+                })
+            );
+
+            await signup({
                 email,
-                countryCode,
-                phone,
+                password,
                 acceptedTerms,
-            })
-        );
-        localStorage.setItem(
-            "user",
-            JSON.stringify({
-                fullName,
-                email,
-                phone,
-            })
-        );
+            });
 
-        setInfo(
-            "Account created successfully. Redirecting to email verification..."
-        );
+            setInfo(
+                "Account created successfully. Check your email for the verification link."
+            );
 
-        redirectTimeoutRef.current = setTimeout(() => {
-            router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-        }, 700);
-        
-        } catch {
-            setError("Signup failed. Please try again.");
+            redirectTimeoutRef.current = setTimeout(() => {
+                router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+            }, 700);
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Signup failed. Please try again."
+            );
         } finally {
             setLoading(false);
         }

@@ -11,6 +11,9 @@ import { Divider } from "@/components/ui/display/Divider";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
+import { ApiError } from "@/lib/api";
+import { login, setAccessToken } from "@/lib/auth";
+import { fetchMyProfile } from "@/lib/profile";
 import { isValidEmail } from "@/lib/validators/email";
 
 export function LoginForm() {
@@ -42,11 +45,25 @@ export function LoginForm() {
         try {
             setLoading(true);
 
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const response = await login({ email, password });
 
+            try {
+                await fetchMyProfile(response.accessToken);
+                setAccessToken(response.accessToken, { rememberMe });
+                router.push("/profile");
+            } catch (profileError) {
+                if (profileError instanceof ApiError && profileError.status === 404) {
+                    setAccessToken(response.accessToken, { rememberMe });
+                    router.push("/complete-profile");
+                    return;
+                }
 
-        } catch {
-            setError("Login failed. Please try again.");
+                throw profileError;
+            }
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Login failed. Please try again."
+            );
         } finally {
             setLoading(false);
         }
