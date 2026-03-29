@@ -13,7 +13,7 @@ export function AuthFooterLinks({ mode }: AuthFooterLinksProps) {
                     Don&apos;t have an account?{" "}
                     <Link
                         href="/signup"
-                        className="font-semibold text-[#D84A4A] hover:underline"
+                        className="font-semibold text-[color:var(--primary-500)] hover:underline"
                     >
                         Create one
                     </Link>
@@ -29,7 +29,7 @@ export function AuthFooterLinks({ mode }: AuthFooterLinksProps) {
                     Already have an account?{" "}
                     <Link
                         href="/login"
-                        className="font-semibold text-[#D84A4A] hover:underline"
+                        className="font-semibold text-[color:var(--primary-500)] hover:underline"
                     >
                         Log in
                     </Link>
@@ -44,7 +44,7 @@ return (
             Wrong email address?{" "}
             <Link
                 href="/signup?restore=1"
-                className="font-semibold text-[#D84A4A] hover:underline"
+                className="font-semibold text-[color:var(--primary-500)] hover:underline"
             >
                 Go back
             </Link>

@@ -48,7 +48,7 @@ export function AuthShowcase() {
 
     return (
         <section
-            className="relative hidden h-[580px] overflow-hidden rounded-[28px] p-8 text-white shadow-[0_20px_40px_rgba(0,0,0,0.12)] lg:flex lg:flex-col"
+            className="relative hidden h-[580px] overflow-hidden rounded-[28px] p-8 text-white shadow-overlay lg:flex lg:flex-col"
             style={{
                 background:
                     "linear-gradient(135deg, var(--hero-to) 0%, var(--hero-to) 38%, var(--hero-via) 68%, var(--hero-from) 100%)",

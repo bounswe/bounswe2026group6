@@ -142,7 +142,7 @@ export function LoginForm() {
 
             <div className="my-5 flex items-center gap-3">
                 <Divider className="flex-1" />
-                <span className="text-xs font-medium uppercase tracking-[0.14em] text-[#A3A3AD]">
+                <span className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
                     or
                 </span>
                 <Divider className="flex-1" />
@@ -190,7 +190,7 @@ export function LoginForm() {
                             <button
                                 type="button"
                                 onClick={handleForgotPassword}
-                                className="text-sm font-medium text-[#D84A4A] hover:underline"
+                                className="text-sm font-medium text-[color:var(--primary-500)] hover:underline"
                             >
                                 Forgot password?
                             </button>
@@ -203,7 +203,7 @@ export function LoginForm() {
                                     setError("");
                                     setInfo("");
                                 }}
-                                className="text-sm font-medium text-[#D84A4A] hover:underline"
+                                className="text-sm font-medium text-[color:var(--primary-500)] hover:underline"
                             >
                                 Verify email?
                             </button>
@@ -211,7 +211,7 @@ export function LoginForm() {
                     </div>
 
                     {showResendVerification ? (
-                        <div className="rounded-[10px] border border-[#E7E7EA] p-3">
+                        <div className="rounded-[10px] border border-[color:var(--border-subtle)] p-3">
                             <TextInput
                                 id="resend-verification-email"
                                 label="Email for verification"
@@ -226,7 +226,7 @@ export function LoginForm() {
                                     type="button"
                                     onClick={handleResendVerification}
                                     disabled={resendingVerification}
-                                    className="text-sm font-medium text-[#D84A4A] hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="text-sm font-medium text-[color:var(--primary-500)] hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     {resendingVerification ? "Sending..." : "Resend verification email"}
                                 </button>
@@ -235,7 +235,7 @@ export function LoginForm() {
                     ) : null}
 
                     {error ? (
-                        <HelperText className="text-[#D84A4A]">
+                        <HelperText className="text-[color:var(--primary-500)]">
                             {error}
                         </HelperText>
                     ) : null}

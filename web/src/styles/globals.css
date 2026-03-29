@@ -219,17 +219,17 @@ textarea::placeholder {
 }
 
 .top-navbar-nav-item.is-active {
-    color: #ffffff;
+    color: var(--text-on-primary);
     background: linear-gradient(135deg, var(--hero-from), var(--hero-via), var(--hero-to));
     box-shadow: var(--shadow-soft);
 }
 
 .top-navbar-nav-item.is-active:hover {
-    color: #ffffff;
+    color: var(--text-on-primary);
 }
 
 .top-navbar-nav-item.is-active:visited {
-    color: #ffffff;
+    color: var(--text-on-primary);
 }
 
 .top-navbar-user-menu {
@@ -280,7 +280,7 @@ textarea::placeholder {
 
 .top-navbar-dropdown-item.is-login {
     border: none;
-    background: #ffffff;
+    background: var(--surface-card);
     color: var(--primary-500);
 }
 
@@ -291,7 +291,7 @@ textarea::placeholder {
 .top-navbar-dropdown-item.is-signup {
     border: 1px solid transparent;
     background: linear-gradient(135deg, var(--hero-from), var(--hero-via), var(--hero-to));
-    color: #ffffff;
+    color: var(--text-on-primary);
 }
 
 .top-navbar-dropdown-item.is-signup:hover {

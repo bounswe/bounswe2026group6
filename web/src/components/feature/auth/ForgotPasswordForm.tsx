@@ -109,12 +109,12 @@ export function ForgotPasswordForm() {
     if (success) {
         return (
             <>
-                <div className="rounded-[14px] border border-[#E7E7EA] bg-[#FAFAFB] p-5 text-center">
-                    <h3 className="text-lg font-semibold text-[#2B2B33]">
+                <div className="rounded-[14px] border border-[color:var(--border-subtle)] bg-[color:var(--background-page)] p-5 text-center">
+                    <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">
                         Reset email sent
                     </h3>
 
-                    <p className="mt-2 text-sm text-[#737380]">
+                    <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
                         If an account exists for <span className="font-medium">{email}</span>,
                         a password reset link will be sent.
                     </p>
@@ -143,7 +143,7 @@ export function ForgotPasswordForm() {
                         Remembered your password?{" "}
                         <Link
                             href="/login"
-                            className="font-semibold text-[#D84A4A] hover:underline"
+                            className="font-semibold text-[color:var(--primary-500)] hover:underline"
                         >
                             Go back to log in
                         </Link>
@@ -166,7 +166,7 @@ export function ForgotPasswordForm() {
                 />
 
                 {error ? (
-                    <HelperText className="text-[#D84A4A]">{error}</HelperText>
+                    <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText>
                 ) : null}
 
                 {info ? <HelperText>{info}</HelperText> : null}
@@ -183,7 +183,7 @@ export function ForgotPasswordForm() {
                     Remembered your password?{" "}
                     <Link
                         href="/login"
-                        className="font-semibold text-[#D84A4A] hover:underline"
+                        className="font-semibold text-[color:var(--primary-500)] hover:underline"
                     >
                         Go back to log in
                     </Link>

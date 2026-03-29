@@ -139,7 +139,7 @@ export function SignupForm() {
 
             <div className="my-5 flex items-center gap-3">
                 <Divider className="flex-1" />
-                <span className="text-xs font-medium uppercase tracking-[0.14em] text-[#A3A3AD]">
+                <span className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
                     or
                 </span>
                 <Divider className="flex-1" />
@@ -193,7 +193,7 @@ export function SignupForm() {
                                 <Link
                                     href="/terms-of-service?from=signup"
                                     onClick={saveSignupDraft}
-                                    className="font-semibold text-[#D84A4A] hover:underline"
+                                    className="font-semibold text-[color:var(--primary-500)] hover:underline"
                                 >
                                     Terms of Service
                                 </Link>{" "}
@@ -201,7 +201,7 @@ export function SignupForm() {
                                 <Link
                                     href="/privacy-policy?from=signup"
                                     onClick={saveSignupDraft}
-                                    className="font-semibold text-[#D84A4A] hover:underline"
+                                    className="font-semibold text-[color:var(--primary-500)] hover:underline"
                                 >
                                     Privacy Policy
                                 </Link>
@@ -211,7 +211,7 @@ export function SignupForm() {
                     />
 
                     {error ? (
-                        <HelperText className="text-[#D84A4A]">
+                        <HelperText className="text-[color:var(--primary-500)]">
                             {error}
                         </HelperText>
                     ) : null}

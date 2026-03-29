@@ -74,12 +74,12 @@ export function VerifyEmailForm() {
     if (success) {
         return (
             <>
-                <div className="rounded-[14px] border border-[#E7E7EA] bg-[#FAFAFB] p-5 text-center">
-                    <h3 className="text-lg font-semibold text-[#2B2B33]">
+                <div className="rounded-[14px] border border-[color:var(--border-subtle)] bg-[color:var(--background-page)] p-5 text-center">
+                    <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">
                         Email verified successfully
                     </h3>
 
-                    <p className="mt-2 text-sm text-[#737380]">
+                    <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
                         Your account is now verified. Log in to continue with profile
                         setup.
                     </p>
@@ -101,8 +101,8 @@ export function VerifyEmailForm() {
     return (
         <>
             <form className="flex flex-col gap-4" onSubmit={handleVerify}>
-                <div className="rounded-[14px] border border-[#E7E7EA] bg-[#FAFAFB] p-4">
-                    <p className="mt-1 text-sm text-[#737380]">
+                <div className="rounded-[14px] border border-[color:var(--border-subtle)] bg-[color:var(--background-page)] p-4">
+                    <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                         {tokenFromQuery
                             ? "Your verification link is ready. Confirm your email below."
                             : emailFromQuery
@@ -119,7 +119,7 @@ export function VerifyEmailForm() {
                 ) : null}
 
                 {error ? (
-                    <HelperText className="text-center text-[#D84A4A]">
+                    <HelperText className="text-center text-[color:var(--primary-500)]">
                         {error}
                     </HelperText>
                 ) : null}
