@@ -9,6 +9,7 @@ import { clearAccessToken } from "@/lib/auth";
 const navItems = [
     { label: "Home", href: "/home" },
     { label: "News", href: "/news" },
+    { label: "Emergency Numbers", href: "/emergency-numbers" },
     { label: "Profile", href: "/profile" },
     { label: "Privacy", href: "/privacy" },
     { label: "Security", href: "/security" },
