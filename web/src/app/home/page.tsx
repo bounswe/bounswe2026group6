@@ -13,15 +13,25 @@ import {
 } from "../../lib/emergencyNumbers";
 import { mockNews } from "@/lib/news";
 
-const heroSlides = [
+type HeroSlide = {
+    title: string;
+    description: string;
+    primaryCtaLabel: string;
+    primaryCtaHref: string;
+    secondaryCtaLabel?: string;
+    secondaryCtaHref?: string;
+    isMainSlide?: boolean;
+};
+
+const heroSlides: HeroSlide[] = [
     {
         title: "We care for you and every community around you",
         description:
             "NEPH is a social responsibility initiative focused on preparedness, solidarity, and faster local coordination before and during emergencies.",
-        primaryCtaLabel: "Open News",
-        primaryCtaHref: "/news",
-        secondaryCtaLabel: "Emergency Numbers",
-        secondaryCtaHref: "/emergency-numbers",
+        primaryCtaLabel: "Who We Are",
+        primaryCtaHref: "/who-we-are",
+        secondaryCtaLabel: "About Us",
+        secondaryCtaHref: "/about-project",
         isMainSlide: true,
     },
     {
@@ -36,11 +46,9 @@ const heroSlides = [
     {
         title: "Report incidents from the mobile app",
         description:
-            "Use the NEPH mobile app to quickly submit emergency requests and stay connected with neighborhood responders.",
-        primaryCtaLabel: "Open News",
-        primaryCtaHref: "/news",
-        secondaryCtaLabel: "View Announcements",
-        secondaryCtaHref: "/news",
+            "Emergency requests are submitted through the NEPH mobile app so responders can receive faster, location-aware updates during critical moments.",
+        primaryCtaLabel: "Download Mobile App",
+        primaryCtaHref: "#",
     },
     {
         title: "Track local updates in one place",
@@ -48,8 +56,6 @@ const heroSlides = [
             "Follow announcements, preparedness updates, and community coordination news from a single dashboard.",
         primaryCtaLabel: "Browse News",
         primaryCtaHref: "/news",
-        secondaryCtaLabel: "View Announcements",
-        secondaryCtaHref: "/news",
     },
 ];
 
@@ -89,12 +95,14 @@ export default function HomePage() {
                                     {currentSlide.primaryCtaLabel}
                                 </PrimaryButton>
 
-                                <SecondaryButton
-                                    className="home-hero-secondary-action"
-                                    onClick={() => router.push(currentSlide.secondaryCtaHref)}
-                                >
-                                    {currentSlide.secondaryCtaLabel}
-                                </SecondaryButton>
+                                {currentSlide.secondaryCtaHref && currentSlide.secondaryCtaLabel ? (
+                                    <SecondaryButton
+                                        className="home-hero-secondary-action"
+                                        onClick={() => router.push(currentSlide.secondaryCtaHref!)}
+                                    >
+                                        {currentSlide.secondaryCtaLabel}
+                                    </SecondaryButton>
+                                ) : null}
                             </div>
                         </div>
 

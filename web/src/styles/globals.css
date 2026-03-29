@@ -747,3 +747,228 @@ textarea::placeholder {
     font-size: 0.875rem;
     color: var(--text-secondary);
 }
+
+.root-layout-body {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+    background: var(--background-page);
+    color: var(--text-primary);
+}
+
+.root-layout-content {
+    flex: 1;
+}
+
+.app-shell {
+    background: var(--background-page);
+}
+
+.app-shell-main {
+    padding: 32px 0;
+}
+
+.app-shell-title-wrap {
+    margin-bottom: 24px;
+}
+
+.app-shell-title {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.site-footer {
+    margin-top: 48px;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--surface-card);
+}
+
+.site-footer-inner {
+    padding: 40px 0;
+}
+
+.site-footer-grid {
+    display: grid;
+    gap: 32px;
+}
+
+@media (min-width: 768px) {
+    .site-footer-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.site-footer-brand {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.site-footer-description {
+    margin: 12px 0 0;
+    max-width: 360px;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.site-footer-title {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.site-footer-list {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+}
+
+.site-footer-link {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: color 180ms ease;
+}
+
+.site-footer-link:hover {
+    color: var(--primary-500);
+}
+
+.site-footer-bottom {
+    margin-top: 32px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 16px;
+}
+
+.site-footer-copyright {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.policy-page {
+    padding: 40px 0;
+    background: var(--background-page);
+}
+
+.policy-content-wrap {
+    margin: 0 auto;
+    width: 100%;
+    max-width: 48rem;
+}
+
+.policy-back-link {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--primary-500);
+}
+
+.policy-back-link:hover {
+    text-decoration: underline;
+}
+
+.policy-card {
+    margin-top: 16px;
+}
+
+.policy-body {
+    display: grid;
+    gap: 20px;
+    font-size: 0.875rem;
+    line-height: 1.75;
+    color: var(--text-primary);
+}
+
+.policy-section-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.policy-section-text {
+    margin: 8px 0 0;
+}
+
+.who-we-are-grid {
+    display: grid;
+    gap: 24px;
+}
+
+@media (min-width: 1024px) {
+    .who-we-are-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.project-paragraph {
+    margin: 16px 0 0;
+    font-size: 0.875rem;
+    line-height: 1.75;
+    color: var(--text-secondary);
+}
+
+.project-link {
+    display: inline-flex;
+    margin-top: 12px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--primary-500);
+}
+
+.project-link:hover {
+    text-decoration: underline;
+}
+
+.team-members-list {
+    margin: 16px 0 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.team-member-link {
+    color: var(--text-secondary);
+}
+
+.team-member-link:hover {
+    color: var(--primary-500);
+    text-decoration: underline;
+}
+
+.donate-action-wrap {
+    margin-top: 20px;
+    max-width: 20rem;
+}
+
+@keyframes page-enter {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.page-transition-enter {
+    animation: page-enter 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-transition-enter {
+        animation: none;
+    }
+}

@@ -1,38 +1,23 @@
-import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
+import { BackButton } from "@/components/ui/navigation/BackButton";
 
-type TermsOfServicePageProps = {
-    searchParams?: Promise<{
-        from?: string;
-    }>;
-};
-
-export default async function TermsOfServicePage({
-    searchParams,
-}: TermsOfServicePageProps) {
-    const params = await searchParams;
-    const backHref = params?.from === "signup" ? "/signup?restore=1" : "/signup";
+export default function TermsOfServicePage() {
 
     return (
-        <div className="min-h-screen bg-[#F8F8F9] py-10">
+        <div className="policy-page">
             <PageContainer>
-                <div className="mx-auto max-w-3xl">
-                    <Link
-                        href={backHref}
-                        className="text-sm font-medium text-[#D84A4A] hover:underline"
-                    >
-                        ← Back to Sign Up
-                    </Link>
+                <div className="policy-content-wrap">
+                    <BackButton className="policy-back-link" />
 
-                    <SectionCard className="mt-4">
+                    <SectionCard className="policy-card">
                         <SectionHeader
                             title="Terms of Service"
                             subtitle="Last updated: March 2026"
                         />
 
-                        <div className="space-y-5 text-sm leading-7 text-[#2B2B33]">
+                        <div className="policy-body">
                             <p>
                                 This page is a placeholder Terms of Service for the
                                 NEPH MVP. It explains the general expectations for using
@@ -40,10 +25,10 @@ export default async function TermsOfServicePage({
                             </p>
 
                             <div>
-                                <h3 className="text-base font-semibold">
+                                <h3 className="policy-section-title">
                                     1. Use of the platform
                                 </h3>
-                                <p className="mt-2">
+                                <p className="policy-section-text">
                                     NEPH is intended to support emergency preparedness and
                                     neighborhood coordination. Users should provide
                                     accurate information and use the platform responsibly.
@@ -51,10 +36,10 @@ export default async function TermsOfServicePage({
                             </div>
 
                             <div>
-                                <h3 className="text-base font-semibold">
+                                <h3 className="policy-section-title">
                                     2. Account responsibility
                                 </h3>
-                                <p className="mt-2">
+                                <p className="policy-section-text">
                                     Users are responsible for maintaining the accuracy of
                                     their account information and keeping their credentials
                                     secure.
@@ -62,10 +47,10 @@ export default async function TermsOfServicePage({
                             </div>
 
                             <div>
-                                <h3 className="text-base font-semibold">
+                                <h3 className="policy-section-title">
                                     3. Platform limitations
                                 </h3>
-                                <p className="mt-2">
+                                <p className="policy-section-text">
                                     NEPH is an academic MVP and may not include full
                                     production-grade guarantees, legal protections, or
                                     emergency service integration at this stage.
@@ -73,10 +58,10 @@ export default async function TermsOfServicePage({
                             </div>
 
                             <div>
-                                <h3 className="text-base font-semibold">
+                                <h3 className="policy-section-title">
                                     4. Future updates
                                 </h3>
-                                <p className="mt-2">
+                                <p className="policy-section-text">
                                     These terms may be revised as the project evolves and
                                     more complete platform policies are defined.
                                 </p>
