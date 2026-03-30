@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getAccessToken } from "@/lib/auth";
+import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
 
 type AuthRouteGateProps = {
     children: React.ReactNode;
@@ -11,6 +11,12 @@ type AuthRouteGateProps = {
 };
 
 const AUTH_ROUTES = new Set(["/", "/login", "/signup", "/forgot-password", "/verify-email"]);
+type AuthStatus = "checking" | "authenticated" | "guest";
+
+function getPathnameOnly(path: string) {
+    const noHash = path.split("#")[0];
+    return noHash.split("?")[0] || "/";
+}
 
 function getSafeInternalPath(candidate: string | null): string | null {
     if (!candidate) {
@@ -25,7 +31,7 @@ function getSafeInternalPath(candidate: string | null): string | null {
 }
 
 function isAuthRoute(pathname: string) {
-    return AUTH_ROUTES.has(pathname);
+    return AUTH_ROUTES.has(getPathnameOnly(pathname));
 }
 
 function buildReturnTo(pathname: string, searchParams: URLSearchParams) {
@@ -41,24 +47,54 @@ export function AuthRouteGate({
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const [ready, setReady] = React.useState(false);
+    const [authStatus, setAuthStatus] = React.useState<AuthStatus>("checking");
 
     React.useEffect(() => {
-        const token = getAccessToken();
-        const hasToken = Boolean(token && token.trim());
+        let cancelled = false;
 
-        if (mode === "protected") {
-            if (!hasToken) {
-                const returnTo = buildReturnTo(pathname, searchParams);
-                router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+        async function resolveAuthStatus() {
+            setAuthStatus("checking");
+
+            const token = getAccessToken();
+            if (!token || !token.trim()) {
+                if (!cancelled) {
+                    setAuthStatus("guest");
+                }
                 return;
             }
 
-            setReady(true);
+            try {
+                await fetchCurrentUser(token);
+                if (!cancelled) {
+                    setAuthStatus("authenticated");
+                }
+            } catch {
+                clearAccessToken();
+                if (!cancelled) {
+                    setAuthStatus("guest");
+                }
+            }
+        }
+
+        resolveAuthStatus();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [mode, pathname, searchParams]);
+
+    React.useEffect(() => {
+        if (authStatus === "checking") {
             return;
         }
 
-        if (hasToken) {
+        if (mode === "protected" && authStatus === "guest") {
+            const returnTo = buildReturnTo(pathname, searchParams);
+            router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+            return;
+        }
+
+        if (mode === "guest-only" && authStatus === "authenticated") {
             const requestedReturnTo = getSafeInternalPath(searchParams.get("returnTo"));
             const target =
                 requestedReturnTo && !isAuthRoute(requestedReturnTo)
@@ -66,13 +102,18 @@ export function AuthRouteGate({
                     : defaultAuthenticatedRoute;
 
             router.replace(target);
-            return;
         }
+    }, [authStatus, defaultAuthenticatedRoute, mode, pathname, router, searchParams]);
 
-        setReady(true);
-    }, [defaultAuthenticatedRoute, mode, pathname, router, searchParams]);
+    if (authStatus === "checking") {
+        return null;
+    }
 
-    if (!ready) {
+    if (mode === "protected" && authStatus !== "authenticated") {
+        return null;
+    }
+
+    if (mode === "guest-only" && authStatus !== "guest") {
         return null;
     }
 

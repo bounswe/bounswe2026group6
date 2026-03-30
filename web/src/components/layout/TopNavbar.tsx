@@ -25,7 +25,39 @@ export function TopNavbar() {
     const menuRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
-        setIsAuthenticated(Boolean(getAccessToken()));
+        const syncAuthState = () => {
+            setIsAuthenticated(Boolean(getAccessToken()));
+        };
+
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === null || event.key === "neph_access_token") {
+                syncAuthState();
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                syncAuthState();
+            }
+        };
+
+        syncAuthState();
+
+        window.addEventListener("storage", handleStorage);
+        window.addEventListener("focus", syncAuthState);
+        window.addEventListener("neph-auth-changed", syncAuthState);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener("storage", handleStorage);
+            window.removeEventListener("focus", syncAuthState);
+            window.removeEventListener("neph-auth-changed", syncAuthState);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, []);
+
+    React.useEffect(() => {
+        setIsMenuOpen(false);
     }, [pathname]);
 
     React.useEffect(() => {
@@ -115,6 +147,8 @@ export function TopNavbar() {
                                         type="button"
                                         className="top-navbar-dropdown-item"
                                         onClick={() => {
+                                            clearAccessToken();
+                                            setIsAuthenticated(false);
                                             setIsMenuOpen(false);
                                             router.push("/login");
                                         }}

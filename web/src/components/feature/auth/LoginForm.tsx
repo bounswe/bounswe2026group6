@@ -42,8 +42,9 @@ export function LoginForm() {
             return null;
         }
 
+        const pathnameOnly = returnTo.split("#")[0].split("?")[0] || "/";
         const blockedRoutes = new Set(["/", "/login", "/signup", "/forgot-password", "/verify-email"]);
-        if (blockedRoutes.has(returnTo)) {
+        if (blockedRoutes.has(pathnameOnly)) {
             return null;
         }
 
@@ -69,19 +70,19 @@ export function LoginForm() {
             setLoading(true);
 
             const response = await login({ email, password });
+            setAccessToken(response.accessToken, { rememberMe });
 
             try {
                 await fetchMyProfile(response.accessToken);
-                setAccessToken(response.accessToken, { rememberMe });
                 router.push(safeReturnTo || "/home");
             } catch (profileError) {
                 if (profileError instanceof ApiError && profileError.status === 404) {
-                    setAccessToken(response.accessToken, { rememberMe });
                     router.push("/complete-profile");
                     return;
                 }
 
-                throw profileError;
+                router.push(safeReturnTo || "/home");
+                return;
             }
         } catch (err) {
             setError(

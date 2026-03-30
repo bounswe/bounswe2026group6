@@ -43,6 +43,14 @@ function isBrowser() {
     return typeof window !== "undefined";
 }
 
+function emitAuthChanged() {
+    if (!isBrowser()) {
+        return;
+    }
+
+    window.dispatchEvent(new Event("neph-auth-changed"));
+}
+
 export function getAccessToken() {
     if (!isBrowser()) {
         return null;
@@ -69,10 +77,12 @@ export function setAccessToken(
 
     if (rememberMe) {
         window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
+        emitAuthChanged();
         return;
     }
 
     window.sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+    emitAuthChanged();
 }
 
 export function clearAccessToken() {
@@ -82,6 +92,7 @@ export function clearAccessToken() {
 
     window.localStorage.removeItem(ACCESS_TOKEN_KEY);
     window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    emitAuthChanged();
 }
 
 export async function signup(payload: {
