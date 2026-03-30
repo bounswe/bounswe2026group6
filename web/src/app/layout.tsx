@@ -1,5 +1,6 @@
 import "../styles/globals.css";
 import type { Metadata } from "next";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 
 export const metadata: Metadata = {
     title: "NEPH",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en">
-            <body>{children}</body>
+            <body className="root-layout-body">
+                <main className="root-layout-content">{children}</main>
+                <SiteFooter />
+            </body>
         </html>
     );
 }

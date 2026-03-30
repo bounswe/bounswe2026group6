@@ -2,9 +2,9 @@ package com.neph.features.auth.presentation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -17,30 +17,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.neph.core.network.ApiException
+import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.presentation.components.AuthFooterLinks
 import com.neph.features.auth.presentation.components.AuthFooterMode
 import com.neph.features.auth.presentation.components.SocialAuthButtons
 import com.neph.features.auth.presentation.components.SocialAuthMode
-import com.neph.features.auth.util.countryCodeOptions
 import com.neph.features.auth.util.isValidEmail
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
-import com.neph.ui.components.buttons.TextActionButton
 import com.neph.ui.components.display.Divider
 import com.neph.ui.components.display.HelperText
-import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.inputs.PasswordField
-import androidx.compose.ui.unit.dp
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.theme.LocalNephSpacing
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import com.neph.features.profile.data.ProfileData
-import com.neph.features.profile.data.ProfileRepository
 
 @Composable
 fun SignupScreen(
@@ -53,10 +46,7 @@ fun SignupScreen(
     val scope = rememberCoroutineScope()
 
     var showEmailForm by rememberSaveable { mutableStateOf(false) }
-    var fullName by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
-    var countryCode by rememberSaveable { mutableStateOf("+90") }
-    var phone by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var acceptedTerms by rememberSaveable { mutableStateOf(false) }
@@ -64,19 +54,12 @@ fun SignupScreen(
     var error by rememberSaveable { mutableStateOf("") }
     var info by rememberSaveable { mutableStateOf("") }
 
-    fun handlePhoneChange(input: String) {
-        phone = input.filter { it.isDigit() }
-    }
-
-
     fun handleSignup() {
         error = ""
         info = ""
 
         if (
-            fullName.trim().isEmpty() ||
             email.trim().isEmpty() ||
-            phone.trim().isEmpty() ||
             password.trim().isEmpty() ||
             confirmPassword.trim().isEmpty()
         ) {
@@ -99,19 +82,22 @@ fun SignupScreen(
             return
         }
 
-        ProfileRepository.saveProfile(
-            ProfileRepository.getProfile().copy(
-                fullName = fullName,
-                email = email,
-                phone = phone
-            )
-        )
-
         loading = true
         scope.launch {
-            delay(700)
-            loading = false
-            onSignupSuccess()
+            try {
+                info = AuthRepository.signup(
+                    email = email,
+                    password = password,
+                    acceptedTerms = acceptedTerms
+                )
+                onSignupSuccess()
+            } catch (errorResponse: ApiException) {
+                error = errorResponse.message
+            } catch (_: IllegalStateException) {
+                error = "Signup failed. Please try again."
+            } finally {
+                loading = false
+            }
         }
     }
 
@@ -170,41 +156,12 @@ fun SignupScreen(
                 verticalArrangement = Arrangement.spacedBy(spacing.md)
             ) {
                 AppTextField(
-                    value = fullName,
-                    onValueChange = { fullName = it },
-                    label = "Full Name",
-                    placeholder = "Enter your full name"
-                )
-
-                AppTextField(
                     value = email,
                     onValueChange = { email = it },
                     label = "Email",
                     placeholder = "Enter your email",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
                 )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm)
-                ) {
-                    AppDropdown(
-                        value = countryCode,
-                        onValueChange = { countryCode = it },
-                        label = "Code",
-                        options = countryCodeOptions,
-                        modifier = Modifier.width(132.dp),
-                        selectedTextMapper = { it.value }
-                    )
-
-                    AppTextField(
-                        value = phone,
-                        onValueChange = ::handlePhoneChange,
-                        label = "Phone Number",
-                        placeholder = "Enter your phone number",
-                        modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                }
 
                 PasswordField(
                     value = password,

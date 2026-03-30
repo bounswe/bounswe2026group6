@@ -1,14 +1,32 @@
 const express = require('express');
+const {
+  handleSetAvailability,
+  handleSyncAvailability,
+  handleGetMyAssignment,
+  handleCancelAssignment,
+  handleResolveAssignment,
+} = require('./controller');
+const { requireAuth } = require('../auth/middleware');
 
 const availabilityRouter = express.Router();
 
-availabilityRouter.get('/', (_request, response) => {
-  response.status(200).json({
-    module: 'availability',
-    scope: ['volunteer availability', 'matching', 'assignment flow'],
-    status: 'ready for implementation',
-  });
-});
+// All availability routes require authentication
+availabilityRouter.use(requireAuth);
+
+// Toggle availability on/off
+availabilityRouter.post('/toggle', handleSetAvailability);
+
+// Sync availability records (for offline support)
+availabilityRouter.post('/sync', handleSyncAvailability);
+
+// Get current assignment for the volunteer
+availabilityRouter.get('/my-assignment', handleGetMyAssignment);
+
+// Cancel current assignment
+availabilityRouter.post('/assignments/:assignmentId/cancel', handleCancelAssignment);
+
+// Mark request as resolved
+availabilityRouter.post('/assignments/resolve', handleResolveAssignment);
 
 module.exports = {
   availabilityRouter,

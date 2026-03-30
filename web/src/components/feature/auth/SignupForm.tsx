@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TextInput } from "@/components/ui/inputs/TextInput";
 import { PasswordInput } from "@/components/ui/inputs/PasswordInput";
-import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
@@ -13,7 +12,6 @@ import { Divider } from "@/components/ui/display/Divider";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
-import { countryCodeOptions } from "@/lib/countryCodes";
 import { SIGNUP_DRAFT_KEY, signup } from "@/lib/auth";
 import { isValidEmail } from "@/lib/validators/email";
 
@@ -24,10 +22,7 @@ export function SignupForm() {
     const redirectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [showEmailForm, setShowEmailForm] = React.useState(false);
-    const [fullName, setFullName] = React.useState("");
     const [email, setEmail] = React.useState("");
-    const [countryCode, setCountryCode] = React.useState("+90");
-    const [phone, setPhone] = React.useState("");
     const [password, setPassword] = React.useState("");
     const [confirmPassword, setConfirmPassword] = React.useState("");
     const [acceptedTerms, setAcceptedTerms] = React.useState(false);
@@ -47,10 +42,7 @@ export function SignupForm() {
         try {
             const parsed = JSON.parse(savedDraft);
 
-            setFullName(parsed.fullName || "");
             setEmail(parsed.email || "");
-            setCountryCode(parsed.countryCode || "+90");
-            setPhone(parsed.phone || "");
             setAcceptedTerms(parsed.acceptedTerms || false);
             setShowEmailForm(true);
         } catch {
@@ -70,18 +62,10 @@ export function SignupForm() {
         sessionStorage.setItem(
             SIGNUP_DRAFT_KEY,
             JSON.stringify({
-                fullName,
                 email,
-                countryCode,
-                phone,
                 acceptedTerms,
             })
         );
-    };
-
-    const handlePhoneChange = (value: string) => {
-        const digitsOnly = value.replace(/\D/g, "");
-        setPhone(digitsOnly);
     };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -89,13 +73,7 @@ export function SignupForm() {
         setError("");
         setInfo("");
 
-        if (
-            !fullName.trim() ||
-            !email.trim() ||
-            !phone.trim() ||
-            !password.trim() ||
-            !confirmPassword.trim()
-        ) {
+        if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
             setError("Please fill in all required fields.");
             return;
         }
@@ -121,10 +99,7 @@ export function SignupForm() {
             sessionStorage.setItem(
                 SIGNUP_DRAFT_KEY,
                 JSON.stringify({
-                    fullName,
                     email,
-                    countryCode,
-                    phone,
                     acceptedTerms,
                 })
             );
@@ -184,14 +159,6 @@ export function SignupForm() {
             ) : (
                 <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                     <TextInput
-                        id="signup-fullname"
-                        label="Full Name"
-                        placeholder="Enter your full name"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                    />
-
-                    <TextInput
                         id="signup-email"
                         label="Email"
                         type="email"
@@ -199,29 +166,6 @@ export function SignupForm() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                     />
-
-                    <div className="grid grid-cols-[120px_1fr] gap-3">
-                        <div className="w-[120px]">
-                            <SelectInput
-                                id="signup-country-code"
-                                label="Code"
-                                value={countryCode}
-                                onChange={(e) => setCountryCode(e.target.value)}
-                                options={countryCodeOptions}
-                                placeholder="Select"
-                            />
-                        </div>
-
-                        <TextInput
-                            id="signup-phone"
-                            label="Phone Number"
-                            type="tel"
-                            inputMode="numeric"
-                            placeholder="Enter your phone number"
-                            value={phone}
-                            onChange={(e) => handlePhoneChange(e.target.value)}
-                        />
-                    </div>
 
                     <PasswordInput
                         id="signup-password"

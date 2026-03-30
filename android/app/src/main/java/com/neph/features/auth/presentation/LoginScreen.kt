@@ -10,14 +10,18 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import com.neph.core.network.ApiException
+import com.neph.features.auth.data.AuthRepository
+import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.auth.data.LoginDestination
 import com.neph.features.auth.presentation.components.AuthFooterLinks
 import com.neph.features.auth.presentation.components.AuthFooterMode
 import com.neph.features.auth.presentation.components.SocialAuthButtons
@@ -32,13 +36,15 @@ import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.inputs.PasswordField
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.theme.LocalNephSpacing
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     onNavigateToSignup: () -> Unit,
     onLoginSuccess: () -> Unit,
+    onProfileCompletionRequired: () -> Unit,
+    onEmailVerificationRequired: () -> Unit,
     onNavigateToForgotPassword: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -56,21 +62,48 @@ fun LoginScreen(
         error = ""
         info = ""
 
-        if (email.trim().isEmpty() || password.trim().isEmpty()) {
+        val normalizedEmail = email.trim()
+        val normalizedPassword = password.trim()
+
+        if (normalizedEmail.isEmpty() || normalizedPassword.isEmpty()) {
             error = "Please fill in both email and password."
             return
         }
 
-        if (!isValidEmail(email)) {
+        if (!isValidEmail(normalizedEmail)) {
             error = "Please enter a valid email address."
             return
         }
 
         loading = true
         scope.launch {
-            delay(600)
-            loading = false
-            onLoginSuccess()
+            try {
+                when (
+                    AuthRepository.login(
+                        email = normalizedEmail,
+                        password = password,
+                        rememberMe = rememberMe
+                    )
+                ) {
+                    LoginDestination.PROFILE -> onLoginSuccess()
+                    LoginDestination.COMPLETE_PROFILE -> onProfileCompletionRequired()
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (errorResponse: ApiException) {
+                if (errorResponse.code == "EMAIL_NOT_VERIFIED") {
+                    AuthSessionStore.setPendingVerificationEmail(normalizedEmail)
+                    onEmailVerificationRequired()
+                } else {
+                    error = errorResponse.message.ifBlank { "Could not complete login. Please try again." }
+                }
+            } catch (_: IllegalStateException) {
+                error = "Could not complete login. Please try again."
+            } catch (_: Exception) {
+                error = "Something went wrong while logging in. Please try again."
+            } finally {
+                loading = false
+            }
         }
     }
 

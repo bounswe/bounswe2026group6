@@ -9,13 +9,13 @@ type AppShellProps = {
 
 export function AppShell({ title, children }: AppShellProps) {
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="app-shell">
             <TopNavbar />
-            <main className="py-8">
+            <main className="app-shell-main">
                 <PageContainer>
                     {title ? (
-                        <div className="mb-6">
-                            <h1 className="text-3xl font-bold text-gray-800">{title}</h1>
+                        <div className="app-shell-title-wrap">
+                            <h1 className="app-shell-title">{title}</h1>
                         </div>
                     ) : null}
                     {children}

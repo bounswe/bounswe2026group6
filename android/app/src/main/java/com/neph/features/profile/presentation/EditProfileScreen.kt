@@ -1,34 +1,55 @@
 package com.neph.features.profile.presentation
 
 import android.text.format.DateFormat
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
+import com.neph.core.network.ApiException
+import com.neph.features.auth.util.countryCodeOptions
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.profile.data.bloodTypeOptions
+import com.neph.features.profile.data.combinePhoneNumber
+import com.neph.features.profile.data.locationData
+import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseBirthDateToMillis
+import com.neph.features.profile.data.parseListField
 import com.neph.features.profile.data.sanitizeDecimalInput
+import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
 import com.neph.features.profile.presentation.components.GenderSelector
 import com.neph.features.profile.presentation.components.LocationSelector
-import com.neph.features.profile.data.bloodTypeOptions
-import com.neph.features.profile.data.locationData
 import com.neph.ui.components.buttons.PrimaryButton
+import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
-import com.neph.ui.components.inputs.*
+import com.neph.ui.components.inputs.AppDropdown
+import com.neph.ui.components.inputs.AppTextArea
+import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.layout.AppScaffold
 import com.neph.ui.theme.LocalNephSpacing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 fun EditProfileScreen(
@@ -36,77 +57,157 @@ fun EditProfileScreen(
     onNavigateBack: () -> Unit
 ) {
     var profile by remember { mutableStateOf(ProfileRepository.getProfile()) }
-    var heightText by remember { mutableStateOf("") }
-    var weightText by remember { mutableStateOf("") }
+    val initialPhoneParts = remember { normalizePhoneParts(profile.phone) }
+
     var loading by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        val p = ProfileRepository.getProfile()
-        profile = p
-        heightText = p.height.toEditableString()
-        weightText = p.weight.toEditableString()
-    }
-
-    var chronicFiles by remember { mutableStateOf<List<String>>(emptyList()) }
-    var allergyFiles by remember { mutableStateOf<List<String>>(emptyList()) }
-
+    var error by rememberSaveable { mutableStateOf("") }
+    var info by rememberSaveable { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
 
+    var countryCode by rememberSaveable { mutableStateOf(initialPhoneParts.countryCode) }
+    var phone by rememberSaveable { mutableStateOf(initialPhoneParts.phone) }
+    var heightText by rememberSaveable { mutableStateOf(profile.height.toEditableString()) }
+    var weightText by rememberSaveable { mutableStateOf(profile.weight.toEditableString()) }
+
+    val scope = rememberCoroutineScope()
     val spacing = LocalNephSpacing.current
 
-    // FILE PICKERS
-    val chronicLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let { chronicFiles = chronicFiles + it.toString() }
+    LaunchedEffect(Unit) {
+        try {
+            profile = ProfileRepository.fetchAndCacheRemoteProfile()
+            val phoneParts = normalizePhoneParts(profile.phone)
+            countryCode = phoneParts.countryCode
+            phone = phoneParts.phone
+            heightText = profile.height.toEditableString()
+            weightText = profile.weight.toEditableString()
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (_: ApiException) {
+            profile = ProfileRepository.getProfile()
+            val phoneParts = normalizePhoneParts(profile.phone)
+            countryCode = phoneParts.countryCode
+            phone = phoneParts.phone
+            heightText = profile.height.toEditableString()
+            weightText = profile.weight.toEditableString()
+        } catch (_: Exception) {
+            profile = ProfileRepository.getProfile()
+            val phoneParts = normalizePhoneParts(profile.phone)
+            countryCode = phoneParts.countryCode
+            phone = phoneParts.phone
+            heightText = profile.height.toEditableString()
+            weightText = profile.weight.toEditableString()
+            info = "Could not refresh your profile. Showing saved information."
+        }
     }
 
-    val allergyLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let { allergyFiles = allergyFiles + it.toString() }
+    fun handleSave() {
+        error = ""
+        info = ""
+
+        val (firstName, lastName) = splitFullName(profile.fullName.orEmpty())
+        if (firstName.isBlank() || lastName.isBlank()) {
+            error = "Please enter both first and last name."
+            return
+        }
+
+        if (phone.isBlank()) {
+            error = "Please enter your phone number."
+            return
+        }
+
+        val heightFloat = heightText.toFloatOrNull()
+        val weightFloat = weightText.toFloatOrNull()
+        if (heightFloat == null || heightFloat <= 0f || weightFloat == null || weightFloat <= 0f) {
+            error = "Height and weight must be valid positive numbers."
+            return
+        }
+
+        if (profile.birthDate.isNullOrBlank() || !profile.birthDate!!.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+            error = "Please enter a valid date of birth in YYYY-MM-DD format."
+            return
+        }
+
+        if (parseBirthDateToMillis(profile.birthDate) == null) {
+            error = "Please enter a valid calendar date."
+            return
+        }
+
+        if (profile.country.isNullOrBlank() || profile.city.isNullOrBlank() || profile.district.isNullOrBlank() || profile.neighborhood.isNullOrBlank()) {
+            error = "Please complete your location fields."
+            return
+        }
+
+        loading = true
+        scope.launch {
+            try {
+                profile = ProfileRepository.syncProfile(
+                    profile.copy(
+                        phone = combinePhoneNumber(countryCode, phone),
+                        height = heightFloat,
+                        weight = weightFloat
+                    )
+                )
+                val phoneParts = normalizePhoneParts(profile.phone)
+                countryCode = phoneParts.countryCode
+                phone = phoneParts.phone
+                heightText = profile.height.toEditableString()
+                weightText = profile.weight.toEditableString()
+                info = "Profile updated successfully."
+                onSave(profile)
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (errorResponse: ApiException) {
+                error = errorResponse.message.ifBlank { "Could not save your profile. Please try again." }
+            } catch (_: Exception) {
+                error = "Something went wrong while saving your profile. Please try again."
+            } finally {
+                loading = false
+            }
+        }
     }
 
     AppScaffold(title = "Edit Profile", onNavigateBack = onNavigateBack) {
-
         Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
-
-            // ───── AVATAR ─────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        profile.fullName?.ifEmpty { "User" } ?: "User",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Text(
-                        profile.email?.ifEmpty { "No email" } ?: "No email",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            // ───── ACCOUNT ─────
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                     SectionHeader(title = "Account Information")
 
-                    Text(
-                        "Used for login & emergency contact",
-                        style = MaterialTheme.typography.bodySmall
+                    AppTextField(
+                        value = profile.fullName.orEmpty(),
+                        onValueChange = { profile = profile.copy(fullName = it) },
+                        label = "Full Name"
                     )
 
-                    Text("Email: ${profile.email ?: "-"}")
-                    Text("Phone: ${profile.phone ?: "-"}")
+                    AppTextField(
+                        value = profile.email.orEmpty(),
+                        onValueChange = {},
+                        label = "Email",
+                        enabled = false
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                        AppDropdown(
+                            value = countryCode,
+                            onValueChange = { countryCode = it },
+                            label = "Code",
+                            options = countryCodeOptions,
+                            modifier = Modifier.weight(0.42f),
+                            selectedTextMapper = { it.value }
+                        )
+
+                        AppTextField(
+                            value = phone,
+                            onValueChange = { phone = it.filter(Char::isDigit) },
+                            label = "Phone Number",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            modifier = Modifier.weight(0.58f)
+                        )
+                    }
                 }
             }
 
-            // ───── PHYSICAL ─────
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-
                     SectionHeader(title = "Physical Information")
 
                     Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
@@ -128,7 +229,7 @@ fun EditProfileScreen(
                     }
 
                     GenderSelector(
-                        value = profile.gender ?: "",
+                        value = profile.gender.orEmpty(),
                         onValueChange = { profile = profile.copy(gender = it) }
                     )
 
@@ -138,8 +239,8 @@ fun EditProfileScreen(
                         horizontalArrangement = Arrangement.spacedBy(spacing.sm)
                     ) {
                         AppTextField(
-                            value = profile.birthDate ?: "",
-                            onValueChange = { profile = profile.copy(birthDate = it.ifBlank { null }) },
+                            value = profile.birthDate.orEmpty(),
+                            onValueChange = { profile = profile.copy(birthDate = it.takeIf(String::isNotBlank)) },
                             label = "Date of Birth",
                             placeholder = "YYYY-MM-DD",
                             modifier = Modifier.weight(1f)
@@ -148,17 +249,16 @@ fun EditProfileScreen(
                             Text("Pick date")
                         }
                     }
+                    HelperText(text = "The backend stores your age, so date of birth is kept locally and synced as age.")
                 }
             }
 
-            // ───── MEDICAL ─────
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-
                     SectionHeader(title = "Medical Information")
 
                     AppDropdown(
-                        value = profile.bloodType ?: "",
+                        value = profile.bloodType.orEmpty(),
                         onValueChange = { profile = profile.copy(bloodType = it) },
                         label = "Blood Type",
                         options = bloodTypeOptions,
@@ -166,213 +266,99 @@ fun EditProfileScreen(
                     )
 
                     AppTextArea(
-                        value = profile.medicalHistory ?: "",
+                        value = profile.medicalHistory.orEmpty(),
                         onValueChange = { profile = profile.copy(medicalHistory = it) },
                         label = "Medical History"
                     )
 
-                    // ───── CHRONIC ─────
-                    Text("Chronic Diseases", style = MaterialTheme.typography.labelLarge)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Upload document")
-
-                        Text(
-                            "Upload",
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable {
-                                chronicLauncher.launch("*/*")
-                            }
-                        )
-                    }
-
-                    AppTextField(
-                        value = profile.chronicDiseases ?: "",
+                    AppTextArea(
+                        value = profile.chronicDiseases.orEmpty(),
                         onValueChange = { profile = profile.copy(chronicDiseases = it) },
                         label = "Chronic Diseases"
                     )
 
-                    chronicFiles.forEach {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text("📄 ${it.substringAfterLast("/")}")
-                                Text("Pending Verification", color = MaterialTheme.colorScheme.error)
-                            }
-
-                            Text(
-                                "Remove",
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.clickable {
-                                    chronicFiles = chronicFiles - it
-                                }
-                            )
-                        }
-                    }
-
-                    // ───── ALLERGIES ─────
-                    Text("Allergies", style = MaterialTheme.typography.labelLarge)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Upload document")
-
-                        Text(
-                            "Upload",
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable {
-                                allergyLauncher.launch("*/*")
-                            }
-                        )
-                    }
-
-                    AppTextField(
-                        value = profile.allergies ?: "",
+                    AppTextArea(
+                        value = profile.allergies.orEmpty(),
                         onValueChange = { profile = profile.copy(allergies = it) },
                         label = "Allergies"
                     )
 
-                    allergyFiles.forEach {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text("📄 ${it.substringAfterLast("/")}")
-                                Text("Pending Verification", color = MaterialTheme.colorScheme.error)
-                            }
-
-                            Text(
-                                "Remove",
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.clickable {
-                                    allergyFiles = allergyFiles - it
-                                }
-                            )
-                        }
-                    }
+                    HelperText(text = "Document upload is still unavailable because the backend upload flow does not exist yet.")
                 }
             }
 
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                    SectionHeader(title = "Profession")
 
-                    // ───── PROFESSION ─────
-                    val professionOptions = listOf(
-                        "Doctor",
-                        "Firefighter",
-                        "Nurse",
-                        "Engineer",
-                        "Volunteer"
+                    AppTextField(
+                        value = profile.profession.orEmpty(),
+                        onValueChange = { value ->
+                            profile = profile.copy(profession = value.takeIf(String::isNotBlank))
+                        },
+                        label = "Profession",
+                        placeholder = "Enter your profession"
                     )
 
-                    Text("Profession", style = MaterialTheme.typography.titleMedium)
-
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        professionOptions.forEach { option ->
-                            FilterChip(
-                                selected = profile.profession == option,
-                                onClick = {
-                                    val next =
-                                        if (profile.profession == option) null else option
-                                    profile = profile.copy(profession = next)
-                                },
-                                label = { Text(option) }
-                            )
-                        }
-                    }
-
-                    val expertiseOptions = listOf(
-                        "First Aid",
-                        "Driving",
-                        "Search & Rescue",
-                        "Cooking",
-                        "Logistics"
+                    AppTextArea(
+                        value = profile.expertise.joinToString(", "),
+                        onValueChange = { value ->
+                            profile = profile.copy(expertise = parseListField(value))
+                        },
+                        label = "Expertise (optional — comma-separated)"
                     )
-
-                    Text("Expertise (optional)", style = MaterialTheme.typography.titleMedium)
-
-                    Column {
-                        expertiseOptions.forEach { skill ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = profile.expertise.contains(skill),
-                                    onCheckedChange = { checked ->
-                                        val next = if (checked) {
-                                            profile.expertise + skill
-                                        } else {
-                                            profile.expertise - skill
-                                        }
-                                        profile = profile.copy(expertise = next)
-                                    }
-                                )
-                                Text(skill)
-                            }
-                        }
-                    }
                 }
             }
 
-            // ───── LOCATION ─────
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-
                     SectionHeader(title = "Location")
 
                     LocationSelector(
-                        country = profile.country ?: "",
-                        city = profile.city ?: "",
-                        district = profile.district ?: "",
-                        neighborhood = profile.neighborhood ?: "",
-                        onCountryChange = { profile = profile.copy(country = it, city = "", district = "", neighborhood = "") },
-                        onCityChange = { profile = profile.copy(city = it, district = "", neighborhood = "") },
-                        onDistrictChange = { profile = profile.copy(district = it, neighborhood = "") },
-                        onNeighborhoodChange = { profile = profile.copy(neighborhood = it) },
+                        country = profile.country.orEmpty(),
+                        city = profile.city.orEmpty(),
+                        district = profile.district.orEmpty(),
+                        neighborhood = profile.neighborhood.orEmpty(),
+                        onCountryChange = {
+                            profile = profile.copy(country = it, city = "", district = "", neighborhood = "")
+                        },
+                        onCityChange = {
+                            profile = profile.copy(city = it, district = "", neighborhood = "")
+                        },
+                        onDistrictChange = {
+                            profile = profile.copy(district = it, neighborhood = "")
+                        },
+                        onNeighborhoodChange = {
+                            profile = profile.copy(neighborhood = it)
+                        },
                         locationData = locationData
                     )
 
                     AppTextField(
-                        value = profile.extraAddress ?: "",
+                        value = profile.extraAddress.orEmpty(),
                         onValueChange = { profile = profile.copy(extraAddress = it) },
                         label = "Extra Address"
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AppToggleSwitch(
-                            checked = profile.shareLocation ?: false,
-                            onCheckedChange = { profile = profile.copy(shareLocation = it) },
-                            label = "Share Current Location"
-                        )
-                    }
+                    AppToggleSwitch(
+                        checked = profile.shareLocation ?: false,
+                        onCheckedChange = { profile = profile.copy(shareLocation = it) },
+                        label = "Share Current Location"
+                    )
                 }
             }
 
-            // ───── SAVE ─────
+            if (error.isNotBlank()) {
+                HelperText(text = error)
+            }
+
+            if (info.isNotBlank()) {
+                HelperText(text = info)
+            }
+
             PrimaryButton(
                 text = "Save Changes",
-                onClick = {
-                    profile = profile.copy(
-                        height = heightText.toFloatOrNull(),
-                        weight = weightText.toFloatOrNull()
-                    )
-                    ProfileRepository.saveProfile(profile)
-                    onSave(profile)
-                },
+                onClick = ::handleSave,
                 loading = loading
             )
         }
