@@ -1,4 +1,5 @@
 const express = require('express');
+const { requireAuth } = require('../auth/middleware');
 const {
   createHelpRequest,
   listHelpRequests,
@@ -7,6 +8,8 @@ const {
 } = require('./controller');
 
 const helpRequestsRouter = express.Router();
+
+helpRequestsRouter.use(requireAuth);
 
 helpRequestsRouter.post('/', createHelpRequest);
 helpRequestsRouter.get('/', listHelpRequests);

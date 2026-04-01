@@ -4,14 +4,13 @@ const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
-const { requireAuth } = require('../../../../src/modules/auth/middleware');
 const { helpRequestsRouter } = require('../../../../src/modules/help-requests/routes');
 const { query } = require('../../../../src/db/pool');
 
 function createTestApp() {
 	const app = express();
 	app.use(express.json());
-	app.use('/api/help-requests', requireAuth, helpRequestsRouter);
+	app.use('/api/help-requests', helpRequestsRouter);
 	return app;
 }
 
