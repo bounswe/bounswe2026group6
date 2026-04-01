@@ -1,6 +1,7 @@
 package com.neph.ui.components.display
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
@@ -14,7 +15,7 @@ import com.neph.ui.theme.LocalNephSpacing
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     val spacing = LocalNephSpacing.current
 

@@ -21,7 +21,10 @@ import com.neph.ui.theme.NephTheme
 fun HomeScreen(
     onRequestHelp: () -> Unit,
     onNavigateToRoute: (String) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenSettings: (() -> Unit)?,
+    onProfileClick: () -> Unit,
+    profileBadgeText: String,
+    isAuthenticated: Boolean,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
@@ -30,8 +33,16 @@ fun HomeScreen(
         title = "NEPH",
         currentRoute = Routes.Home.route,
         onNavigateToRoute = onNavigateToRoute,
+        drawerItems = if (isAuthenticated) {
+            Routes.authenticatedDrawerItems
+        } else {
+            Routes.guestDrawerItems
+        },
         modifier = modifier,
         onOpenSettings = onOpenSettings,
+        onProfileClick = onProfileClick,
+        profileBadgeText = profileBadgeText,
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
         contentMaxWidth = 360.dp,
         contentAlignment = Alignment.Center
     ) {
@@ -63,7 +74,10 @@ private fun HomeScreenPreview() {
         HomeScreen(
             onRequestHelp = {},
             onNavigateToRoute = {},
-            onOpenSettings = {}
+            onOpenSettings = {},
+            onProfileClick = {},
+            profileBadgeText = "PP",
+            isAuthenticated = true
         )
     }
 }

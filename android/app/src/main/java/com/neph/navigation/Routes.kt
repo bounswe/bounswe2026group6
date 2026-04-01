@@ -5,10 +5,11 @@ sealed class Routes(
     val drawerLabel: String? = null
 ) {
     data object Home : Routes("home", "Home")
+    data object News : Routes("news", "News & Announcements")
     data object RequestHelp : Routes("request_help")
     data object MyHelpRequests : Routes("my_help_requests", "My Help Requests")
     data object AssignedRequest : Routes("assigned_request", "Assigned Request")
-    data object EmergencyInfo : Routes("emergency_info", "Emergency Info")
+    data object EmergencyInfo : Routes("emergency_info", "Emergency Numbers")
     data object GatheringAreas : Routes("gathering_areas", "Gathering Areas")
     data object Notifications : Routes("notifications", "Notifications")
     data object Settings : Routes("settings", "Settings")
@@ -25,8 +26,9 @@ sealed class Routes(
     data object EditProfile : Routes("edit_profile")
 
     companion object {
-        val drawerItems = listOf(
+        val authenticatedDrawerItems = listOf(
             Home,
+            News,
             MyHelpRequests,
             AssignedRequest,
             Profile,
@@ -35,5 +37,13 @@ sealed class Routes(
             Notifications,
             Settings
         )
+
+        val guestDrawerItems = listOf(
+            Home,
+            News,
+            EmergencyInfo
+        )
+
+        val drawerItems = authenticatedDrawerItems
     }
 }

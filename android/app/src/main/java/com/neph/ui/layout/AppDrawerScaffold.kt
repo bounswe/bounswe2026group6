@@ -1,15 +1,22 @@
 package com.neph.ui.layout
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DrawerValue
@@ -42,8 +49,12 @@ fun AppDrawerScaffold(
     title: String,
     currentRoute: String,
     onNavigateToRoute: (String) -> Unit,
+    drawerItems: List<Routes> = Routes.drawerItems,
     modifier: Modifier = Modifier,
     onOpenSettings: (() -> Unit)? = null,
+    onProfileClick: (() -> Unit)? = null,
+    profileBadgeText: String = "PP",
+    profileLabel: String = "Profile",
     contentMaxWidth: Dp = 960.dp,
     contentAlignment: Alignment = Alignment.TopCenter,
     content: @Composable () -> Unit
@@ -56,38 +67,94 @@ fun AppDrawerScaffold(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Spacer(modifier = Modifier.height(spacing.lg))
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Spacer(modifier = Modifier.height(spacing.lg))
 
-                Text(
-                    text = "NEPH",
-                    modifier = Modifier.padding(horizontal = spacing.xl),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                    Text(
+                        text = "NEPH",
+                        modifier = Modifier.padding(horizontal = spacing.xl),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
 
-                Spacer(modifier = Modifier.height(spacing.lg))
+                    Spacer(modifier = Modifier.height(spacing.lg))
 
-                Routes.drawerItems.forEach { item ->
-                    NavigationDrawerItem(
-                        label = {
-                            Text(text = item.drawerLabel.orEmpty())
-                        },
-                        selected = currentRoute == item.route,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                if (currentRoute != item.route) {
-                                    onNavigateToRoute(item.route)
+                    drawerItems.forEach { item ->
+                        NavigationDrawerItem(
+                            label = {
+                                Text(text = item.drawerLabel.orEmpty())
+                            },
+                            selected = currentRoute == item.route,
+                            onClick = {
+                                scope.launch {
+                                    drawerState.close()
+                                    if (currentRoute != item.route) {
+                                        onNavigateToRoute(item.route)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                            colors = NavigationDrawerItemDefaults.colors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    if (onProfileClick != null) {
+                        val isGuestPlaceholder = profileBadgeText.isBlank()
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        drawerState.close()
+                                        onProfileClick()
+                                    }
+                                }
+                                .padding(horizontal = spacing.xl, vertical = spacing.lg),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(spacing.md)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(spacing.xxxl)
+                                    .background(
+                                        color = if (isGuestPlaceholder) {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        } else {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        },
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (profileBadgeText.isNotBlank()) {
+                                    Text(
+                                        text = profileBadgeText,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Person,
+                                        contentDescription = "Guest profile placeholder",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
-                        },
-                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
+
+                            Text(
+                                text = profileLabel,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
             }
         }
