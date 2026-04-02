@@ -14,13 +14,17 @@ import { countryCodeOptions } from "@/lib/countryCodes";
 import { getAccessToken, SIGNUP_DRAFT_KEY } from "@/lib/auth";
 import {
     buildAddress,
+    calculateAgeFromBirthDate,
     parseListField,
     patchMyHealth,
     patchMyLocation,
     patchMyPhysical,
     patchMyPrivacy,
+    patchMyProfession,
     patchMyProfile,
+    putMyExpertiseAreas,
     splitFullName,
+    validateExpertiseAreas,
 } from "@/lib/profile";
 
 type ProfileForm = {
@@ -33,6 +37,8 @@ type ProfileForm = {
     bloodType: string;
     birthDate: string;
     medicalHistory: string;
+    profession: string;
+    expertise: string;
     country: string;
     city: string;
     district: string;
@@ -109,6 +115,8 @@ const initialForm: ProfileForm = {
     bloodType: "",
     birthDate: "",
     medicalHistory: "",
+    profession: "",
+    expertise: "",
     country: "",
     city: "",
     district: "",
@@ -206,6 +214,21 @@ export default function CompleteProfileForm() {
             return;
         }
 
+        const expertiseAreas = parseListField(form.expertise);
+        const expertiseValidationError = validateExpertiseAreas(expertiseAreas);
+
+        if (expertiseValidationError) {
+            setError(expertiseValidationError);
+            return;
+        }
+
+        const age = calculateAgeFromBirthDate(form.birthDate);
+
+        if (age === null) {
+            setError("Please enter a valid date of birth.");
+            return;
+        }
+
         if (!form.height || !form.weight || !form.country || !form.city) {
             setError("Please fill in all required fields.");
             return;
@@ -228,6 +251,7 @@ export default function CompleteProfileForm() {
             });
 
             await patchMyPhysical(token, {
+                age,
                 gender: form.gender || null,
                 height: Number(form.height),
                 weight: Number(form.weight),
@@ -251,6 +275,14 @@ export default function CompleteProfileForm() {
 
             await patchMyPrivacy(token, {
                 locationSharingEnabled: form.shareLocation,
+            });
+
+            await patchMyProfession(token, {
+                profession: form.profession.trim() || null,
+            });
+
+            await putMyExpertiseAreas(token, {
+                expertiseAreas,
             });
 
             sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
@@ -392,6 +424,27 @@ export default function CompleteProfileForm() {
                     value={form.medicalHistory}
                     onChange={(e) =>
                         setForm({ ...form, medicalHistory: e.target.value })
+                    }
+                />
+            </ProfileInfoRow>
+
+            <ProfileInfoRow label="Profession">
+                <TextInput
+                    id="profession"
+                    placeholder="Your profession"
+                    value={form.profession}
+                    onChange={(e) =>
+                        setForm({ ...form, profession: e.target.value })
+                    }
+                />
+
+                <TextArea
+                    id="expertise"
+                    label="Expertise (optional)"
+                    placeholder="Comma-separated expertise areas"
+                    value={form.expertise}
+                    onChange={(e) =>
+                        setForm({ ...form, expertise: e.target.value })
                     }
                 />
             </ProfileInfoRow>

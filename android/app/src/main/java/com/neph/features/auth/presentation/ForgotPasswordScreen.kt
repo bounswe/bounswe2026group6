@@ -14,6 +14,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import com.neph.core.network.ApiException
+import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.util.isValidEmail
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.TextActionButton
@@ -21,11 +23,12 @@ import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.theme.LocalNephSpacing
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
 fun ForgotPasswordScreen(
+    onNavigateToResetPassword: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -52,10 +55,19 @@ fun ForgotPasswordScreen(
 
         loading = true
         scope.launch {
-            delay(700)
-            loading = false
-            info =
-                "If an account exists for this email, a password reset link has been sent."
+            try {
+                info = AuthRepository.forgotPassword(email.trim())
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (errorResponse: ApiException) {
+                error = errorResponse.message.ifBlank {
+                    "Could not start the password reset flow. Please try again."
+                }
+            } catch (_: Exception) {
+                error = "Could not start the password reset flow. Please try again."
+            } finally {
+                loading = false
+            }
         }
     }
 
@@ -100,6 +112,11 @@ fun ForgotPasswordScreen(
                 text = "Send Reset Link",
                 onClick = ::handleSubmit,
                 loading = loading
+            )
+
+            TextActionButton(
+                text = "I have a reset link",
+                onClick = onNavigateToResetPassword
             )
 
             TextActionButton(

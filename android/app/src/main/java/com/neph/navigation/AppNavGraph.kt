@@ -12,6 +12,7 @@ import com.neph.features.auth.presentation.CompleteProfileScreen
 import com.neph.features.auth.presentation.ForgotPasswordScreen
 import com.neph.features.auth.presentation.LoginScreen
 import com.neph.features.auth.presentation.PrivacyPolicyScreen
+import com.neph.features.auth.presentation.ResetPasswordScreen
 import com.neph.features.auth.presentation.SignupScreen
 import com.neph.features.auth.presentation.TermsOfServiceScreen
 import com.neph.features.auth.presentation.VerifyEmailScreen
@@ -369,6 +370,25 @@ fun AppNavGraph(
 
         composable(Routes.ForgotPassword.route) {
             ForgotPasswordScreen(
+                onNavigateToResetPassword = {
+                    navController.navigate(Routes.ResetPassword.route) {
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Routes.ResetPassword.route) {
+            ResetPasswordScreen(
+                onResetSuccess = {
+                    navController.navigate(Routes.Login.route) {
+                        popUpTo(Routes.ForgotPassword.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateBack = {
                     navController.popBackStack()
                 }

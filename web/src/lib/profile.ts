@@ -36,6 +36,13 @@ export type BackendProfileResponse = {
         longitude: number | null;
         lastUpdated: string | null;
     };
+    expertise: Array<{
+        expertiseId: string;
+        profession: string | null;
+        expertiseArea: string | null;
+        expertiseAreas: string[];
+        isVerified: boolean;
+    }>;
 };
 
 export type EditableProfileData = {
@@ -43,6 +50,8 @@ export type EditableProfileData = {
     email: string;
     phone: string;
     countryCode: string;
+    profession: string;
+    expertise: string;
     height: string;
     weight: string;
     bloodType: string;
@@ -128,6 +137,23 @@ export function parseListField(value: string) {
         .filter(Boolean);
 }
 
+export function validateExpertiseAreas(expertiseAreas: string[]) {
+    if (expertiseAreas.length > 5) {
+        return "You can add at most 5 expertise areas.";
+    }
+
+    const normalized = expertiseAreas.map((area) => area.toLocaleLowerCase());
+    if (new Set(normalized).size !== normalized.length) {
+        return "Expertise areas must be unique.";
+    }
+
+    if (expertiseAreas.some((area) => area.length > 35)) {
+        return "Each expertise area must be 35 characters or fewer.";
+    }
+
+    return null;
+}
+
 export function serializeListField(values?: string[] | null) {
     return (values || []).join(", ");
 }
@@ -143,17 +169,55 @@ export function buildAddress(parts: {
         .join(", ");
 }
 
+export function calculateAgeFromBirthDate(birthDate: string) {
+    const normalized = birthDate.trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+        return null;
+    }
+
+    const [year, month, day] = normalized.split("-").map(Number);
+
+    if (!year || !month || !day) {
+        return null;
+    }
+
+    const birthDateValue = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+        birthDateValue.getUTCFullYear() !== year ||
+        birthDateValue.getUTCMonth() !== month - 1 ||
+        birthDateValue.getUTCDate() !== day
+    ) {
+        return null;
+    }
+
+    const today = new Date();
+    let age = today.getUTCFullYear() - year;
+    const monthDiff = today.getUTCMonth() - (month - 1);
+    const dayDiff = today.getUTCDate() - day;
+
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+        age -= 1;
+    }
+
+    return age >= 0 ? age : null;
+}
+
 export function mapBackendProfileToEditableProfile(
     profile: BackendProfileResponse,
     email: string
 ): EditableProfileData {
     const phoneParts = normalizePhoneParts(profile.profile.phoneNumber);
+    const expertise = profile.expertise[0];
 
     return {
         fullName: joinFullName(profile.profile.firstName, profile.profile.lastName),
         email,
         phone: phoneParts.phone,
         countryCode: phoneParts.countryCode,
+        profession: expertise?.profession || "",
+        expertise: serializeListField(expertise?.expertiseAreas),
         height:
             profile.physicalInfo.height !== null && profile.physicalInfo.height !== undefined
                 ? String(profile.physicalInfo.height)
@@ -196,7 +260,12 @@ export async function patchMyProfile(
 
 export async function patchMyPhysical(
     token: string,
-    payload: { gender?: string | null; height?: number | null; weight?: number | null }
+    payload: {
+        age?: number | null;
+        gender?: string | null;
+        height?: number | null;
+        weight?: number | null;
+    }
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/physical", {
         method: "PATCH",
@@ -238,6 +307,28 @@ export async function patchMyPrivacy(
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/privacy", {
         method: "PATCH",
+        token,
+        body: payload,
+    });
+}
+
+export async function patchMyProfession(
+    token: string,
+    payload: { profession: string | null }
+) {
+    return apiRequest<BackendProfileResponse>("/profiles/me/profession", {
+        method: "PATCH",
+        token,
+        body: payload,
+    });
+}
+
+export async function putMyExpertiseAreas(
+    token: string,
+    payload: { expertiseAreas: string[] }
+) {
+    return apiRequest<BackendProfileResponse>("/profiles/me/expertise-areas", {
+        method: "PUT",
         token,
         body: payload,
     });

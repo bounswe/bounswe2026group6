@@ -43,7 +43,14 @@ export function LoginForm() {
         }
 
         const pathnameOnly = returnTo.split("#")[0].split("?")[0] || "/";
-        const blockedRoutes = new Set(["/", "/login", "/signup", "/forgot-password", "/verify-email"]);
+        const blockedRoutes = new Set([
+            "/",
+            "/login",
+            "/signup",
+            "/forgot-password",
+            "/reset-password",
+            "/verify-email",
+        ]);
         if (blockedRoutes.has(pathnameOnly)) {
             return null;
         }

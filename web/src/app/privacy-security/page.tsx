@@ -1,14 +1,14 @@
 import { Suspense } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthRouteGate } from "@/components/auth/AuthRouteGate";
-import ProfileView from "@/components/feature/profile/ProfileView";
+import PrivacySecurityView from "@/components/feature/settings/PrivacySecurityView";
 
-export default function ProfilePage() {
+export default function PrivacySecurityPage() {
     return (
         <Suspense>
             <AuthRouteGate mode="protected">
-                <AppShell title="Profile">
-                    <ProfileView />
+                <AppShell title="Privacy & Security">
+                    <PrivacySecurityView />
                 </AppShell>
             </AuthRouteGate>
         </Suspense>
