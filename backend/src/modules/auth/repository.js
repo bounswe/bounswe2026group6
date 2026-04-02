@@ -82,6 +82,18 @@ async function markEmailVerified(userId) {
   return result.rows[0];
 }
 
+async function updateUserPassword(userId, passwordHash) {
+  const result = await query(
+    `UPDATE users
+     SET password_hash = $2
+     WHERE user_id = $1 AND is_deleted = FALSE
+     RETURNING user_id, email`,
+    [userId, passwordHash]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function findAdminByUserId(userId) {
   const result = await query(
     `
@@ -179,6 +191,7 @@ module.exports = {
   findUserById,
   createUser,
   markEmailVerified,
+  updateUserPassword,
   findAdminByUserId,
   listUsers,
   listHelpRequests,

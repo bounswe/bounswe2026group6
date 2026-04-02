@@ -26,12 +26,12 @@ function validateSignupInput(body = {}) {
     };
   }
 
-if (!acceptedTerms) {
-  return {
-    code: 'VALIDATION_ERROR',
-    message: 'You must accept the terms to sign up',
-  };
-}
+  if (!acceptedTerms) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'You must accept the terms to sign up',
+    };
+  }
 
   return null;
 }
@@ -67,8 +67,29 @@ function validateVerificationInput(query = {}) {
   return null;
 }
 
+function validateResetPasswordInput(body = {}) {
+  const { token, newPassword } = body;
+
+  if (!token) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'Reset token is required',
+    };
+  }
+
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'New password must be at least 8 characters',
+    };
+  }
+
+  return null;
+}
+
 module.exports = {
   validateSignupInput,
   validateLoginInput,
   validateVerificationInput,
+  validateResetPasswordInput,
 };

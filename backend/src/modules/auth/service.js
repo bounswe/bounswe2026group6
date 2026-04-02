@@ -11,13 +11,15 @@ const {
   listHelpRequests,
   listAnnouncements,
   getBasicStats,
+  updateUserPassword,
 } = require('./repository');
-const { sendVerificationEmail } = require('../../config/mailer');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../../config/mailer');
 
 const { env } = require('../../config/env');
 const JWT_SECRET = env.jwt.secret;
 const ACCESS_TOKEN_EXPIRES_IN = '7d';
 const EMAIL_VERIFICATION_EXPIRES_IN = '1d';
+const RESET_PASSWORD_EXPIRES_IN = '1h';
 
 function buildAccessTokenPayload(user, adminRecord) {
   return {
@@ -46,13 +48,22 @@ function signEmailVerificationToken(user) {
   );
 }
 
-async function signupUser({ email, password, acceptedTerms }) {
+function signPasswordResetToken(user) {
+  return jwt.sign(
+    {
+      type: 'password-reset',
+      userId: user.user_id,
+      email: user.email,
+    },
+    JWT_SECRET,
+    { expiresIn: RESET_PASSWORD_EXPIRES_IN }
+  );
+}
 
-   const normalizedEmail = email.toLowerCase().trim();
-  //console.log('signupUser called with:', email);
-  
+async function signupUser({ email, password, acceptedTerms }) {
+  const normalizedEmail = email.toLowerCase().trim();
+
   const existingUser = await findUserByEmail(normalizedEmail);
-  //console.log('existingUser:', existingUser);
 
   if (existingUser) {
     const error = new Error('Email already exists');
@@ -62,7 +73,6 @@ async function signupUser({ email, password, acceptedTerms }) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const userId = uuidv4();
-  //console.log('creating user...');
 
   const createdUser = await createUser({
     userId,
@@ -70,14 +80,11 @@ async function signupUser({ email, password, acceptedTerms }) {
     passwordHash,
     acceptedTerms: Boolean(acceptedTerms),
   });
-  //console.log('user created:', createdUser);
 
   const verificationToken = signEmailVerificationToken(createdUser);
-  //console.log('sending email to:', createdUser.email);
 
   try {
     await sendVerificationEmail(createdUser.email, verificationToken);
-    //console.log('email sent successfully');
   } catch (emailError) {
     console.error('Email sending failed:', emailError);
     throw emailError;
@@ -226,6 +233,61 @@ async function resendVerificationEmail(email) {
   };
 }
 
+async function requestPasswordReset(email) {
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await findUserByEmail(normalizedEmail);
+
+  if (!user || user.is_deleted) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  const resetToken = signPasswordResetToken(user);
+  await sendPasswordResetEmail(user.email, resetToken);
+
+  return {
+    message: 'Password reset email sent. Please check your inbox.',
+  };
+}
+
+async function resetPassword({ token, newPassword }) {
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (_error) {
+    const error = new Error('Invalid or expired reset token');
+    error.code = 'INVALID_RESET_TOKEN';
+    throw error;
+  }
+
+  if (decoded.type !== 'password-reset' || !decoded.userId) {
+    const error = new Error('Invalid reset token');
+    error.code = 'INVALID_RESET_TOKEN';
+    throw error;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const updatedUser = await updateUserPassword(decoded.userId, passwordHash);
+
+  if (!updatedUser) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  return {
+    message: 'Password reset successfully. You can now log in with your new password.',
+  };
+}
+
+async function logoutUser() {
+  return {
+    message: 'Logged out successfully.',
+  };
+}
+
 module.exports = {
   signupUser,
   loginUser,
@@ -236,4 +298,7 @@ module.exports = {
   getAnnouncementsForAdmin,
   getStatsForAdmin,
   resendVerificationEmail,
+  requestPasswordReset,
+  resetPassword,
+  logoutUser,
 };

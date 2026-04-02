@@ -8,11 +8,15 @@ const {
   getAnnouncementsForAdmin,
   getStatsForAdmin,
   resendVerificationEmail,
+  requestPasswordReset,
+  resetPassword,
+  logoutUser,
 } = require('./service');
 const {
   validateSignupInput,
   validateLoginInput,
   validateVerificationInput,
+  validateResetPasswordInput,
 } = require('./validators');
 
 function getAuthInfo(_request, response) {
@@ -109,18 +113,19 @@ async function getMe(req, res) {
     const result = await getCurrentUser(req.user.userId);
 
     return res.status(200).json(result);
-} catch (error) {
-  if (error.code === 'USER_NOT_FOUND') {
-    return res.status(404).json({
-      code: error.code,
-      message: error.message,
+  } catch (error) {
+    if (error.code === 'USER_NOT_FOUND') {
+      return res.status(404).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
     });
   }
-  return res.status(500).json({
-    code: 'INTERNAL_ERROR',
-    message: 'Something went wrong',
-  });
-}
 }
 
 async function getAdminUsers(_req, res) {
@@ -187,6 +192,7 @@ async function resendVerification(req, res) {
     }
 
     const result = await resendVerificationEmail(email);
+
     return res.status(200).json(result);
   } catch (error) {
     if (
@@ -206,6 +212,80 @@ async function resendVerification(req, res) {
   }
 }
 
+async function forgotPassword(req, res) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Email is required',
+      });
+    }
+
+    const result = await requestPasswordReset(email);
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error.code === 'USER_NOT_FOUND') {
+      return res.status(404).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
+async function resetPasswordHandler(req, res) {
+  try {
+    const validationError = validateResetPasswordInput(req.body);
+
+    if (validationError) {
+      return res.status(400).json(validationError);
+    }
+
+    const result = await resetPassword(req.body);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error.code === 'INVALID_RESET_TOKEN') {
+      return res.status(400).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error.code === 'USER_NOT_FOUND') {
+      return res.status(404).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
+async function logout(req, res) {
+  try {
+    const result = await logoutUser();
+
+    return res.status(200).json(result);
+  } catch (_error) {
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
 module.exports = {
   getAuthInfo,
   signup,
@@ -217,4 +297,7 @@ module.exports = {
   getAdminAnnouncements,
   getAdminStats,
   resendVerification,
+  forgotPassword,
+  resetPasswordHandler,
+  logout,
 };

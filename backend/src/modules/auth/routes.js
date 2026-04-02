@@ -21,20 +21,23 @@ const {
   getAdminAnnouncements,
   getAdminStats,
   resendVerification,
+  forgotPassword,
+  resetPasswordHandler,
+  logout,
 } = require('./controller');
 const { requireAuth, requireAdmin } = require('./middleware');
 
 const authRouter = express.Router();
 
 authRouter.get('/', getAuthInfo);
-
 authRouter.post('/signup', authLimiter, signup);
 authRouter.post('/login', authLimiter, login);
 authRouter.get('/verify-email', verifyEmail);
 authRouter.post('/resend-verification', authLimiter, resendVerification);
-
+authRouter.post('/forgot-password', authLimiter, forgotPassword);
+authRouter.post('/reset-password', authLimiter, resetPasswordHandler);
+authRouter.post('/logout', requireAuth, logout);
 authRouter.get('/me', requireAuth, getMe);
-
 authRouter.get('/admin/users', requireAuth, requireAdmin, getAdminUsers);
 authRouter.get('/admin/help-requests', requireAuth, requireAdmin, getAdminHelpRequests);
 authRouter.get('/admin/announcements', requireAuth, requireAdmin, getAdminAnnouncements);
