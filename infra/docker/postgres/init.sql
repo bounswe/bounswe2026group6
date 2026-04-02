@@ -208,8 +208,18 @@ CREATE TABLE news_announcements (
 CREATE TABLE help_requests (
     request_id             VARCHAR(64) PRIMARY KEY,
     user_id                VARCHAR(64) NOT NULL,
+    help_types             TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    other_help_text        TEXT NOT NULL DEFAULT '',
+    affected_people_count  INTEGER NOT NULL DEFAULT 1,
+    risk_flags             TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    vulnerable_groups      TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     need_type              VARCHAR(200) NOT NULL,
     description            TEXT,
+    blood_type             VARCHAR(10),
+    contact_full_name      VARCHAR(200) NOT NULL,
+    contact_phone          BIGINT NOT NULL,
+    contact_alternative_phone BIGINT,
+    consent_given          BOOLEAN NOT NULL DEFAULT FALSE,
     status                 request_status NOT NULL DEFAULT 'PENDING',
     created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     resolved_at            TIMESTAMP,
@@ -224,14 +234,31 @@ CREATE TABLE help_requests (
         CHECK (
             resolved_at IS NULL
             OR resolved_at >= created_at
+        ),
+
+    CONSTRAINT chk_help_request_affected_people_count
+        CHECK (affected_people_count >= 1),
+
+    CONSTRAINT chk_help_request_contact_phone
+        CHECK (contact_phone BETWEEN 5000000000 AND 5999999999),
+
+    CONSTRAINT chk_help_request_contact_alternative_phone
+        CHECK (
+            contact_alternative_phone IS NULL
+            OR contact_alternative_phone BETWEEN 5000000000 AND 5999999999
         )
 );
 
 CREATE TABLE request_locations (
     location_id            VARCHAR(64) PRIMARY KEY,
     request_id             VARCHAR(64) NOT NULL UNIQUE,
-    latitude               DOUBLE PRECISION NOT NULL,
-    longitude              DOUBLE PRECISION NOT NULL,
+    country                VARCHAR(100) NOT NULL,
+    city                   VARCHAR(100) NOT NULL,
+    district               VARCHAR(100) NOT NULL,
+    neighborhood           VARCHAR(100) NOT NULL,
+    extra_address          VARCHAR(500),
+    latitude               DOUBLE PRECISION,
+    longitude              DOUBLE PRECISION,
     is_gps_location        BOOLEAN NOT NULL DEFAULT FALSE,
     is_last_known          BOOLEAN NOT NULL DEFAULT FALSE,
     captured_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -241,11 +268,17 @@ CREATE TABLE request_locations (
         REFERENCES help_requests(request_id)
         ON DELETE CASCADE,
 
-    CONSTRAINT chk_request_location_latitude
-        CHECK (latitude BETWEEN -90 AND 90),
-
-    CONSTRAINT chk_request_location_longitude
-        CHECK (longitude BETWEEN -180 AND 180)
+    CONSTRAINT chk_request_location_coordinates
+        CHECK (
+            (latitude IS NULL AND longitude IS NULL)
+            OR
+            (
+                latitude IS NOT NULL
+                AND longitude IS NOT NULL
+                AND latitude BETWEEN -90 AND 90
+                AND longitude BETWEEN -180 AND 180
+            )
+        )
 );
 
 

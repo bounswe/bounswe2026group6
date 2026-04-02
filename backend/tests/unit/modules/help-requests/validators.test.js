@@ -68,143 +68,133 @@ describe('help-requests validators', () => {
 	});
 
 	describe('validateCreateHelpRequest', () => {
-		test('defaults needType to general when missing', () => {
-			const { errors, warnings, value } = validateCreateHelpRequest({});
+		function buildPayload() {
+			return {
+				helpTypes: ['first_aid', 'fire_brigade'],
+				otherHelpText: '',
+				affectedPeopleCount: 3,
+				riskFlags: ['fire', 'electric_hazard'],
+				vulnerableGroups: ['children', 'pregnant'],
+				description: 'Apartment entrance blocked, one person bleeding.',
+				bloodType: 'A+',
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Bina B, 3. kat, arka giris',
+				},
+				contact: {
+					fullName: 'Ayse Yilmaz',
+					phone: 5052318546,
+					alternativePhone: 5321234567,
+				},
+				consentGiven: true,
+			};
+		}
+
+		test('accepts the new help-request payload shape', () => {
+			const { errors, warnings, value } = validateCreateHelpRequest(buildPayload());
 
 			expect(errors).toHaveLength(0);
-			expect(value.needType).toBe('general');
-			expect(warnings).toContainEqual(expect.stringContaining('defaulting to'));
-		});
-
-		test('accepts provided needType', () => {
-			const { errors, value } = validateCreateHelpRequest({ needType: 'medical' });
-
-			expect(errors).toHaveLength(0);
-			expect(value.needType).toBe('medical');
-		});
-
-		test('trims needType', () => {
-			const { value } = validateCreateHelpRequest({ needType: '  fire  ' });
-
-			expect(value.needType).toBe('fire');
-		});
-
-		test('rejects needType longer than 200 characters', () => {
-			const { errors } = validateCreateHelpRequest({ needType: 'a'.repeat(201) });
-
-			expect(errors.length).toBeGreaterThan(0);
-			expect(errors[0]).toContain('200 characters');
-		});
-
-		test('trims and accepts description', () => {
-			const { value } = validateCreateHelpRequest({ description: '  help me  ' });
-
-			expect(value.description).toBe('help me');
-		});
-
-		test('sets description to null for empty string', () => {
-			const { value } = validateCreateHelpRequest({ description: '   ' });
-
-			expect(value.description).toBeNull();
-		});
-
-		test('sets description to null when not a string', () => {
-			const { value } = validateCreateHelpRequest({ description: 123 });
-
-			expect(value.description).toBeNull();
-		});
-
-		test('defaults isSavedLocally to false', () => {
-			const { value } = validateCreateHelpRequest({});
-
+			expect(warnings).toEqual([]);
+			expect(value.helpTypes).toEqual(['first_aid', 'fire_brigade']);
+			expect(value.needType).toBe('first_aid');
+			expect(value.affectedPeopleCount).toBe(3);
+			expect(value.location.city).toBe('istanbul');
+			expect(value.contact.fullName).toBe('Ayse Yilmaz');
+			expect(value.consentGiven).toBe(true);
 			expect(value.isSavedLocally).toBe(false);
 		});
 
-		test('accepts boolean isSavedLocally', () => {
-			const { value } = validateCreateHelpRequest({ isSavedLocally: true });
+		test('rejects missing required fields', () => {
+			const { errors } = validateCreateHelpRequest({});
 
-			expect(value.isSavedLocally).toBe(true);
+			expect(errors).toEqual(expect.arrayContaining([
+				expect.stringContaining('`helpTypes` is required'),
+				expect.stringContaining('`affectedPeopleCount`'),
+				expect.stringContaining('`description` is required'),
+				expect.stringContaining('`location` is required'),
+				expect.stringContaining('`contact` is required'),
+				expect.stringContaining('`consentGiven`'),
+			]));
 		});
 
-		test('defaults isSavedLocally to false for non-boolean', () => {
-			const { value } = validateCreateHelpRequest({ isSavedLocally: 'yes' });
+		test('rejects empty helpTypes', () => {
+			const payload = buildPayload();
+			payload.helpTypes = [];
 
-			expect(value.isSavedLocally).toBe(false);
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`helpTypes` must contain at least one item.');
 		});
 
-		test('warns when location is not provided', () => {
-			const { warnings, value } = validateCreateHelpRequest({});
+		test('rejects non-array helpTypes', () => {
+			const payload = buildPayload();
+			payload.helpTypes = 'first_aid';
 
-			expect(value.location).toBeNull();
-			expect(warnings).toContainEqual(expect.stringContaining('Location was not provided'));
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`helpTypes` must be an array of strings.');
 		});
 
-		test('rejects non-object location', () => {
-			const { errors } = validateCreateHelpRequest({ location: 'here' });
+		test('rejects non-positive affectedPeopleCount', () => {
+			const payload = buildPayload();
+			payload.affectedPeopleCount = 0;
 
-			expect(errors).toContainEqual(expect.stringContaining('must be an object'));
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`affectedPeopleCount` must be an integer greater than or equal to 1.');
 		});
 
-		test('rejects array location', () => {
-			const { errors } = validateCreateHelpRequest({ location: [1, 2] });
+		test('trims optional strings while preserving numeric phones', () => {
+			const payload = buildPayload();
+			payload.otherHelpText = '  extra detail  ';
+			payload.bloodType = '  A+  ';
+			payload.location.extraAddress = '  back door  ';
 
-			expect(errors).toContainEqual(expect.stringContaining('must be an object'));
+			const { value } = validateCreateHelpRequest(payload);
+
+			expect(value.otherHelpText).toBe('extra detail');
+			expect(value.bloodType).toBe('A+');
+			expect(value.location.extraAddress).toBe('back door');
+			expect(value.contact.alternativePhone).toBe(5321234567);
 		});
 
-		test('rejects latitude out of range', () => {
-			const { errors } = validateCreateHelpRequest({
-				location: { latitude: 91, longitude: 28 },
-			});
+		test('rejects invalid location fields', () => {
+			const payload = buildPayload();
+			payload.location.city = '   ';
 
-			expect(errors).toContainEqual(expect.stringContaining('latitude'));
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`location.city` is required.');
 		});
 
-		test('rejects longitude out of range', () => {
-			const { errors } = validateCreateHelpRequest({
-				location: { latitude: 41, longitude: 181 },
-			});
+		test('rejects invalid contact fields', () => {
+			const payload = buildPayload();
+			payload.contact.phone = 4052318546;
 
-			expect(errors).toContainEqual(expect.stringContaining('longitude'));
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`contact.phone` must be a 10-digit integer starting with 5.');
 		});
 
-		test('rejects non-numeric latitude', () => {
-			const { errors } = validateCreateHelpRequest({
-				location: { latitude: 'north', longitude: 28 },
-			});
+		test('rejects invalid alternative phone fields', () => {
+			const payload = buildPayload();
+			payload.contact.alternativePhone = 532123456;
 
-			expect(errors).toContainEqual(expect.stringContaining('latitude'));
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`contact.alternativePhone` must be a 10-digit integer starting with 5.');
 		});
 
-		test('accepts valid location with defaults for booleans', () => {
-			const { errors, value } = validateCreateHelpRequest({
-				location: { latitude: 41.0, longitude: 28.9 },
-			});
+		test('rejects consentGiven when false', () => {
+			const payload = buildPayload();
+			payload.consentGiven = false;
 
-			expect(errors).toHaveLength(0);
-			expect(value.location).toEqual({
-				latitude: 41.0,
-				longitude: 28.9,
-				isGpsLocation: false,
-				isLastKnown: false,
-			});
-		});
+			const { errors } = validateCreateHelpRequest(payload);
 
-		test('accepts location with explicit boolean flags', () => {
-			const { errors, value } = validateCreateHelpRequest({
-				location: { latitude: 41.0, longitude: 28.9, isGpsLocation: true, isLastKnown: true },
-			});
-
-			expect(errors).toHaveLength(0);
-			expect(value.location.isGpsLocation).toBe(true);
-			expect(value.location.isLastKnown).toBe(true);
-		});
-
-		test('sets location to null when coordinate errors exist', () => {
-			const { value } = validateCreateHelpRequest({
-				location: { latitude: 999, longitude: 28 },
-			});
-
-			expect(value.location).toBeNull();
+			expect(errors).toContain('`consentGiven` must be true.');
 		});
 	});
 

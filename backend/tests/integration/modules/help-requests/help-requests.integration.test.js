@@ -27,6 +27,32 @@ function buildAuthToken(userId) {
 	);
 }
 
+function buildCreatePayload(overrides = {}) {
+	return {
+		helpTypes: ['first_aid', 'fire_brigade'],
+		otherHelpText: '',
+		affectedPeopleCount: 3,
+		riskFlags: ['fire', 'electric_hazard'],
+		vulnerableGroups: ['children', 'pregnant'],
+		description: 'Apartment entrance blocked, one person bleeding.',
+		bloodType: 'A+',
+		location: {
+			country: 'turkiye',
+			city: 'istanbul',
+			district: 'besiktas',
+			neighborhood: 'levazim',
+			extraAddress: 'Bina B, 3. kat, arka giris',
+		},
+		contact: {
+			fullName: 'Ayse Yilmaz',
+			phone: 5052318546,
+			alternativePhone: 5321234567,
+		},
+		consentGiven: true,
+		...overrides,
+	};
+}
+
 async function seedActiveUser(userId, email = 'user@example.com') {
 	await query(
 		`
@@ -74,57 +100,77 @@ describe('help-requests integration', () => {
 
 		const response = await request(app)
 			.post('/api/help-requests')
-			.send({ needType: 'medical' });
+			.send(buildCreatePayload());
 
 		expect(response.status).toBe(401);
 	});
 
-	test('POST /api/help-requests creates request with default needType', async () => {
+	test('POST /api/help-requests creates request with the new payload shape', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_1';
 		await seedActiveUser(userId, 'hr1@example.com');
 		const token = buildAuthToken(userId);
 
+		const payload = buildCreatePayload();
 		const response = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({});
+			.send(payload);
 
 		expect(response.status).toBe(201);
 		expect(response.body.request.userId).toBe(userId);
-		expect(response.body.request.needType).toBe('general');
+		expect(response.body.request.helpTypes).toEqual(payload.helpTypes);
+		expect(response.body.request.otherHelpText).toBe(payload.otherHelpText);
+		expect(response.body.request.affectedPeopleCount).toBe(payload.affectedPeopleCount);
+		expect(response.body.request.riskFlags).toEqual(payload.riskFlags);
+		expect(response.body.request.vulnerableGroups).toEqual(payload.vulnerableGroups);
+		expect(response.body.request.bloodType).toBe(payload.bloodType);
+		expect(response.body.request.location).toEqual(payload.location);
+		expect(response.body.request.contact).toEqual(payload.contact);
+		expect(response.body.request.consentGiven).toBe(true);
+		expect(response.body.request.needType).toBe('first_aid');
 		expect(response.body.request.status).toBe('SYNCED');
 		expect(response.body.request.isSavedLocally).toBe(false);
-		expect(response.body.warnings).toEqual(
-			expect.arrayContaining([expect.stringContaining('defaulting to')]),
-		);
+		expect(response.body.warnings).toEqual([]);
 	});
 
-	test('POST /api/help-requests creates request with location', async () => {
+	test('POST /api/help-requests trims optional string fields and preserves numeric phones', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_2';
 		await seedActiveUser(userId, 'hr2@example.com');
 		const token = buildAuthToken(userId);
 
+		const payload = buildCreatePayload({
+			otherHelpText: '  generator needed  ',
+			bloodType: '  A+  ',
+			location: {
+				country: 'turkiye',
+				city: 'istanbul',
+				district: 'besiktas',
+				neighborhood: 'levazim',
+				extraAddress: '  Need entry from the back  ',
+			},
+			contact: {
+				fullName: 'Ayse Yilmaz',
+				phone: 5052318546,
+				alternativePhone: 5321234567,
+			},
+		});
+
 		const response = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({
-				needType: 'medical',
-				description: 'Need first aid',
-				location: { latitude: 41.0, longitude: 28.9, isGpsLocation: true },
-			});
+			.send(payload);
 
 		expect(response.status).toBe(201);
-		expect(response.body.request.needType).toBe('medical');
-		expect(response.body.request.description).toBe('Need first aid');
-		expect(response.body.request.location).toBeTruthy();
-		expect(response.body.request.location.latitude).toBe(41.0);
-		expect(response.body.request.location.longitude).toBe(28.9);
-		expect(response.body.request.location.isGpsLocation).toBe(true);
+		expect(response.body.request.otherHelpText).toBe('generator needed');
+		expect(response.body.request.bloodType).toBe('A+');
+		expect(response.body.request.location.extraAddress).toBe('Need entry from the back');
+		expect(response.body.request.contact.phone).toBe(5052318546);
+		expect(response.body.request.contact.alternativePhone).toBe(5321234567);
 	});
 
-	test('POST /api/help-requests creates locally saved request with PENDING_SYNC status', async () => {
+	test('POST /api/help-requests returns 400 for invalid payload', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_3';
 		await seedActiveUser(userId, 'hr3@example.com');
@@ -133,11 +179,32 @@ describe('help-requests integration', () => {
 		const response = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ needType: 'shelter', isSavedLocally: true });
+			.send(buildCreatePayload({ consentGiven: false }));
 
-		expect(response.status).toBe(201);
-		expect(response.body.request.isSavedLocally).toBe(true);
-		expect(response.body.request.status).toBe('PENDING_SYNC');
+		expect(response.status).toBe(400);
+		expect(response.body.code).toBe('VALIDATION_FAILED');
+	});
+
+	test('POST /api/help-requests returns 400 for invalid contact phone', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_3b';
+		await seedActiveUser(userId, 'hr3b@example.com');
+		const token = buildAuthToken(userId);
+
+		const response = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({
+				contact: {
+					fullName: 'Ayse Yilmaz',
+					phone: 4052318546,
+					alternativePhone: 5321234567,
+				},
+			}));
+
+		expect(response.status).toBe(400);
+		expect(response.body.code).toBe('VALIDATION_FAILED');
+		expect(response.body.details).toContain('`contact.phone` must be a 10-digit integer starting with 5.');
 	});
 
 	test('POST /api/help-requests returns 400 for invalid location', async () => {
@@ -149,7 +216,15 @@ describe('help-requests integration', () => {
 		const response = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ location: { latitude: 999, longitude: 28 } });
+			.send(buildCreatePayload({
+				location: {
+					country: 'turkiye',
+					city: '',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: '',
+				},
+			}));
 
 		expect(response.status).toBe(400);
 		expect(response.body.code).toBe('VALIDATION_FAILED');
@@ -176,17 +251,17 @@ describe('help-requests integration', () => {
 		await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token1}`)
-			.send({ needType: 'food' });
+			.send(buildCreatePayload({ helpTypes: ['food'] }));
 
 		await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token1}`)
-			.send({ needType: 'water' });
+			.send(buildCreatePayload({ helpTypes: ['water'] }));
 
 		await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token2}`)
-			.send({ needType: 'shelter' });
+			.send(buildCreatePayload({ helpTypes: ['shelter'] }));
 
 		const response1 = await request(app)
 			.get('/api/help-requests')
@@ -212,7 +287,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ needType: 'medical', description: 'broken leg' });
+			.send(buildCreatePayload({ description: 'broken leg' }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -223,6 +298,7 @@ describe('help-requests integration', () => {
 		expect(response.status).toBe(200);
 		expect(response.body.request.id).toBe(requestId);
 		expect(response.body.request.description).toBe('broken leg');
+		expect(response.body.request.helpTypes).toEqual(['first_aid', 'fire_brigade']);
 	});
 
 	test('GET /api/help-requests/:requestId returns 404 for nonexistent request', async () => {
@@ -250,7 +326,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token1}`)
-			.send({ needType: 'food' });
+			.send(buildCreatePayload({ helpTypes: ['food'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -270,10 +346,10 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ needType: 'food', isSavedLocally: true });
+			.send(buildCreatePayload({ helpTypes: ['food'] }));
 
 		const requestId = createResponse.body.request.id;
-		expect(createResponse.body.request.status).toBe('PENDING_SYNC');
+		expect(createResponse.body.request.status).toBe('SYNCED');
 
 		const response = await request(app)
 			.patch(`/api/help-requests/${requestId}/status`)
@@ -294,7 +370,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ needType: 'food' });
+			.send(buildCreatePayload({ helpTypes: ['food'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -317,7 +393,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ needType: 'food' });
+			.send(buildCreatePayload({ helpTypes: ['food'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -373,7 +449,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ needType: 'water' });
+			.send(buildCreatePayload({ helpTypes: ['water'] }));
 
 		const requestId = createResponse.body.request.id;
 

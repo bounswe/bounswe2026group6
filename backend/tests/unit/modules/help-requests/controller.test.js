@@ -44,7 +44,7 @@ describe('help-requests controller', () => {
 		test('returns 400 when validation fails', async () => {
 			validators.readUserId.mockReturnValueOnce('u1');
 			validators.validateCreateHelpRequest.mockReturnValueOnce({
-				errors: ['`needType` must be 200 characters or fewer.'],
+				errors: ['`helpTypes` must contain at least one item.'],
 				warnings: [],
 				value: {},
 			});
@@ -56,7 +56,7 @@ describe('help-requests controller', () => {
 			expect(response.json).toHaveBeenCalledWith({
 				code: 'VALIDATION_FAILED',
 				message: 'Validation failed',
-				details: ['`needType` must be 200 characters or fewer.'],
+				details: ['`helpTypes` must contain at least one item.'],
 			});
 		});
 
@@ -64,10 +64,33 @@ describe('help-requests controller', () => {
 			validators.readUserId.mockReturnValueOnce('u1');
 			validators.validateCreateHelpRequest.mockReturnValueOnce({
 				errors: [],
-				warnings: ['Need type was not provided; defaulting to `general`.'],
-				value: { needType: 'general', description: null, isSavedLocally: false, location: null },
+				warnings: [],
+				value: {
+					helpTypes: ['first_aid'],
+					otherHelpText: '',
+					affectedPeopleCount: 1,
+					riskFlags: [],
+					vulnerableGroups: [],
+					description: 'Need first aid',
+					bloodType: 'A+',
+					location: {
+						country: 'turkiye',
+						city: 'istanbul',
+						district: 'besiktas',
+						neighborhood: 'levazim',
+						extraAddress: '',
+					},
+					contact: {
+						fullName: 'Ayse Yilmaz',
+						phone: 5052318546,
+						alternativePhone: null,
+					},
+					consentGiven: true,
+					needType: 'first_aid',
+					isSavedLocally: false,
+				},
 			});
-			const created = { id: 'req_1', userId: 'u1', needType: 'general' };
+			const created = { id: 'req_1', userId: 'u1', helpTypes: ['first_aid'] };
 			service.createMyHelpRequest.mockResolvedValueOnce(created);
 			const response = buildResponse();
 
@@ -76,7 +99,7 @@ describe('help-requests controller', () => {
 			expect(response.status).toHaveBeenCalledWith(201);
 			expect(response.json).toHaveBeenCalledWith({
 				request: created,
-				warnings: ['Need type was not provided; defaulting to `general`.'],
+				warnings: [],
 			});
 		});
 
@@ -85,7 +108,7 @@ describe('help-requests controller', () => {
 			validators.validateCreateHelpRequest.mockReturnValueOnce({
 				errors: [],
 				warnings: [],
-				value: { needType: 'general' },
+				value: { helpTypes: ['first_aid'] },
 			});
 			const error = new Error('bad user');
 			error.code = 'INVALID_USER';
@@ -103,7 +126,7 @@ describe('help-requests controller', () => {
 			validators.validateCreateHelpRequest.mockReturnValueOnce({
 				errors: [],
 				warnings: [],
-				value: { needType: 'general' },
+				value: { helpTypes: ['first_aid'] },
 			});
 			service.createMyHelpRequest.mockRejectedValueOnce(new Error('boom'));
 			const response = buildResponse();

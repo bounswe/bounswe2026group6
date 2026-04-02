@@ -19,15 +19,54 @@ const {
 describe('help-requests service', () => {
 	describe('createMyHelpRequest', () => {
 		test('delegates to repository with userId merged into input', async () => {
-			const input = { needType: 'medical', description: 'help' };
-			const expected = { id: 'req_1', userId: 'u1', needType: 'medical' };
+			const input = {
+				helpTypes: ['first_aid', 'fire_brigade'],
+				otherHelpText: '',
+				affectedPeopleCount: 3,
+				riskFlags: ['fire'],
+				vulnerableGroups: ['children'],
+				description: 'help',
+				bloodType: 'A+',
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Bina B',
+				},
+				contact: {
+					fullName: 'Ayse Yilmaz',
+					phone: 5052318546,
+					alternativePhone: 5321234567,
+				},
+				consentGiven: true,
+			};
+			const expected = { id: 'req_1', userId: 'u1', helpTypes: ['first_aid', 'fire_brigade'] };
 			repository.createHelpRequest.mockResolvedValueOnce(expected);
 
 			const result = await createMyHelpRequest('u1', input);
 
 			expect(repository.createHelpRequest).toHaveBeenCalledWith({
-				needType: 'medical',
+				helpTypes: ['first_aid', 'fire_brigade'],
+				otherHelpText: '',
+				affectedPeopleCount: 3,
+				riskFlags: ['fire'],
+				vulnerableGroups: ['children'],
 				description: 'help',
+				bloodType: 'A+',
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Bina B',
+				},
+				contact: {
+					fullName: 'Ayse Yilmaz',
+					phone: 5052318546,
+					alternativePhone: 5321234567,
+				},
+				consentGiven: true,
 				userId: 'u1',
 			});
 			expect(result).toEqual(expected);
@@ -38,7 +77,7 @@ describe('help-requests service', () => {
 			dbError.code = '23503';
 			repository.createHelpRequest.mockRejectedValueOnce(dbError);
 
-			await expect(createMyHelpRequest('bad_user', { needType: 'general' }))
+			await expect(createMyHelpRequest('bad_user', { helpTypes: ['general'] }))
 				.rejects
 				.toMatchObject({ code: 'INVALID_USER' });
 		});
@@ -47,7 +86,7 @@ describe('help-requests service', () => {
 			const dbError = new Error('connection lost');
 			repository.createHelpRequest.mockRejectedValueOnce(dbError);
 
-			await expect(createMyHelpRequest('u1', { needType: 'general' }))
+			await expect(createMyHelpRequest('u1', { helpTypes: ['general'] }))
 				.rejects
 				.toThrow('connection lost');
 		});

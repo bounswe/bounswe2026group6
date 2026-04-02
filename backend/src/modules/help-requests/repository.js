@@ -28,12 +28,21 @@ function mapLocation(row) {
   }
 
   return {
-    id: row.location_id,
-    latitude: row.latitude,
-    longitude: row.longitude,
-    isGpsLocation: row.is_gps_location,
-    isLastKnown: row.is_last_known,
-    capturedAt: row.captured_at,
+    country: row.country,
+    city: row.city,
+    district: row.district,
+    neighborhood: row.neighborhood,
+    extraAddress: row.extra_address || '',
+  };
+}
+
+function mapContact(row) {
+  return {
+    fullName: row.contact_full_name,
+    phone: Number(row.contact_phone),
+    alternativePhone: row.contact_alternative_phone == null
+      ? null
+      : Number(row.contact_alternative_phone),
   };
 }
 
@@ -41,14 +50,22 @@ function mapHelpRequest(row) {
   return {
     id: row.request_id,
     userId: row.user_id,
-    needType: row.need_type,
+    helpTypes: row.help_types || [],
+    otherHelpText: row.other_help_text || '',
+    affectedPeopleCount: row.affected_people_count,
+    riskFlags: row.risk_flags || [],
+    vulnerableGroups: row.vulnerable_groups || [],
     description: row.description,
+    bloodType: row.blood_type || '',
+    location: mapLocation(row),
+    contact: mapContact(row),
+    consentGiven: row.consent_given,
+    needType: row.need_type,
     status: mapStatus(row),
     internalStatus: row.status,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
     isSavedLocally: row.is_saved_locally,
-    location: mapLocation(row),
   };
 }
 
@@ -57,13 +74,28 @@ function buildSelectQuery() {
     SELECT
       hr.request_id,
       hr.user_id,
+      hr.help_types,
+      hr.other_help_text,
+      hr.affected_people_count,
+      hr.risk_flags,
+      hr.vulnerable_groups,
       hr.need_type,
       hr.description,
+      hr.blood_type,
+      hr.contact_full_name,
+      hr.contact_phone,
+      hr.contact_alternative_phone,
+      hr.consent_given,
       hr.status,
       hr.created_at,
       hr.resolved_at,
       hr.is_saved_locally,
       rl.location_id,
+      rl.country,
+      rl.city,
+      rl.district,
+      rl.neighborhood,
+      rl.extra_address,
       rl.latitude,
       rl.longitude,
       rl.is_gps_location,
@@ -87,22 +119,58 @@ async function createHelpRequest(input) {
         INSERT INTO help_requests (
           request_id,
           user_id,
+          help_types,
+          other_help_text,
+          affected_people_count,
+          risk_flags,
+          vulnerable_groups,
           need_type,
           description,
+          blood_type,
+          contact_full_name,
+          contact_phone,
+          contact_alternative_phone,
+          consent_given,
           is_saved_locally
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING
           request_id,
           user_id,
+          help_types,
+          other_help_text,
+          affected_people_count,
+          risk_flags,
+          vulnerable_groups,
           need_type,
           description,
+          blood_type,
+          contact_full_name,
+          contact_phone,
+          contact_alternative_phone,
+          consent_given,
           status,
           created_at,
           resolved_at,
           is_saved_locally
       `,
-      [requestId, input.userId, input.needType, input.description, input.isSavedLocally],
+      [
+        requestId,
+        input.userId,
+        input.helpTypes,
+        input.otherHelpText,
+        input.affectedPeopleCount,
+        input.riskFlags,
+        input.vulnerableGroups,
+        input.needType,
+        input.description,
+        input.bloodType || null,
+        input.contact.fullName,
+        input.contact.phone,
+        input.contact.alternativePhone ?? null,
+        input.consentGiven,
+        input.isSavedLocally,
+      ],
     );
 
     let locationRow = null;
@@ -113,14 +181,24 @@ async function createHelpRequest(input) {
           INSERT INTO request_locations (
             location_id,
             request_id,
+            country,
+            city,
+            district,
+            neighborhood,
+            extra_address,
             latitude,
             longitude,
             is_gps_location,
             is_last_known
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING
             location_id,
+            country,
+            city,
+            district,
+            neighborhood,
+            extra_address,
             latitude,
             longitude,
             is_gps_location,
@@ -130,10 +208,15 @@ async function createHelpRequest(input) {
         [
           crypto.randomUUID(),
           requestId,
-          input.location.latitude,
-          input.location.longitude,
-          input.location.isGpsLocation,
-          input.location.isLastKnown,
+          input.location.country,
+          input.location.city,
+          input.location.district,
+          input.location.neighborhood,
+          input.location.extraAddress || null,
+          null,
+          null,
+          false,
+          false,
         ],
       );
 
