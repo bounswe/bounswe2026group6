@@ -60,11 +60,17 @@ object AvailabilityRepository {
                     assignmentId = assignment.assignmentId
                 )
             } else {
-                cachedState.copy(assignmentId = null)
+                AvailabilityState(
+                    isAvailable = false,
+                    assignmentId = null
+                )
             }
         } catch (error: ApiException) {
             if (error.status == 404) {
-                cachedState.copy(assignmentId = null)
+                AvailabilityState(
+                    isAvailable = false,
+                    assignmentId = null
+                )
             } else {
                 throw error
             }

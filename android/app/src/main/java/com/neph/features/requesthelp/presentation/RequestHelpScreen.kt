@@ -311,7 +311,22 @@ fun RequestHelpScreen(
                 onNavigateToMyHelpRequests()
                 return@LaunchedEffect
             }
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (error: ApiException) {
+            if (error.status == 401) {
+                AuthRepository.logout()
+                errorMessage = "Your session expired. Please log in again before sending a help request."
+            } else {
+                errorMessage = "We could not verify your current help request status. Please try again."
+            }
+            return@LaunchedEffect
+        } catch (_: Exception) {
+            errorMessage = "We could not verify your current help request status. Please try again."
+            return@LaunchedEffect
+        }
 
+        try {
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
             formState = buildPrefilledForm(profile)
         } catch (cancellationException: CancellationException) {

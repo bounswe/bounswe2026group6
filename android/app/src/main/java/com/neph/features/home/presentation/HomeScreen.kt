@@ -54,6 +54,8 @@ fun HomeScreen(
     var availabilityLoading by remember { mutableStateOf(false) }
     var availabilityError by remember { mutableStateOf("") }
     var availabilityInfo by remember { mutableStateOf("") }
+    var requestHelpLoading by remember { mutableStateOf(false) }
+    var requestHelpError by remember { mutableStateOf("") }
 
     LaunchedEffect(isAuthenticated, sessionToken) {
         if (!isAuthenticated || sessionToken.isNullOrBlank()) {
@@ -126,6 +128,7 @@ fun HomeScreen(
     fun handleRequestHelp() {
         availabilityError = ""
         availabilityInfo = ""
+        requestHelpError = ""
 
         if (!isAuthenticated || sessionToken.isNullOrBlank()) {
             onRequestHelp()
@@ -133,6 +136,7 @@ fun HomeScreen(
         }
 
         scope.launch {
+            requestHelpLoading = true
             try {
                 val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
                 if (hasActiveRequest) {
@@ -141,7 +145,9 @@ fun HomeScreen(
                     onRequestHelp()
                 }
             } catch (_: Exception) {
-                onRequestHelp()
+                requestHelpError = "We could not verify your current help request status. Please try again."
+            } finally {
+                requestHelpLoading = false
             }
         }
     }
@@ -180,8 +186,20 @@ fun HomeScreen(
 
             PrimaryButton(
                 text = "Request Help",
-                onClick = ::handleRequestHelp
+                onClick = ::handleRequestHelp,
+                loading = requestHelpLoading,
+                enabled = !availabilityLoading
             )
+
+            if (requestHelpError.isNotBlank()) {
+                Text(
+                    text = requestHelpError,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+            }
 
             Text(
                 text = "Create an emergency help request and share your situation.",
