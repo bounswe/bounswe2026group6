@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { SectionCard } from "@/components/ui/display/SectionCard";
@@ -11,19 +12,27 @@ import { ApiError } from "@/lib/api";
 import { fetchMyProfile, patchMyPrivacy } from "@/lib/profile";
 
 export default function PrivacySecurityView() {
+    const router = useRouter();
+    const pathname = usePathname();
+
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [shareLocation, setShareLocation] = React.useState(false);
     const [error, setError] = React.useState("");
     const [info, setInfo] = React.useState("");
 
+    const redirectToLoginAfterAuthExpiry = React.useCallback(() => {
+        clearAccessToken();
+        const returnTo = pathname || "/privacy-security";
+        router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+    }, [pathname, router]);
+
     React.useEffect(() => {
         async function loadPrivacySettings() {
             const token = getAccessToken();
 
             if (!token) {
-                setError("Please log in to manage your privacy and security settings.");
-                setLoading(false);
+                router.replace(`/login?returnTo=${encodeURIComponent(pathname || "/privacy-security")}`);
                 return;
             }
 
@@ -32,28 +41,28 @@ export default function PrivacySecurityView() {
                 setShareLocation(profile.privacySettings.locationSharingEnabled);
             } catch (err) {
                 if (err instanceof ApiError && err.status === 401) {
-                    clearAccessToken();
-                    setError("Your session has expired. Please log in again.");
-                } else {
-                    setError(
-                        err instanceof Error
-                            ? err.message
-                            : "Could not load privacy settings."
-                    );
+                    redirectToLoginAfterAuthExpiry();
+                    return;
                 }
+
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Could not load privacy settings."
+                );
             } finally {
                 setLoading(false);
             }
         }
 
         void loadPrivacySettings();
-    }, []);
+    }, [pathname, redirectToLoginAfterAuthExpiry, router]);
 
     const handleSave = async () => {
         const token = getAccessToken();
 
         if (!token) {
-            setError("Please log in to manage your privacy and security settings.");
+            router.replace(`/login?returnTo=${encodeURIComponent(pathname || "/privacy-security")}`);
             return;
         }
 
@@ -61,21 +70,23 @@ export default function PrivacySecurityView() {
             setSaving(true);
             setError("");
             setInfo("");
+
             await patchMyPrivacy(token, {
                 locationSharingEnabled: shareLocation,
             });
+
             setInfo("Privacy settings updated successfully.");
         } catch (err) {
             if (err instanceof ApiError && err.status === 401) {
-                clearAccessToken();
-                setError("Your session has expired. Please log in again.");
-            } else {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Could not save your privacy settings."
-                );
+                redirectToLoginAfterAuthExpiry();
+                return;
             }
+
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : "Could not save your privacy settings."
+            );
         } finally {
             setSaving(false);
         }
