@@ -21,6 +21,7 @@ import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
 import com.neph.navigation.Routes
+import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
@@ -29,6 +30,8 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
 fun MyHelpRequestsScreen(
@@ -38,11 +41,14 @@ fun MyHelpRequestsScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
+    val scope = rememberCoroutineScope()
 
     var loading by remember { mutableStateOf(isAuthenticated) }
     var error by remember { mutableStateOf("") }
     var requests by remember { mutableStateOf<List<MyHelpRequestUiModel>>(emptyList()) }
     var refreshVersion by remember { mutableStateOf(0) }
+    var actionInProgressRequestId by remember { mutableStateOf<String?>(null) }
+    var actionMessage by remember { mutableStateOf("") }
 
     AppDrawerScaffold(
         title = "My Help Requests",
@@ -130,11 +136,11 @@ fun MyHelpRequestsScreen(
                     SectionCard {
                         SectionHeader(
                             title = "My Help Requests",
-                            subtitle = "This page shows the requests created from your account."
+                            subtitle = "Track the current request created from your account."
                         )
 
                         Text(
-                            text = "You have not created any requests yet.",
+                            text = "No active or past help requests were found for your account.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -143,12 +149,92 @@ fun MyHelpRequestsScreen(
             }
 
             else -> {
+                val activeRequest = requests.firstOrNull { it.isActive }
+                val requestHistory = requests.filterNot { it.isActive }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg)
                 ) {
-                    items(requests, key = { it.id }) { request ->
-                        MyHelpRequestCard(request = request)
+                    item {
+                        SectionHeader(
+                            title = "Current Request",
+                            subtitle = "Your latest active help request is shown first."
+                        )
+                    }
+
+                    if (activeRequest == null) {
+                        item {
+                            SectionCard {
+                                Text(
+                                    text = "No active help request right now.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        item {
+                            MyHelpRequestCard(
+                                request = activeRequest,
+                                titleOverride = activeRequest.helpTypeSummary,
+                                subtitleOverride = activeRequest.createdAt ?: "Created time unavailable",
+                                actionMessage = actionMessage,
+                                onResolve = {
+                                    if (token.isBlank()) return@MyHelpRequestCard
+
+                                    actionMessage = ""
+                                    actionInProgressRequestId = activeRequest.id
+                                    scope.launch {
+                                        try {
+                                            val updatedRequest = MyHelpRequestsRepository.markRequestAsResolved(
+                                                token = token,
+                                                requestId = activeRequest.id
+                                            )
+                                            requests = buildList {
+                                                for (request in requests) {
+                                                    if (request.id == activeRequest.id && updatedRequest != null) {
+                                                        add(updatedRequest)
+                                                    } else {
+                                                        add(request)
+                                                    }
+                                                }
+                                            }
+                                            actionMessage = "Your help request was marked as resolved."
+                                        } catch (cancellationException: CancellationException) {
+                                            throw cancellationException
+                                        } catch (errorResponse: ApiException) {
+                                            if (errorResponse.status == 401) {
+                                                AuthRepository.logout()
+                                                error = "Your session expired. Please log in again to manage your request."
+                                            } else {
+                                                actionMessage = errorResponse.message.ifBlank {
+                                                    "Could not update your help request."
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                            actionMessage = "Something went wrong while updating your help request."
+                                        } finally {
+                                            actionInProgressRequestId = null
+                                        }
+                                    }
+                                },
+                                resolveLoading = actionInProgressRequestId == activeRequest.id
+                            )
+                        }
+                    }
+
+                    if (requestHistory.isNotEmpty()) {
+                        item {
+                            SectionHeader(
+                                title = "Request History",
+                                subtitle = "Previous requests from your account."
+                            )
+                        }
+
+                        items(requestHistory, key = { it.id }) { request ->
+                            MyHelpRequestCard(request = request)
+                        }
                     }
                 }
             }
@@ -157,18 +243,25 @@ fun MyHelpRequestsScreen(
 }
 
 @Composable
-private fun MyHelpRequestCard(request: MyHelpRequestUiModel) {
+private fun MyHelpRequestCard(
+    request: MyHelpRequestUiModel,
+    titleOverride: String? = null,
+    subtitleOverride: String? = null,
+    actionMessage: String = "",
+    onResolve: (() -> Unit)? = null,
+    resolveLoading: Boolean = false
+) {
     val spacing = LocalNephSpacing.current
 
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
             SectionHeader(
-                title = request.helpType,
-                subtitle = request.createdAt ?: "Created time unavailable"
+                title = titleOverride ?: request.helpTypeSummary,
+                subtitle = subtitleOverride ?: (request.createdAt ?: "Created time unavailable")
             )
 
             Text(
-                text = request.shortDescription,
+                text = if (request.isActive) request.description else request.shortDescription,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -180,10 +273,54 @@ private fun MyHelpRequestCard(request: MyHelpRequestUiModel) {
             )
 
             Text(
-                text = "Status: ${request.status}",
+                text = "Status: ${request.statusLabel}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
+
+            if (request.helpTypes.size > 1) {
+                Text(
+                    text = "Help Types: ${request.helpTypes.joinToString(", ")}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            request.contactName?.let {
+                Text(
+                    text = "Contact: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            request.contactPhone?.let {
+                Text(
+                    text = "Phone: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            request.alternativePhone?.let {
+                Text(
+                    text = "Alternative phone: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (request.isActive && onResolve != null) {
+                if (actionMessage.isNotBlank()) {
+                    HelperText(text = actionMessage)
+                }
+
+                PrimaryButton(
+                    text = "Mark Request As Resolved",
+                    onClick = onResolve,
+                    loading = resolveLoading
+                )
+            }
         }
     }
 }

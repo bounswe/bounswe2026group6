@@ -2,6 +2,7 @@ package com.neph.features.assignedrequest.data
 
 import com.neph.core.network.ApiException
 import com.neph.core.network.JsonHttpClient
+import org.json.JSONObject
 
 data class AssignedRequestUiModel(
     val assignmentId: String,
@@ -11,6 +12,7 @@ data class AssignedRequestUiModel(
     val shortDescription: String,
     val locationLabel: String,
     val status: String,
+    val statusLabel: String,
     val requesterName: String?,
     val requesterEmail: String?,
     val assignedAt: String?
@@ -18,23 +20,48 @@ data class AssignedRequestUiModel(
 
 object AssignedRequestRepository {
     suspend fun fetchAssignedRequests(token: String): List<AssignedRequestUiModel> {
+        return fetchCurrentAssignment(token)?.let(::listOf) ?: emptyList()
+    }
+
+    suspend fun fetchCurrentAssignment(token: String): AssignedRequestUiModel? {
         try {
             val response = JsonHttpClient.request(
                 path = "/availability/my-assignment",
                 token = token
             )
 
-            val assignment = response.optJSONObject("assignment") ?: return emptyList()
-            return listOf(mapAssignment(assignment))
+            val assignment = response.optJSONObject("assignment") ?: return null
+            return mapAssignment(assignment)
         } catch (error: ApiException) {
             if (error.status == 404) {
-                return emptyList()
+                return null
             }
             throw error
         }
     }
 
-    private fun mapAssignment(assignment: org.json.JSONObject): AssignedRequestUiModel {
+    suspend fun cancelAssignment(token: String, assignmentId: String): AssignedRequestUiModel? {
+        val response = JsonHttpClient.request(
+            path = "/availability/assignments/$assignmentId/cancel",
+            method = "POST",
+            token = token
+        )
+
+        return response.optJSONObject("newAssignment")?.let(::mapAssignment)
+    }
+
+    suspend fun resolveAssignment(token: String, requestId: String): AssignedRequestUiModel? {
+        val response = JsonHttpClient.request(
+            path = "/availability/assignments/resolve",
+            method = "POST",
+            token = token,
+            body = JSONObject().put("requestId", requestId)
+        )
+
+        return response.optJSONObject("newAssignment")?.let(::mapAssignment)
+    }
+
+    private fun mapAssignment(assignment: JSONObject): AssignedRequestUiModel {
         val description = assignment.optString("description").trim()
         val firstName = assignment.optString("requester_first_name").trim()
         val lastName = assignment.optString("requester_last_name").trim()
@@ -43,25 +70,64 @@ object AssignedRequestRepository {
             .joinToString(" ")
             .takeIf { it.isNotBlank() }
 
-        val latitude = assignment.optDouble("latitude", Double.NaN)
-        val longitude = assignment.optDouble("longitude", Double.NaN)
+        val status = assignment.optString("request_status").ifBlank { "ASSIGNED" }
 
         return AssignedRequestUiModel(
             assignmentId = assignment.optString("assignment_id"),
             requestId = assignment.optString("request_id"),
-            helpType = assignment.optString("need_type").ifBlank { "General Support" },
+            helpType = formatHelpType(assignment.optString("need_type")),
             description = description,
             shortDescription = buildShortDescription(description),
-            locationLabel = if (!latitude.isNaN() && !longitude.isNaN()) {
-                "Lat ${"%.4f".format(latitude)}, Lon ${"%.4f".format(longitude)}"
-            } else {
-                "Location unavailable"
-            },
-            status = assignment.optString("request_status").ifBlank { "ASSIGNED" },
+            locationLabel = buildLocationLabel(assignment),
+            status = status,
+            statusLabel = formatStatus(status),
             requesterName = requesterName,
             requesterEmail = assignment.optString("requester_email").takeIf { it.isNotBlank() },
             assignedAt = assignment.optString("assigned_at").takeIf { it.isNotBlank() }?.let(::formatTimestamp)
         )
+    }
+
+    private fun formatHelpType(value: String): String {
+        return value
+            .trim()
+            .split('_')
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { part ->
+                part.lowercase().replaceFirstChar { it.uppercase() }
+            }
+            .ifBlank { "General Support" }
+    }
+
+    private fun buildLocationLabel(assignment: JSONObject): String {
+        val locationParts = listOf(
+            assignment.optString("country").trim(),
+            assignment.optString("city").trim(),
+            assignment.optString("district").trim(),
+            assignment.optString("neighborhood").trim(),
+            assignment.optString("extra_address").trim()
+        ).filter { it.isNotBlank() }
+
+        if (locationParts.isNotEmpty()) {
+            return locationParts.joinToString(" / ")
+        }
+
+        val latitude = assignment.optDouble("latitude", Double.NaN)
+        val longitude = assignment.optDouble("longitude", Double.NaN)
+        return if (!latitude.isNaN() && !longitude.isNaN()) {
+            "Lat ${"%.4f".format(latitude)}, Lon ${"%.4f".format(longitude)}"
+        } else {
+            "Location unavailable"
+        }
+    }
+
+    private fun formatStatus(status: String): String {
+        return when (status.trim().uppercase()) {
+            "ASSIGNED" -> "Assigned to you"
+            "IN_PROGRESS" -> "In progress"
+            "RESOLVED" -> "Resolved"
+            "CANCELLED" -> "Cancelled"
+            else -> "Status unavailable"
+        }
     }
 
     private fun buildShortDescription(description: String): String {

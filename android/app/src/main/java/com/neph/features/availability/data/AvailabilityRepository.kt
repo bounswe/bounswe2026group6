@@ -2,7 +2,9 @@ package com.neph.features.availability.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neph.core.network.ApiException
 import com.neph.core.network.JsonHttpClient
+import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import org.json.JSONObject
 
 data class AvailabilityState(
@@ -40,6 +42,36 @@ object AvailabilityRepository {
     fun getAvailabilityState(): AvailabilityState {
         ensureInitialized()
         return cachedState
+    }
+
+    fun setAvailabilityStateForUi(state: AvailabilityState) {
+        ensureInitialized()
+        saveAvailabilityState(state)
+    }
+
+    suspend fun refreshAssignmentState(token: String): AvailabilityState {
+        ensureInitialized()
+
+        val nextState = try {
+            val assignment = AssignedRequestRepository.fetchCurrentAssignment(token)
+            if (assignment != null) {
+                cachedState.copy(
+                    isAvailable = true,
+                    assignmentId = assignment.assignmentId
+                )
+            } else {
+                cachedState.copy(assignmentId = null)
+            }
+        } catch (error: ApiException) {
+            if (error.status == 404) {
+                cachedState.copy(assignmentId = null)
+            } else {
+                throw error
+            }
+        }
+
+        saveAvailabilityState(nextState)
+        return nextState
     }
 
     suspend fun setAvailability(

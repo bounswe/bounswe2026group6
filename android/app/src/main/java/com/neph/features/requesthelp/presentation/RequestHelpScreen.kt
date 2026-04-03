@@ -23,9 +23,10 @@ import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.PhoneParts
 import com.neph.features.profile.data.bloodTypeOptions
-import com.neph.features.profile.data.combinePhoneNumber
 import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizePhoneParts
+import com.neph.features.requesthelp.data.RequestHelpContactSubmission
+import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
 import com.neph.features.profile.presentation.components.LocationSelector
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.requesthelp.data.RequestHelpSubmission
@@ -104,8 +105,33 @@ private data class RequestHelpFieldErrors(
     val shortAddress: String? = null,
     val fullName: String? = null,
     val phoneNumber: String? = null,
+    val alternativePhone: String? = null,
     val confirmationAccepted: String? = null
 )
+
+private val helpTypeApiValues = mapOf(
+    "First Aid" to "first_aid",
+    "Search & Rescue" to "search_rescue",
+    "Fire Brigade" to "fire_brigade",
+    "Evacuation / Transport" to "evacuation_transport",
+    "Food & Water" to "food_water",
+    "Shelter" to "shelter",
+    "Security Support" to "security_support",
+    "Other" to "other"
+)
+
+private fun parseBackendPhoneNumber(countryCode: String, phone: String): Long? {
+    if (countryCode != "+90") {
+        return null
+    }
+
+    val normalizedPhone = phone.filter(Char::isDigit).trimStart('0')
+    if (normalizedPhone.length != 10 || normalizedPhone.firstOrNull() != '5') {
+        return null
+    }
+
+    return normalizedPhone.toLongOrNull()
+}
 
 private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
     val phoneParts: PhoneParts = normalizePhoneParts(profile.phone)
@@ -177,7 +203,18 @@ private fun validateForm(state: RequestHelpFormState): RequestHelpFieldErrors {
         neighborhood = if (state.neighborhood.isBlank()) "Neighborhood is required." else null,
         shortAddress = if (state.shortAddress.isBlank()) "Short address is required." else null,
         fullName = if (state.fullName.isBlank()) "Full name cannot be blank." else null,
-        phoneNumber = if (state.phoneNumber.isBlank()) "Phone number cannot be blank." else null,
+        phoneNumber = when {
+            state.phoneNumber.isBlank() -> "Phone number cannot be blank."
+            parseBackendPhoneNumber(state.countryCode, state.phoneNumber) == null ->
+                "Use a valid Turkish mobile number starting with 5."
+            else -> null
+        },
+        alternativePhone = when {
+            state.alternativePhone.isBlank() -> null
+            parseBackendPhoneNumber(state.countryCode, state.alternativePhone) == null ->
+                "Use a valid Turkish mobile number starting with 5."
+            else -> null
+        },
         confirmationAccepted = if (!state.confirmationAccepted) {
             "You must confirm information sharing before sending."
         } else {
@@ -198,65 +235,52 @@ private fun RequestHelpFieldErrors.hasAny(): Boolean {
         shortAddress,
         fullName,
         phoneNumber,
+        alternativePhone,
         confirmationAccepted
     ).any { !it.isNullOrBlank() }
 }
 
 private fun buildSubmission(state: RequestHelpFormState): RequestHelpSubmission {
-    val needType = state.helpTypes.joinToString(", ").ifBlank { "general" }
-    val countryLabel = findCountryLabel(state.country)
-    val cityLabel = findCityLabel(state.country, state.city)
-    val districtLabel = findDistrictLabel(state.country, state.city, state.district)
-    val neighborhoodLabel = findNeighborhoodLabel(
-        state.country,
-        state.city,
-        state.district,
-        state.neighborhood
-    )
-
-    val descriptionLines = buildList {
-        add("Situation Description: ${state.situationDescription.trim()}")
-        add("Affected People Count: ${state.affectedPeopleCount.trim()}")
-
-        if (state.helpTypes.contains("Other") && state.otherHelpType.isNotBlank()) {
-            add("Other Help Type Details: ${state.otherHelpType.trim()}")
-        }
-
-        if (state.riskFlags.isNotEmpty()) {
-            add("Risk Flags: ${state.riskFlags.joinToString(", ")}")
-        }
-
-        if (state.vulnerableGroups.isNotEmpty()) {
-            add("Vulnerable Groups: ${state.vulnerableGroups.joinToString(", ")}")
-        }
-
-        if (state.bloodType.isNotBlank()) {
-            add("Blood Type: ${state.bloodType}")
-        }
-
-        add(
-            "Location: ${listOf(countryLabel, cityLabel, districtLabel, neighborhoodLabel).filter { it.isNotBlank() }.joinToString(" / ")}"
-        )
-        add("Address Description: ${state.shortAddress.trim()}")
-        add("Full Name: ${state.fullName.trim()}")
-        add("Phone Number: ${combinePhoneNumber(state.countryCode, state.phoneNumber)}")
-
-        if (state.alternativePhone.isNotBlank()) {
-            add("Alternative Phone: ${state.alternativePhone.trim()}")
-        }
-    }
+    val primaryPhone = requireNotNull(parseBackendPhoneNumber(state.countryCode, state.phoneNumber))
+    val alternativePhone = state.alternativePhone
+        .takeIf { it.isNotBlank() }
+        ?.let { requireNotNull(parseBackendPhoneNumber(state.countryCode, it)) }
 
     return RequestHelpSubmission(
-        needType = needType,
-        description = descriptionLines.joinToString("\n"),
-        isSavedLocally = false
+        helpTypes = state.helpTypes.mapNotNull { helpTypeApiValues[it] },
+        otherHelpText = state.otherHelpType.trim(),
+        affectedPeopleCount = state.affectedPeopleCount.toInt(),
+        description = state.situationDescription.trim(),
+        riskFlags = state.riskFlags.map { it.trim() },
+        vulnerableGroups = state.vulnerableGroups.map { it.trim() },
+        bloodType = state.bloodType.trim(),
+        location = RequestHelpLocationSubmission(
+            country = findCountryLabel(state.country).ifBlank { state.country.trim() },
+            city = findCityLabel(state.country, state.city).ifBlank { state.city.trim() },
+            district = findDistrictLabel(state.country, state.city, state.district)
+                .ifBlank { state.district.trim() },
+            neighborhood = findNeighborhoodLabel(
+                state.country,
+                state.city,
+                state.district,
+                state.neighborhood
+            ).ifBlank { state.neighborhood.trim() },
+            extraAddress = state.shortAddress.trim()
+        ),
+        contact = RequestHelpContactSubmission(
+            fullName = state.fullName.trim(),
+            phone = primaryPhone,
+            alternativePhone = alternativePhone
+        ),
+        consentGiven = state.confirmationAccepted
     )
 }
 
 @Composable
 fun RequestHelpScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    onNavigateToMyHelpRequests: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -272,14 +296,22 @@ fun RequestHelpScreen(
     var loading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
+    var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
 
     LaunchedEffect(sessionToken) {
         if (!isLoggedIn) {
             formState = RequestHelpFormState()
+            checkingActiveRequest = false
             return@LaunchedEffect
         }
 
         try {
+            val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+            if (hasActiveRequest) {
+                onNavigateToMyHelpRequests()
+                return@LaunchedEffect
+            }
+
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
             formState = buildPrefilledForm(profile)
         } catch (cancellationException: CancellationException) {
@@ -295,6 +327,8 @@ fun RequestHelpScreen(
         } catch (_: Exception) {
             formState = buildPrefilledForm(ProfileRepository.getProfile())
             infoMessage = "Could not refresh profile details. Using saved information where available."
+        } finally {
+            checkingActiveRequest = false
         }
     }
 
@@ -351,6 +385,11 @@ fun RequestHelpScreen(
         title = "Request Help",
         onNavigateBack = onNavigateBack
     ) {
+        if (checkingActiveRequest) {
+            HelperText(text = "Checking your current help request status...")
+            return@AppScaffold
+        }
+
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing.lg)
         ) {
@@ -534,7 +573,8 @@ fun RequestHelpScreen(
                             formState = formState.copy(alternativePhone = it.filter(Char::isDigit))
                         },
                         label = "Alternative Phone (optional)",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        error = fieldErrors.alternativePhone
                     )
                 }
             }
@@ -585,7 +625,8 @@ private fun RequestHelpScreenPreview() {
     NephTheme {
         RequestHelpScreen(
             onNavigateBack = {},
-            onNavigateToLogin = {}
+            onNavigateToLogin = {},
+            onNavigateToMyHelpRequests = {}
         )
     }
 }

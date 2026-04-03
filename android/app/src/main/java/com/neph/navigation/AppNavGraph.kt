@@ -99,6 +99,12 @@ fun AppNavGraph(
                 onRequestHelp = {
                     navController.navigate(Routes.RequestHelp.route)
                 },
+                onOpenAssignedRequest = {
+                    navigateToDrawerRoute(Routes.AssignedRequest.route)
+                },
+                onOpenMyHelpRequests = {
+                    navigateToDrawerRoute(Routes.MyHelpRequests.route)
+                },
                 onNavigateToRoute = ::navigateToDrawerRoute,
                 onOpenSettings = if (authenticated) {
                     { navigateToDrawerRoute(Routes.Settings.route) }
@@ -292,6 +298,9 @@ fun AppNavGraph(
                 },
                 onNavigateToLogin = {
                     navigateToLogin()
+                },
+                onNavigateToMyHelpRequests = {
+                    navigateToDrawerRoute(Routes.MyHelpRequests.route)
                 }
             )
         }

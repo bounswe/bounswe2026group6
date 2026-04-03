@@ -3,8 +3,6 @@ package com.neph.features.assignedrequest.presentation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,7 +18,9 @@ import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.assignedrequest.data.AssignedRequestUiModel
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.navigation.Routes
+import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
@@ -41,12 +41,16 @@ fun AssignedRequestScreen(
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
-    var requests by remember { mutableStateOf<List<AssignedRequestUiModel>>(emptyList()) }
+    var infoMessage by remember { mutableStateOf("") }
+    var currentRequest by remember { mutableStateOf<AssignedRequestUiModel?>(null) }
     var refreshVersion by remember { mutableStateOf(0) }
+    var resolving by remember { mutableStateOf(false) }
+    var cancelling by remember { mutableStateOf(false) }
 
-    fun loadAssignedRequests() {
+    fun startLoading() {
         loading = true
         error = ""
+        infoMessage = ""
     }
 
     LaunchedEffect(token, refreshVersion) {
@@ -56,10 +60,11 @@ fun AssignedRequestScreen(
             return@LaunchedEffect
         }
 
-        loadAssignedRequests()
+        startLoading()
 
         try {
-            requests = AssignedRequestRepository.fetchAssignedRequests(token)
+            currentRequest = AssignedRequestRepository.fetchCurrentAssignment(token)
+            AvailabilityRepository.refreshAssignmentState(token)
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (errorResponse: ApiException) {
@@ -71,14 +76,41 @@ fun AssignedRequestScreen(
                 }
                 else -> {
                     error = errorResponse.message.ifBlank {
-                        "Could not load your assigned requests."
+                        "Could not load your assigned request."
                     }
                 }
             }
         } catch (_: Exception) {
-            error = "Something went wrong while loading your assigned requests."
+            error = "Something went wrong while loading your assigned request."
         } finally {
             loading = false
+        }
+    }
+
+    suspend fun runAssignmentAction(action: suspend () -> AssignedRequestUiModel?, successMessage: String) {
+        error = ""
+        infoMessage = ""
+
+        try {
+            val nextAssignment = action()
+            currentRequest = nextAssignment
+            AvailabilityRepository.setAvailabilityStateForUi(
+                AvailabilityRepository.getAvailabilityState().copy(
+                    assignmentId = nextAssignment?.assignmentId
+                )
+            )
+            infoMessage = successMessage
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (errorResponse: ApiException) {
+            if (errorResponse.status == 401) {
+                AuthRepository.logout()
+                onNavigateToLogin()
+            } else {
+                error = errorResponse.message.ifBlank { "Could not update this assignment." }
+            }
+        } catch (_: Exception) {
+            error = "Something went wrong while updating this assignment."
         }
     }
 
@@ -90,10 +122,10 @@ fun AssignedRequestScreen(
     ) {
         when {
             loading -> {
-                HelperText(text = "Loading your assigned requests...")
+                HelperText(text = "Loading your assigned request...")
             }
 
-            error.isNotBlank() -> {
+            error.isNotBlank() && currentRequest == null -> {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
                     SectionCard {
                         SectionHeader(
@@ -113,74 +145,143 @@ fun AssignedRequestScreen(
                 }
             }
 
-            requests.isEmpty() -> {
+            currentRequest == null -> {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
                     SectionCard {
                         SectionHeader(
                             title = "Assigned Request",
-                            subtitle = "This page shows requests currently assigned to you."
+                            subtitle = "This page shows the request currently assigned to you."
                         )
 
                         Text(
-                            text = "No assigned requests yet.",
+                            text = "No assigned request right now.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        if (infoMessage.isNotBlank()) {
+                            HelperText(text = infoMessage)
+                        }
                     }
                 }
             }
 
             else -> {
-                LazyColumn(
+                val request = currentRequest!!
+
+                Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg)
                 ) {
-                    items(requests, key = { it.assignmentId }) { request ->
-                        AssignedRequestCard(request = request)
+                    SectionCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                            SectionHeader(
+                                title = request.helpType,
+                                subtitle = request.requesterName
+                                    ?: request.requesterEmail
+                                    ?: "Requester details unavailable"
+                            )
+
+                            Text(
+                                text = request.shortDescription,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Text(
+                                text = "Location: ${request.locationLabel}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Text(
+                                text = "Status: ${request.statusLabel}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            request.requesterEmail?.let {
+                                Text(
+                                    text = "Requester email: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            request.assignedAt?.let {
+                                Text(
+                                    text = "Assigned: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    SectionCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                            SectionHeader(
+                                title = "Actions",
+                                subtitle = "Update the assignment when your work is complete or if you need to release it."
+                            )
+
+                            if (error.isNotBlank()) {
+                                HelperText(text = error)
+                            }
+
+                            if (infoMessage.isNotBlank()) {
+                                HelperText(text = infoMessage)
+                            }
+
+                            PrimaryButton(
+                                text = if (resolving) "Resolving..." else "Mark As Resolved",
+                                onClick = {
+                                    resolving = true
+                                },
+                                loading = resolving,
+                                enabled = !cancelling
+                            )
+
+                            SecondaryButton(
+                                text = "Release Assignment",
+                                onClick = {
+                                    cancelling = true
+                                },
+                                enabled = !resolving && !cancelling
+                            )
+                        }
                     }
                 }
-            }
-        }
-    }
-}
 
-@Composable
-private fun AssignedRequestCard(request: AssignedRequestUiModel) {
-    val spacing = LocalNephSpacing.current
+                if (resolving) {
+                    LaunchedEffect(request.assignmentId, resolving) {
+                        runAssignmentAction(
+                            action = {
+                                AssignedRequestRepository.resolveAssignment(
+                                    token = token,
+                                    requestId = request.requestId
+                                )
+                            },
+                            successMessage = "Assignment updated successfully."
+                        )
+                        resolving = false
+                    }
+                }
 
-    SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-            SectionHeader(
-                title = request.helpType,
-                subtitle = request.requesterName
-                    ?: request.requesterEmail
-                    ?: "Requester details unavailable"
-            )
-
-            Text(
-                text = request.shortDescription,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Text(
-                text = "Location: ${request.locationLabel}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = "Status: ${request.status}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            request.assignedAt?.let {
-                Text(
-                    text = "Assigned: $it",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (cancelling) {
+                    LaunchedEffect(request.assignmentId, cancelling) {
+                        runAssignmentAction(
+                            action = {
+                                AssignedRequestRepository.cancelAssignment(
+                                    token = token,
+                                    assignmentId = request.assignmentId
+                                )
+                            },
+                            successMessage = "Assignment released successfully."
+                        )
+                        cancelling = false
+                    }
+                }
             }
         }
     }

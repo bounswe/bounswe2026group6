@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,7 @@ import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.layout.AppDrawerScaffold
@@ -32,6 +34,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     onRequestHelp: () -> Unit,
+    onOpenAssignedRequest: () -> Unit,
+    onOpenMyHelpRequests: () -> Unit,
     onNavigateToRoute: (String) -> Unit,
     onOpenSettings: (() -> Unit)?,
     onNavigateToLogin: () -> Unit,
@@ -50,6 +54,18 @@ fun HomeScreen(
     var availabilityLoading by remember { mutableStateOf(false) }
     var availabilityError by remember { mutableStateOf("") }
     var availabilityInfo by remember { mutableStateOf("") }
+
+    LaunchedEffect(isAuthenticated, sessionToken) {
+        if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+            return@LaunchedEffect
+        }
+
+        try {
+            availabilityState = AvailabilityRepository.refreshAssignmentState(sessionToken)
+        } catch (_: Exception) {
+            // Keep the cached state if the refresh attempt fails.
+        }
+    }
 
     fun handleAvailabilityChange(nextValue: Boolean) {
         availabilityError = ""
@@ -75,6 +91,7 @@ fun HomeScreen(
                 )
                 availabilityInfo = if (availabilityState.isAvailable) {
                     if (availabilityState.assignmentId != null) {
+                        onOpenAssignedRequest()
                         "You are now available to help. A request has been assigned to you."
                     } else {
                         "You are now available to help."
@@ -102,6 +119,29 @@ fun HomeScreen(
                 availabilityError = "Something went wrong while updating your availability."
             } finally {
                 availabilityLoading = false
+            }
+        }
+    }
+
+    fun handleRequestHelp() {
+        availabilityError = ""
+        availabilityInfo = ""
+
+        if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+            onRequestHelp()
+            return
+        }
+
+        scope.launch {
+            try {
+                val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                if (hasActiveRequest) {
+                    onOpenMyHelpRequests()
+                } else {
+                    onRequestHelp()
+                }
+            } catch (_: Exception) {
+                onRequestHelp()
             }
         }
     }
@@ -140,7 +180,7 @@ fun HomeScreen(
 
             PrimaryButton(
                 text = "Request Help",
-                onClick = onRequestHelp
+                onClick = ::handleRequestHelp
             )
 
             Text(
@@ -160,6 +200,8 @@ private fun HomeScreenPreview() {
     NephTheme {
         HomeScreen(
             onRequestHelp = {},
+            onOpenAssignedRequest = {},
+            onOpenMyHelpRequests = {},
             onNavigateToRoute = {},
             onOpenSettings = {},
             onNavigateToLogin = {},
