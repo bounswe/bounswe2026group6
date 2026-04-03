@@ -103,6 +103,81 @@ function findCityKeyByLabel(countryKey: string, label: string) {
     );
 }
 
+function normalizeAddressPart(value: string) {
+    return value
+        .toLocaleLowerCase("tr")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+}
+
+function parseLocationAddress(countryKey: string, cityKey: string, address: string) {
+    const tokens = address
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    if (!countryKey || !cityKey || tokens.length === 0) {
+        return {
+            district: "",
+            neighborhood: "",
+            extraAddress: address,
+        };
+    }
+
+    const city = locationData[countryKey]?.cities[cityKey];
+    if (!city) {
+        return {
+            district: "",
+            neighborhood: "",
+            extraAddress: address,
+        };
+    }
+
+    const remainingTokens = new Map(
+        tokens.map((token) => [normalizeAddressPart(token), token])
+    );
+
+    let district = "";
+    let neighborhood = "";
+
+    for (const [districtKey, districtValue] of Object.entries(city.districts)) {
+        const matchedDistrict = [districtKey, districtValue.label]
+            .map(normalizeAddressPart)
+            .find((candidate) => remainingTokens.has(candidate));
+
+        if (!matchedDistrict) {
+            continue;
+        }
+
+        district = districtKey;
+        remainingTokens.delete(matchedDistrict);
+
+        const matchedNeighborhood = districtValue.neighborhoods.find((item) =>
+            [item.value, item.label]
+                .map(normalizeAddressPart)
+                .some((candidate) => remainingTokens.has(candidate))
+        );
+
+        if (matchedNeighborhood) {
+            neighborhood = matchedNeighborhood.value;
+            for (const candidate of [matchedNeighborhood.value, matchedNeighborhood.label].map(
+                normalizeAddressPart
+            )) {
+                remainingTokens.delete(candidate);
+            }
+        }
+
+        break;
+    }
+
+    return {
+        district,
+        neighborhood,
+        extraAddress: Array.from(remainingTokens.values()).join(", "),
+    };
+}
+
 function toProfileData(
     backendProfile: BackendProfileResponse,
     email: string
@@ -110,11 +185,15 @@ function toProfileData(
     const mapped = mapBackendProfileToEditableProfile(backendProfile, email);
     const countryKey = findCountryKeyByLabel(mapped.country);
     const cityKey = countryKey ? findCityKeyByLabel(countryKey, mapped.city) : "";
+    const parsedAddress = parseLocationAddress(countryKey, cityKey, mapped.extraAddress);
 
     return {
         ...mapped,
         country: countryKey,
         city: cityKey,
+        district: parsedAddress.district,
+        neighborhood: parsedAddress.neighborhood,
+        extraAddress: parsedAddress.extraAddress,
         chronicDiseasesFiles: [],
         chronicDiseasesVerified: false,
         allergiesFiles: [],
@@ -230,6 +309,15 @@ export default function ProfileView() {
             setError("");
             setInfo("");
 
+            const districtLabel =
+                locationData[profile.country]?.cities[profile.city]?.districts[profile.district]
+                    ?.label || profile.district;
+            const neighborhoodLabel =
+                locationData[profile.country]?.cities[profile.city]?.districts[
+                    profile.district
+                ]?.neighborhoods.find((item) => item.value === profile.neighborhood)
+                    ?.label || profile.neighborhood;
+
             await patchMyPhysical(token, {
                 age: profile.birthDate
                     ? calculateAgeFromBirthDate(profile.birthDate)
@@ -254,8 +342,8 @@ export default function ProfileView() {
                     null,
                 address:
                     buildAddress({
-                        district: profile.district,
-                        neighborhood: profile.neighborhood,
+                        district: districtLabel,
+                        neighborhood: neighborhoodLabel,
                         extraAddress: profile.extraAddress,
                     }) || null,
             });
