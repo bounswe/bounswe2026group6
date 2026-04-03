@@ -26,7 +26,10 @@ export function SelectInput({
     ...props
 }: SelectInputProps) {
     const selectedOption = options.find((option) => option.value === value);
-    const displayValue = selectedOption ? selectedOption.value : "";
+    const emptyOption = options.find((option) => option.value === "");
+    const displayValue = selectedOption?.label || "";
+    const placeholderLabel = emptyOption?.label || placeholder;
+    const hasExplicitEmptyOption = Boolean(emptyOption);
 
     return (
         <div className="flex w-full flex-col gap-2">
@@ -51,7 +54,7 @@ export function SelectInput({
                             displayValue ? "text-gray-800" : "text-gray-400"
                         )}
                     >
-                        {displayValue || placeholder}
+                        {displayValue || placeholderLabel}
                     </span>
 
                     <svg
@@ -76,7 +79,7 @@ export function SelectInput({
                     className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
                     {...props}
                 >
-                    <option value="">{placeholder}</option>
+                    {hasExplicitEmptyOption ? null : <option value="">{placeholder}</option>}
 
                     {options.map((option) => (
                         <option
