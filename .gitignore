@@ -29,6 +29,7 @@ backend/node_modules/
 out/
 web/.next/
 web/out/
+web/next-env.d.ts
 
 # General build outputs
 dist/
