@@ -10,7 +10,14 @@ type AuthRouteGateProps = {
     defaultAuthenticatedRoute?: string;
 };
 
-const AUTH_ROUTES = new Set(["/", "/login", "/signup", "/forgot-password", "/verify-email"]);
+const AUTH_ROUTES = new Set([
+    "/",
+    "/login",
+    "/signup",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+]);
 type AuthStatus = "checking" | "authenticated" | "guest";
 
 function getPathnameOnly(path: string) {

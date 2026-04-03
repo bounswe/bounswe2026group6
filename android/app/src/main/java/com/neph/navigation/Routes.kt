@@ -20,6 +20,7 @@ sealed class Routes(
     data object VerifyEmail : Routes("verify_email")
     data object CompleteProfile : Routes("complete_profile")
     data object ForgotPassword : Routes("forgot_password")
+    data object ResetPassword : Routes("reset_password")
     data object TermsOfService : Routes("terms_of_service")
     data object PrivacyPolicy : Routes("privacy_policy")
     data object Profile : Routes("profile", "Profile")

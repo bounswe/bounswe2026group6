@@ -11,8 +11,7 @@ const navItemsOrdered = [
     { label: "News", href: "/news" },
     { label: "Emergency Numbers", href: "/emergency-numbers" },
     { label: "Profile", href: "/profile" },
-    { label: "Privacy", href: "/privacy" },
-    { label: "Security", href: "/security" },
+    { label: "Privacy & Security", href: "/privacy-security" },
 ];
 
 const guestAllowedPaths = new Set(["/home", "/news", "/emergency-numbers"]);
