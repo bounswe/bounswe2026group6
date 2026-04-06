@@ -1,10 +1,18 @@
+const jwt = require('jsonwebtoken');
+
+const { env } = require('../../config/env');
 const {
   createHelpRequest,
   listHelpRequestsByUserId,
+  findHelpRequestById,
   findHelpRequestByIdForUser,
   markHelpRequestAsSynced,
   markHelpRequestAsResolved,
 } = require('./repository');
+
+const JWT_SECRET = env.jwt.secret;
+const GUEST_HELP_REQUEST_SCOPE = 'help_request_guest_read';
+const GUEST_HELP_REQUEST_TOKEN_TTL = '30d';
 
 async function createMyHelpRequest(userId, input) {
   try {
@@ -29,6 +37,75 @@ async function listMyHelpRequests(userId) {
 
 async function getMyHelpRequest(userId, requestId) {
   return findHelpRequestByIdForUser(userId, requestId);
+}
+
+function buildGuestAccessError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function issueGuestHelpRequestAccessToken(requestId) {
+  return jwt.sign(
+    {
+      scope: GUEST_HELP_REQUEST_SCOPE,
+      requestId,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: GUEST_HELP_REQUEST_TOKEN_TTL,
+    },
+  );
+}
+
+function verifyGuestHelpRequestAccessToken(guestAccessToken) {
+  if (typeof guestAccessToken !== 'string' || guestAccessToken.trim() === '') {
+    throw buildGuestAccessError('INVALID_GUEST_ACCESS_TOKEN', 'Guest access token is required.');
+  }
+
+  try {
+    const decoded = jwt.verify(guestAccessToken.trim(), JWT_SECRET);
+
+    if (
+      !decoded
+      || decoded.scope !== GUEST_HELP_REQUEST_SCOPE
+      || typeof decoded.requestId !== 'string'
+      || decoded.requestId.trim() === ''
+    ) {
+      throw buildGuestAccessError('INVALID_GUEST_ACCESS_TOKEN', 'Invalid or expired guest access token.');
+    }
+
+    return decoded.requestId;
+  } catch (error) {
+    if (error.code === 'INVALID_GUEST_ACCESS_TOKEN') {
+      throw error;
+    }
+
+    throw buildGuestAccessError('INVALID_GUEST_ACCESS_TOKEN', 'Invalid or expired guest access token.');
+  }
+}
+
+async function getGuestHelpRequest(requestId, guestAccessToken) {
+  const tokenRequestId = verifyGuestHelpRequestAccessToken(guestAccessToken);
+
+  if (tokenRequestId !== requestId) {
+    throw buildGuestAccessError('FORBIDDEN_GUEST_ACCESS', 'Guest access token is not valid for this help request.');
+  }
+
+  const helpRequest = await findHelpRequestById(requestId);
+
+  if (!helpRequest) {
+    return null;
+  }
+
+  if (helpRequest.userId) {
+    throw buildGuestAccessError(
+      'FORBIDDEN_GUEST_ACCESS',
+      'Guest access token can only be used for guest-created help requests.',
+    );
+  }
+
+  return helpRequest;
 }
 
 function buildInvalidTransitionError(message) {
@@ -67,5 +144,7 @@ module.exports = {
   createMyHelpRequest,
   listMyHelpRequests,
   getMyHelpRequest,
+  issueGuestHelpRequestAccessToken,
+  getGuestHelpRequest,
   updateMyHelpRequestStatus,
 };

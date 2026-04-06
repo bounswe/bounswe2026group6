@@ -276,6 +276,22 @@ async function listHelpRequestsByUserId(userId) {
   return result.rows.map(mapHelpRequest);
 }
 
+async function findHelpRequestById(requestId) {
+  const result = await query(
+    `
+      ${buildSelectQuery()}
+      WHERE hr.request_id = $1
+    `,
+    [requestId],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapHelpRequest(result.rows[0]);
+}
+
 async function findHelpRequestByIdForUser(userId, requestId) {
   const result = await query(
     `
@@ -323,6 +339,7 @@ async function markHelpRequestAsResolved(userId, requestId) {
 module.exports = {
   createHelpRequest,
   listHelpRequestsByUserId,
+  findHelpRequestById,
   findHelpRequestByIdForUser,
   markHelpRequestAsSynced,
   markHelpRequestAsResolved,
