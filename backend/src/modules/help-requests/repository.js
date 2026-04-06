@@ -127,8 +127,13 @@ function buildSelectQuery() {
     LEFT JOIN volunteers vol ON vol.volunteer_id = asg.volunteer_id
     LEFT JOIN users helper_user ON helper_user.user_id = vol.user_id
     LEFT JOIN user_profiles helper_profile ON helper_profile.user_id = vol.user_id
-    LEFT JOIN expertise helper_expertise
-      ON helper_expertise.profile_id = helper_profile.profile_id
+    LEFT JOIN LATERAL (
+      SELECT e.expertise_area
+      FROM expertise e
+      WHERE e.profile_id = helper_profile.profile_id
+      ORDER BY e.is_verified DESC, e.expertise_id ASC
+      LIMIT 1
+    ) helper_expertise ON TRUE
   `;
 }
 
@@ -321,6 +326,19 @@ async function markHelpRequestAsSynced(userId, requestId) {
   return findHelpRequestByIdForUser(userId, requestId);
 }
 
+async function markHelpRequestAsSyncedByRequestId(requestId) {
+  await query(
+    `
+      UPDATE help_requests
+      SET is_saved_locally = FALSE
+      WHERE request_id = $1
+    `,
+    [requestId],
+  );
+
+  return findHelpRequestById(requestId);
+}
+
 async function markHelpRequestAsResolved(userId, requestId) {
   await query(
     `
@@ -336,11 +354,28 @@ async function markHelpRequestAsResolved(userId, requestId) {
   return findHelpRequestByIdForUser(userId, requestId);
 }
 
+async function markHelpRequestAsResolvedByRequestId(requestId) {
+  await query(
+    `
+      UPDATE help_requests
+      SET status = 'RESOLVED',
+          resolved_at = CURRENT_TIMESTAMP,
+          is_saved_locally = FALSE
+      WHERE request_id = $1
+    `,
+    [requestId],
+  );
+
+  return findHelpRequestById(requestId);
+}
+
 module.exports = {
   createHelpRequest,
   listHelpRequestsByUserId,
   findHelpRequestById,
   findHelpRequestByIdForUser,
   markHelpRequestAsSynced,
+  markHelpRequestAsSyncedByRequestId,
   markHelpRequestAsResolved,
+  markHelpRequestAsResolvedByRequestId,
 };

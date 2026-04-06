@@ -8,7 +8,9 @@ jest.mock('../../../../src/modules/help-requests/repository', () => ({
 	findHelpRequestById: jest.fn(),
 	findHelpRequestByIdForUser: jest.fn(),
 	markHelpRequestAsSynced: jest.fn(),
+	markHelpRequestAsSyncedByRequestId: jest.fn(),
 	markHelpRequestAsResolved: jest.fn(),
+	markHelpRequestAsResolvedByRequestId: jest.fn(),
 }));
 
 const repository = require('../../../../src/modules/help-requests/repository');
@@ -19,6 +21,7 @@ const {
 	issueGuestHelpRequestAccessToken,
 	getGuestHelpRequest,
 	updateMyHelpRequestStatus,
+	updateGuestHelpRequestStatus,
 } = require('../../../../src/modules/help-requests/service');
 
 describe('help-requests service', () => {
@@ -243,6 +246,77 @@ describe('help-requests service', () => {
 			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
 
 			await expect(updateMyHelpRequestStatus('u1', 'req_1', 'CANCELLED'))
+				.rejects
+				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
+		});
+	});
+
+	describe('updateGuestHelpRequestStatus', () => {
+		test('returns null when guest request not found', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_missing');
+			repository.findHelpRequestById.mockResolvedValueOnce(null);
+
+			const result = await updateGuestHelpRequestStatus('req_guest_missing', 'RESOLVED', token);
+
+			expect(result).toBeNull();
+		});
+
+		test('marks guest request as synced when current status allows it', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_sync');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_sync',
+				userId: null,
+				internalStatus: 'PENDING',
+			});
+			const updated = { id: 'req_guest_sync', status: 'SYNCED', isSavedLocally: false };
+			repository.markHelpRequestAsSyncedByRequestId.mockResolvedValueOnce(updated);
+
+			const result = await updateGuestHelpRequestStatus('req_guest_sync', 'SYNCED', token);
+
+			expect(repository.markHelpRequestAsSyncedByRequestId).toHaveBeenCalledWith('req_guest_sync');
+			expect(result).toEqual(updated);
+		});
+
+		test('marks guest request as resolved', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_resolve');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_resolve',
+				userId: null,
+				internalStatus: 'PENDING',
+			});
+			const updated = { id: 'req_guest_resolve', status: 'RESOLVED' };
+			repository.markHelpRequestAsResolvedByRequestId.mockResolvedValueOnce(updated);
+
+			const result = await updateGuestHelpRequestStatus('req_guest_resolve', 'RESOLVED', token);
+
+			expect(repository.markHelpRequestAsResolvedByRequestId).toHaveBeenCalledWith('req_guest_resolve');
+			expect(result).toEqual(updated);
+		});
+
+		test('returns current request idempotently when guest request is already RESOLVED', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_done');
+			const current = {
+				id: 'req_guest_done',
+				userId: null,
+				internalStatus: 'RESOLVED',
+			};
+			repository.findHelpRequestById.mockResolvedValueOnce(current);
+
+			const result = await updateGuestHelpRequestStatus('req_guest_done', 'RESOLVED', token);
+
+			expect(repository.markHelpRequestAsResolvedByRequestId).not.toHaveBeenCalled();
+			expect(result).toEqual(current);
+		});
+
+		test('throws INVALID_STATUS_TRANSITION when moving guest RESOLVED request to SYNCED', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_locked');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_locked',
+				userId: null,
+				internalStatus: 'RESOLVED',
+			});
+
+			await expect(updateGuestHelpRequestStatus('req_guest_locked', 'SYNCED', token))
 				.rejects
 				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
 		});
