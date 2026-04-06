@@ -105,6 +105,7 @@ describe('help-requests integration', () => {
 			.send(buildCreatePayload());
 
 		expect(response.status).toBe(201);
+		expect(response.body.guestAccessToken).toEqual(expect.any(String));
 		expect(response.body.request.userId).toBeNull();
 		expect(response.body.request.helpTypes).toEqual(['first_aid', 'fire_brigade']);
 		expect(response.body.request.contact.fullName).toBe('Ayse Yilmaz');
@@ -338,6 +339,61 @@ describe('help-requests integration', () => {
 		expect(response.body.request.id).toBe(requestId);
 		expect(response.body.request.description).toBe('broken leg');
 		expect(response.body.request.helpTypes).toEqual(['first_aid', 'fire_brigade']);
+	});
+
+	test('GET /api/help-requests/:requestId returns 401 without auth and guest token', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload());
+
+		const response = await request(app)
+			.get(`/api/help-requests/${createResponse.body.request.id}`);
+
+		expect(response.status).toBe(401);
+		expect(response.body.code).toBe('UNAUTHORIZED');
+	});
+
+	test('GET /api/help-requests/:requestId allows guest access with guest token', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest can read this' }));
+
+		const requestId = createResponse.body.request.id;
+		const guestAccessToken = createResponse.body.guestAccessToken;
+
+		expect(guestAccessToken).toEqual(expect.any(String));
+
+		const response = await request(app)
+			.get(`/api/help-requests/${requestId}`)
+			.set('x-help-request-access-token', guestAccessToken);
+
+		expect(response.status).toBe(200);
+		expect(response.body.request.id).toBe(requestId);
+		expect(response.body.request.userId).toBeNull();
+		expect(response.body.request.description).toBe('guest can read this');
+	});
+
+	test('GET /api/help-requests/:requestId returns 403 with mismatched guest token', async () => {
+		const app = createTestApp();
+
+		const firstCreate = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'first guest request' }));
+
+		const secondCreate = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'second guest request' }));
+
+		const response = await request(app)
+			.get(`/api/help-requests/${secondCreate.body.request.id}`)
+			.set('x-help-request-access-token', firstCreate.body.guestAccessToken);
+
+		expect(response.status).toBe(403);
+		expect(response.body.code).toBe('FORBIDDEN');
 	});
 
 	test('GET /api/help-requests/:requestId returns 404 for nonexistent request', async () => {

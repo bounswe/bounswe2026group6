@@ -1,8 +1,11 @@
 'use strict';
 
+const jwt = require('jsonwebtoken');
+
 jest.mock('../../../../src/modules/help-requests/repository', () => ({
 	createHelpRequest: jest.fn(),
 	listHelpRequestsByUserId: jest.fn(),
+	findHelpRequestById: jest.fn(),
 	findHelpRequestByIdForUser: jest.fn(),
 	markHelpRequestAsSynced: jest.fn(),
 	markHelpRequestAsResolved: jest.fn(),
@@ -13,6 +16,8 @@ const {
 	createMyHelpRequest,
 	listMyHelpRequests,
 	getMyHelpRequest,
+	issueGuestHelpRequestAccessToken,
+	getGuestHelpRequest,
 	updateMyHelpRequestStatus,
 } = require('../../../../src/modules/help-requests/service');
 
@@ -121,6 +126,63 @@ describe('help-requests service', () => {
 			const result = await getMyHelpRequest('u1', 'nonexistent');
 
 			expect(result).toBeNull();
+		});
+	});
+
+	describe('guest access token flow', () => {
+		test('issues a signed guest access token with requestId', () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_1');
+			const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-123');
+
+			expect(typeof token).toBe('string');
+			expect(decoded.requestId).toBe('req_guest_1');
+			expect(decoded.scope).toBe('help_request_guest_read');
+		});
+
+		test('returns request for valid guest token and matching request', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_2');
+			const requestRow = { id: 'req_guest_2', userId: null, helpTypes: ['first_aid'] };
+			repository.findHelpRequestById.mockResolvedValueOnce(requestRow);
+
+			const result = await getGuestHelpRequest('req_guest_2', token);
+
+			expect(repository.findHelpRequestById).toHaveBeenCalledWith('req_guest_2');
+			expect(result).toEqual(requestRow);
+		});
+
+		test('returns null when guest-token request does not exist', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_missing');
+			repository.findHelpRequestById.mockResolvedValueOnce(null);
+
+			const result = await getGuestHelpRequest('req_guest_missing', token);
+
+			expect(result).toBeNull();
+		});
+
+		test('throws INVALID_GUEST_ACCESS_TOKEN for malformed token', async () => {
+			await expect(getGuestHelpRequest('req_guest_3', 'bad-token'))
+				.rejects
+				.toMatchObject({ code: 'INVALID_GUEST_ACCESS_TOKEN' });
+		});
+
+		test('throws FORBIDDEN_GUEST_ACCESS when token requestId does not match url requestId', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_other');
+
+			await expect(getGuestHelpRequest('req_guest_4', token))
+				.rejects
+				.toMatchObject({ code: 'FORBIDDEN_GUEST_ACCESS' });
+		});
+
+		test('throws FORBIDDEN_GUEST_ACCESS when token is used for user-owned request', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_user_owned');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_user_owned',
+				userId: 'u1',
+			});
+
+			await expect(getGuestHelpRequest('req_user_owned', token))
+				.rejects
+				.toMatchObject({ code: 'FORBIDDEN_GUEST_ACCESS' });
 		});
 	});
 
