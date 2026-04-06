@@ -17,7 +17,6 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
-!/infra/compose/.env.example
 
 # Dependencies
 node_modules/
