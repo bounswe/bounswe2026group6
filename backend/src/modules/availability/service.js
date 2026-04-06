@@ -171,10 +171,32 @@ async function resolveMyAssignment(userId, { requestId }) {
   };
 }
 
+async function getAvailabilityStatus(userId) {
+  let volunteer = await findVolunteerByUserId(userId);
+  if (!volunteer) {
+    // If volunteer record doesn't exist, they are not available by default
+    // We could create one, but it's cleaner to just return false if it doesn't exist yet
+    return {
+      isAvailable: false,
+      volunteer: null,
+      assignment: null
+    };
+  }
+
+  const assignment = await getAssignmentByVolunteerId(volunteer.volunteer_id);
+  
+  return {
+    isAvailable: volunteer.is_available,
+    volunteer,
+    assignment
+  };
+}
+
 module.exports = {
   setAvailability,
   syncAvailability,
   getMyAssignment,
   cancelMyAssignment,
   resolveMyAssignment,
+  getAvailabilityStatus,
 };

@@ -45,7 +45,33 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
+function optionalAuth(req, _res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    req.user = {
+      userId: decoded.userId,
+      email: decoded.email,
+      isAdmin: decoded.isAdmin,
+      adminRole: decoded.adminRole,
+    };
+  } catch (_error) {
+    // Token is invalid/expired — proceed as guest
+  }
+
+  return next();
+}
+
 module.exports = {
   requireAuth,
   requireAdmin,
+  optionalAuth,
 };

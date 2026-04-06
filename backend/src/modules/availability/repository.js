@@ -116,8 +116,8 @@ async function createAssignment(volunteerId, requestId) {
 async function updateRequestStatus(requestId, status) {
   const sql = `
     UPDATE help_requests
-    SET status = $2,
-        resolved_at = CASE WHEN $2 = 'RESOLVED' THEN CURRENT_TIMESTAMP ELSE resolved_at END
+    SET status = $2::request_status,
+        resolved_at = CASE WHEN $2::request_status = 'RESOLVED' THEN CURRENT_TIMESTAMP ELSE resolved_at END
     WHERE request_id = $1
     RETURNING *;
   `;
@@ -128,13 +128,19 @@ async function updateRequestStatus(requestId, status) {
 async function getAssignmentByVolunteerId(volunteerId) {
   const sql = `
     SELECT a.*, hr.need_type, hr.description, hr.status as request_status,
+           hr.help_types, hr.other_help_text, hr.affected_people_count,
+           hr.risk_flags, hr.vulnerable_groups, hr.blood_type,
+           hr.contact_full_name, hr.contact_phone, hr.contact_alternative_phone,
            rl.latitude, rl.longitude,
+           rl.country AS request_country, rl.city AS request_city,
+           rl.district AS request_district, rl.neighborhood AS request_neighborhood,
+           rl.extra_address AS request_extra_address,
            u.email as requester_email,
            up.first_name as requester_first_name, up.last_name as requester_last_name
     FROM assignments a
     JOIN help_requests hr ON a.request_id = hr.request_id
     LEFT JOIN request_locations rl ON hr.request_id = rl.request_id
-    JOIN users u ON hr.user_id = u.user_id
+    LEFT JOIN users u ON hr.user_id = u.user_id
     LEFT JOIN user_profiles up ON u.user_id = up.user_id
     WHERE a.volunteer_id = $1 AND a.is_cancelled = FALSE AND hr.status != 'RESOLVED' AND hr.status != 'CANCELLED'
     LIMIT 1;
@@ -154,8 +160,7 @@ async function getAssignmentById(assignmentId) {
 
 async function cancelAssignment(assignmentId) {
   const sql = `
-    UPDATE assignments
-    SET is_cancelled = TRUE
+    DELETE FROM assignments
     WHERE assignment_id = $1
     RETURNING *;
   `;

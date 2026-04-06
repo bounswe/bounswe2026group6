@@ -101,7 +101,7 @@ object AuthRepository {
     }
 
     suspend fun verifyEmail(tokenOrLink: String): String {
-        val token = extractVerificationToken(tokenOrLink)
+        val token = extractTokenFromLink(tokenOrLink)
         val encodedToken = URLEncoder.encode(token, Charsets.UTF_8.name())
 
         val response = JsonHttpClient.request(
@@ -131,17 +131,43 @@ object AuthRepository {
         }
     }
 
+    suspend fun forgotPassword(email: String): String {
+        val response = JsonHttpClient.request(
+            path = "/auth/forgot-password",
+            method = "POST",
+            body = JSONObject().put("email", email.trim())
+        )
+
+        return response.optString("message").ifBlank {
+            "Password reset email sent. Please check your inbox."
+        }
+    }
+
+    suspend fun resetPassword(tokenOrLink: String, newPassword: String): String {
+        val response = JsonHttpClient.request(
+            path = "/auth/reset-password",
+            method = "POST",
+            body = JSONObject()
+                .put("token", extractTokenFromLink(tokenOrLink))
+                .put("newPassword", newPassword)
+        )
+
+        return response.optString("message").ifBlank {
+            "Password reset successfully. You can now log in with your new password."
+        }
+    }
+
     fun logout() {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
     }
 
-    private fun extractVerificationToken(tokenOrLink: String): String {
+    private fun extractTokenFromLink(tokenOrLink: String): String {
         val trimmed = tokenOrLink.trim()
         if (trimmed.isBlank()) {
             throw ApiException(
-                message = "Paste the verification link or token from your email.",
+                message = "Paste the link or token from your email.",
                 status = 400,
                 code = "VALIDATION_ERROR"
             )

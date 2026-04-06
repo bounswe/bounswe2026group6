@@ -5,6 +5,7 @@ const {
   handleGetMyAssignment,
   handleCancelAssignment,
   handleResolveAssignment,
+  handleGetAvailabilityStatus,
 } = require('./controller');
 const { requireAuth } = require('../auth/middleware');
 
@@ -12,6 +13,9 @@ const availabilityRouter = express.Router();
 
 // All availability routes require authentication
 availabilityRouter.use(requireAuth);
+
+// Get current availability status
+availabilityRouter.get('/status', handleGetAvailabilityStatus);
 
 // Toggle availability on/off
 availabilityRouter.post('/toggle', handleSetAvailability);

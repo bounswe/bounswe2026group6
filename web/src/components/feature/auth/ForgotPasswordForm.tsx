@@ -8,16 +8,8 @@ import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { Divider } from "@/components/ui/display/Divider";
 import { HelperText } from "@/components/ui/display/HelperText";
+import { forgotPassword } from "@/lib/auth";
 import { isValidEmail } from "@/lib/validators/email";
-
-const FORGOT_PASSWORD_ENDPOINT = "/api/auth/forgot-password";
-
-type ForgotPasswordErrorResponse = {
-    detail?: string;
-    message?: string;
-    error?: string;
-    errors?: Record<string, string[] | string>;
-};
 
 export function ForgotPasswordForm() {
     const router = useRouter();
@@ -51,55 +43,14 @@ export function ForgotPasswordForm() {
 
         try {
             setLoading(true);
-
-            const response = await fetch(FORGOT_PASSWORD_ENDPOINT, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    email: trimmedEmail,
-                }),
-            });
-
-            if (!response.ok) {
-                let errorMessage =
-                    "We could not start the password reset flow. Please try again.";
-
-                try {
-                    const data =
-                        (await response.json()) as ForgotPasswordErrorResponse;
-
-                    if (typeof data.detail === "string" && data.detail.trim()) {
-                        errorMessage = data.detail;
-                    } else if (typeof data.message === "string" && data.message.trim()) {
-                        errorMessage = data.message;
-                    } else if (typeof data.error === "string" && data.error.trim()) {
-                        errorMessage = data.error;
-                    } else if (data.errors && typeof data.errors === "object") {
-                        const firstFieldError = Object.values(data.errors)[0];
-
-                        if (Array.isArray(firstFieldError) && firstFieldError[0]) {
-                            errorMessage = firstFieldError[0];
-                        } else if (
-                            typeof firstFieldError === "string" &&
-                            firstFieldError.trim()
-                        ) {
-                            errorMessage = firstFieldError;
-                        }
-                    }
-                } catch {
-                    // ignore JSON parse issues and keep fallback message
-                }
-
-                setError(errorMessage);
-                return;
-            }
-
+            const response = await forgotPassword(trimmedEmail);
+            setInfo(response.message);
             setSuccess(true);
-        } catch {
+        } catch (err) {
             setError(
-                "We could not reach the server. Please check your connection and try again."
+                err instanceof Error
+                    ? err.message
+                    : "We could not start the password reset flow. Please try again."
             );
         } finally {
             setLoading(false);
@@ -118,6 +69,8 @@ export function ForgotPasswordForm() {
                         If an account exists for <span className="font-medium">{email}</span>,
                         a password reset link will be sent.
                     </p>
+
+                    {info ? <HelperText className="mt-4">{info}</HelperText> : null}
 
                     <div className="mt-5 flex flex-col gap-3">
                         <PrimaryButton onClick={() => router.push("/login")}>

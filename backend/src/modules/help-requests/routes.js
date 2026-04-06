@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth } = require('../auth/middleware');
+const { requireAuth, optionalAuth } = require('../auth/middleware');
 const {
   createHelpRequest,
   listHelpRequests,
@@ -9,12 +9,13 @@ const {
 
 const helpRequestsRouter = express.Router();
 
-helpRequestsRouter.use(requireAuth);
+// Guest-accessible: optionalAuth sets req.user if token present, but doesn't block
+helpRequestsRouter.post('/', optionalAuth, createHelpRequest);
 
-helpRequestsRouter.post('/', createHelpRequest);
-helpRequestsRouter.get('/', listHelpRequests);
-helpRequestsRouter.get('/:requestId', getHelpRequest);
-helpRequestsRouter.patch('/:requestId/status', patchHelpRequestStatus);
+// These routes require authentication
+helpRequestsRouter.get('/', requireAuth, listHelpRequests);
+helpRequestsRouter.get('/:requestId', requireAuth, getHelpRequest);
+helpRequestsRouter.patch('/:requestId/status', requireAuth, patchHelpRequestStatus);
 
 module.exports = {
   helpRequestsRouter,

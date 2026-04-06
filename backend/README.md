@@ -1,64 +1,44 @@
 # Backend
 
-Minimal shared backend scaffold for the Neighborhood Emergency Preparedness Hub.
+This folder contains the Node.js + Express backend API for the Neighborhood Emergency Preparedness Hub MVP.
 
-## Backend Team
+## MVP scope
 
-- Rojhat Delibaş
-- Mehmet Can Gürbüz
-- Alper Kartkaya
-- Berat Sayın
+The backend is the main implementation layer of the current MVP.
 
-## Scope
+Main feature areas:
 
-This is a light initialization layer so the backend subgroup can start from the same structure before splitting implementation work.
+- `src/modules/auth` — signup, login, email verification, access control
+- `src/modules/profiles` — user profile, privacy, health, and location data
+- `src/modules/help-requests` — request creation, tracking, and status updates
+- `src/modules/availability` — volunteer availability, matching, and assignment-related flows
 
-For MVP, these areas are meant as practical work split guidelines, not strict architectural boundaries. Keep shared setup and small cross-cutting helpers simple instead of forcing hard separations too early.
-
-Suggested MVP work split:
-
-- `src/modules/auth` - signup, login, email verification, basic access control
-- `src/modules/profiles` - profile, privacy, health, and location data
-- `src/modules/help-requests` - request creation, request tracking, and status flow
-- `src/modules/availability` - volunteer availability, matching, and assignment flow
-
-Shared foundation should stay shared:
-
-- `src/config` and `src/db` for common setup
-- `src/routes` for top-level API wiring
-- small reusable helpers can stay common if splitting them adds unnecessary complexity
-
-## Backend Structure Example
-
-Use this lightweight module structure for new backend features.
+## Structure
 
 ```text
 src/
-	modules/
-		profiles/
-			routes.js       # Route definitions only
-			controller.js   # HTTP request/response handling
-			service.js      # Business logic
-			repository.js   # SQL and database access
-			validators.js   # Input and payload validation helpers
+  modules/
+    <feature>/
+      routes.js
+      controller.js
+      service.js
+      repository.js
+      validators.js
 ```
 
 Layer responsibilities:
 
-- `routes` calls controller functions and keeps endpoint mapping simple.
-- `controller` parses request, calls service, and formats success/error responses.
-- `service` contains application logic and orchestration.
-- `repository` is the only layer that runs SQL queries.
-- `validators` centralizes reusable validation rules.
+- `routes` — endpoint wiring
+- `controller` — request/response handling
+- `service` — business logic
+- `repository` — SQL and database access
+- `validators` — payload validation helpers
 
 ## Run locally
 
-Current recommended development flow is:
+### 1. Start PostgreSQL first
 
-- PostgreSQL in Docker (`infra/dcompose`)
-- Backend on host with Node.js (`backend/`)
-
-1. Start PostgreSQL first:
+From repository root:
 
 ```bash
 cd infra/dcompose
@@ -66,22 +46,25 @@ cp .env.example .env
 docker compose -f docker-compose-dev.yml up -d
 ```
 
-2. Start backend:
+### 2. Start the backend
+
+From this folder:
 
 ```bash
-cd backend
 cp .env.example .env
 npm install
 npm run dev
 ```
 
-3. Verify API health:
+### 3. Verify backend health
 
 ```text
 GET http://localhost:3000/health
 ```
 
-The server exposes:
+## Important endpoints
+
+The backend exposes these top-level paths:
 
 - `GET /health`
 - `GET /api`
@@ -90,35 +73,57 @@ The server exposes:
 - `GET /api/help-requests`
 - `GET /api/availability`
 
-## Shared API Conventions
+## Environment notes
 
-Use these as lightweight team defaults during MVP development.
+Create a local environment file first:
 
-- Error response format: `{ "code": "SOME_ERROR", "message": "Human readable message" }`
-- Common status codes: `400` validation, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `500` internal error
-- Auth expectation: protected endpoints should read current user from `req.user.userId`
-- Naming: prefer kebab-case for route paths (example: `/help-requests`)
-- DB ownership rule: never let a user read or update another user's profile data without explicit authorization
+```bash
+cp .env.example .env
+```
 
-### Help Request Status Notes
+Important notes:
 
-Current MVP request status behavior in `src/modules/help-requests`:
+- when backend runs on host and Postgres runs via Docker on the host machine, use `POSTGRES_HOST=localhost`
+- if backend later runs in the same Docker network as Postgres, use `POSTGRES_HOST=postgres`
 
-- `PENDING_SYNC`: request is stored with `isSavedLocally=true`
-- `SYNCED`: request exists on backend and is not marked as local-only
-- `MATCHED`: derived from assignment-side internal states such as `ASSIGNED` or `IN_PROGRESS`
-- `RESOLVED`: request is marked resolved and gets `resolved_at`
+## Shared API conventions
 
-Scope note:
+- error response format:
+  - `{ "code": "SOME_ERROR", "message": "Human readable message" }`
+- common status codes:
+  - `400` validation
+  - `401` unauthorized
+  - `403` forbidden
+  - `404` not found
+  - `409` conflict
+  - `500` internal error
+- protected endpoints should read current user from `req.user.userId`
+- prefer kebab-case for route paths such as `/help-requests`
 
-- `help-requests` owns create, list, detail, and request-side status updates such as `SYNCED` and `RESOLVED`
-- `availability` will own matching and assignment-side behavior that leads to `MATCHED`
+## Help request status notes
+
+Current MVP help-request status behavior:
+
+- `PENDING_SYNC` — request stored as local-only
+- `SYNCED` — request exists on backend and is not local-only
+- `MATCHED` — derived from assignment-side internal states such as `ASSIGNED` or `IN_PROGRESS`
+- `RESOLVED` — request is marked resolved and receives `resolved_at`
+
+## Tests
+
+From this folder:
+
+```bash
+npm run test:unit
+npm run test:integration
+```
+
+Additional backend test setup notes live in:
+
+- `tests/setup/README.md`
 
 ## Database note
 
-The shared PostgreSQL schema already lives in `infra/docker/postgres/init.sql`. This scaffold only prepares configuration and a reusable DB pool helper without implementing feature logic yet.
+The shared PostgreSQL schema source of truth is:
 
-## Environment Notes
-
-- When backend runs on host and DB runs in Docker, set `POSTGRES_HOST=localhost` in `backend/.env`.
-- If backend later runs as a Docker service in the same compose network, use `POSTGRES_HOST=postgres`.
+- `../infra/docker/postgres/init.sql`

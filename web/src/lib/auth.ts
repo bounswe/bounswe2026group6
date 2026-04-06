@@ -33,6 +33,14 @@ type ResendVerificationResponse = {
     message: string;
 };
 
+type ForgotPasswordResponse = {
+    message: string;
+};
+
+type ResetPasswordResponse = {
+    message: string;
+};
+
 type CurrentUserResponse = AuthUser;
 
 type SetAccessTokenOptions = {
@@ -129,6 +137,26 @@ export async function resendVerification(email: string) {
     return apiRequest<ResendVerificationResponse>("/auth/resend-verification", {
         method: "POST",
         body: { email: email.trim() },
+    });
+}
+
+export async function forgotPassword(email: string) {
+    return apiRequest<ForgotPasswordResponse>("/auth/forgot-password", {
+        method: "POST",
+        body: { email: email.trim() },
+    });
+}
+
+export async function resetPassword(payload: {
+    token: string;
+    newPassword: string;
+}) {
+    return apiRequest<ResetPasswordResponse>("/auth/reset-password", {
+        method: "POST",
+        body: {
+            token: payload.token.trim(),
+            newPassword: payload.newPassword,
+        },
     });
 }
 

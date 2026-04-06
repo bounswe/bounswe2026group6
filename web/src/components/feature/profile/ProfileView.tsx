@@ -18,6 +18,7 @@ import {
     BackendProfileResponse,
     EditableProfileData,
     buildAddress,
+    calculateAgeFromBirthDate,
     fetchMyProfile,
     mapBackendProfileToEditableProfile,
     parseListField,
@@ -25,6 +26,9 @@ import {
     patchMyLocation,
     patchMyPhysical,
     patchMyPrivacy,
+    patchMyProfession,
+    validateExpertiseAreas,
+    putMyExpertiseAreas,
 } from "@/lib/profile";
 
 type Neighborhood = { label: string; value: string };
@@ -99,6 +103,81 @@ function findCityKeyByLabel(countryKey: string, label: string) {
     );
 }
 
+function normalizeAddressPart(value: string) {
+    return value
+        .toLocaleLowerCase("tr")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+}
+
+function parseLocationAddress(countryKey: string, cityKey: string, address: string) {
+    const tokens = address
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    if (!countryKey || !cityKey || tokens.length === 0) {
+        return {
+            district: "",
+            neighborhood: "",
+            extraAddress: address,
+        };
+    }
+
+    const city = locationData[countryKey]?.cities[cityKey];
+    if (!city) {
+        return {
+            district: "",
+            neighborhood: "",
+            extraAddress: address,
+        };
+    }
+
+    const remainingTokens = new Map(
+        tokens.map((token) => [normalizeAddressPart(token), token])
+    );
+
+    let district = "";
+    let neighborhood = "";
+
+    for (const [districtKey, districtValue] of Object.entries(city.districts)) {
+        const matchedDistrict = [districtKey, districtValue.label]
+            .map(normalizeAddressPart)
+            .find((candidate) => remainingTokens.has(candidate));
+
+        if (!matchedDistrict) {
+            continue;
+        }
+
+        district = districtKey;
+        remainingTokens.delete(matchedDistrict);
+
+        const matchedNeighborhood = districtValue.neighborhoods.find((item) =>
+            [item.value, item.label]
+                .map(normalizeAddressPart)
+                .some((candidate) => remainingTokens.has(candidate))
+        );
+
+        if (matchedNeighborhood) {
+            neighborhood = matchedNeighborhood.value;
+            for (const candidate of [matchedNeighborhood.value, matchedNeighborhood.label].map(
+                normalizeAddressPart
+            )) {
+                remainingTokens.delete(candidate);
+            }
+        }
+
+        break;
+    }
+
+    return {
+        district,
+        neighborhood,
+        extraAddress: Array.from(remainingTokens.values()).join(", "),
+    };
+}
+
 function toProfileData(
     backendProfile: BackendProfileResponse,
     email: string
@@ -106,11 +185,15 @@ function toProfileData(
     const mapped = mapBackendProfileToEditableProfile(backendProfile, email);
     const countryKey = findCountryKeyByLabel(mapped.country);
     const cityKey = countryKey ? findCityKeyByLabel(countryKey, mapped.city) : "";
+    const parsedAddress = parseLocationAddress(countryKey, cityKey, mapped.extraAddress);
 
     return {
         ...mapped,
         country: countryKey,
         city: cityKey,
+        district: parsedAddress.district,
+        neighborhood: parsedAddress.neighborhood,
+        extraAddress: parsedAddress.extraAddress,
         chronicDiseasesFiles: [],
         chronicDiseasesVerified: false,
         allergiesFiles: [],
@@ -129,6 +212,32 @@ export default function ProfileView() {
     const [info, setInfo] = React.useState("");
     const [emptyStateAction, setEmptyStateAction] =
         React.useState<EmptyStateAction>(null);
+
+    const refreshProfileFromBackend = React.useCallback(
+        async (token: string, birthDateOverride?: string) => {
+            const [user, backendProfile] = await Promise.all([
+                fetchCurrentUser(token),
+                fetchMyProfile(token),
+            ]);
+
+            setProfile((currentProfile) => {
+                const refreshedProfile = toProfileData(backendProfile, user.email);
+
+                return currentProfile
+                    ? {
+                        ...refreshedProfile,
+                        birthDate: birthDateOverride ?? currentProfile.birthDate,
+                        chronicDiseasesFiles: currentProfile.chronicDiseasesFiles,
+                        chronicDiseasesVerified:
+                            currentProfile.chronicDiseasesVerified,
+                        allergiesFiles: currentProfile.allergiesFiles,
+                        allergiesVerified: currentProfile.allergiesVerified,
+                    }
+                    : refreshedProfile;
+            });
+        },
+        []
+    );
 
     React.useEffect(() => {
         async function loadProfile() {
@@ -172,10 +281,18 @@ export default function ProfileView() {
         }
 
         void loadProfile();
-    }, []);
+    }, [refreshProfileFromBackend]);
 
     const handleSave = async () => {
         if (!profile) {
+            return;
+        }
+
+        const expertiseAreas = parseListField(profile.expertise);
+        const expertiseValidationError = validateExpertiseAreas(expertiseAreas);
+
+        if (expertiseValidationError) {
+            setError(expertiseValidationError);
             return;
         }
 
@@ -192,7 +309,19 @@ export default function ProfileView() {
             setError("");
             setInfo("");
 
+            const districtLabel =
+                locationData[profile.country]?.cities[profile.city]?.districts[profile.district]
+                    ?.label || profile.district;
+            const neighborhoodLabel =
+                locationData[profile.country]?.cities[profile.city]?.districts[
+                    profile.district
+                ]?.neighborhoods.find((item) => item.value === profile.neighborhood)
+                    ?.label || profile.neighborhood;
+
             await patchMyPhysical(token, {
+                age: profile.birthDate
+                    ? calculateAgeFromBirthDate(profile.birthDate)
+                    : undefined,
                 gender: profile.gender || null,
                 height: profile.height ? Number(profile.height) : undefined,
                 weight: profile.weight ? Number(profile.weight) : undefined,
@@ -213,8 +342,8 @@ export default function ProfileView() {
                     null,
                 address:
                     buildAddress({
-                        district: profile.district,
-                        neighborhood: profile.neighborhood,
+                        district: districtLabel,
+                        neighborhood: neighborhoodLabel,
                         extraAddress: profile.extraAddress,
                     }) || null,
             });
@@ -223,28 +352,23 @@ export default function ProfileView() {
                 locationSharingEnabled: profile.shareLocation,
             });
 
-            const [user, backendProfile] = await Promise.all([
-                fetchCurrentUser(token),
-                fetchMyProfile(token),
-            ]);
-
-            setProfile((currentProfile) => {
-                const refreshedProfile = toProfileData(backendProfile, user.email);
-
-                return currentProfile
-                    ? {
-                        ...refreshedProfile,
-                        chronicDiseasesFiles: currentProfile.chronicDiseasesFiles,
-                        chronicDiseasesVerified:
-                            currentProfile.chronicDiseasesVerified,
-                        allergiesFiles: currentProfile.allergiesFiles,
-                        allergiesVerified: currentProfile.allergiesVerified,
-                    }
-                    : refreshedProfile;
+            await patchMyProfession(token, {
+                profession: profile.profession.trim() || null,
             });
+
+            await putMyExpertiseAreas(token, {
+                expertiseAreas,
+            });
+
+            await refreshProfileFromBackend(token, profile.birthDate);
 
             setInfo("Profile updated successfully.");
         } catch (err) {
+            try {
+                await refreshProfileFromBackend(token, profile.birthDate);
+            } catch {
+            }
+
             const baseMessage =
                 err instanceof Error && err.message
                     ? err.message
@@ -448,10 +572,37 @@ export default function ProfileView() {
                                 }
                             />
                             <HelperText>
-                                Date of birth is not synced yet because the backend profile
-                                API currently stores age instead.
+                                Date of birth is converted to age for the current backend
+                                contract.
                             </HelperText>
                         </div>
+                    </div>
+                </SectionCard>
+
+                <SectionCard>
+                    <SectionHeader title="Profession" />
+                    <p className="mb-3 text-xs text-gray-400">
+                        Your profession and expertise help with community coordination.
+                    </p>
+
+                    <div className="flex flex-col gap-4">
+                        <TextInput
+                            id="profession"
+                            label="Profession"
+                            value={profile.profession}
+                            onChange={(e) =>
+                                setProfile({ ...profile, profession: e.target.value })
+                            }
+                        />
+
+                        <TextArea
+                            id="expertise"
+                            label="Expertise (optional — comma-separated)"
+                            value={profile.expertise}
+                            onChange={(e) =>
+                                setProfile({ ...profile, expertise: e.target.value })
+                            }
+                        />
                     </div>
                 </SectionCard>
 

@@ -207,7 +207,7 @@ CREATE TABLE news_announcements (
 
 CREATE TABLE help_requests (
     request_id             VARCHAR(64) PRIMARY KEY,
-    user_id                VARCHAR(64) NOT NULL,
+    user_id                VARCHAR(64),
     help_types             TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     other_help_text        TEXT NOT NULL DEFAULT '',
     affected_people_count  INTEGER NOT NULL DEFAULT 1,
@@ -228,7 +228,7 @@ CREATE TABLE help_requests (
     CONSTRAINT fk_help_request_user
         FOREIGN KEY (user_id)
         REFERENCES users(user_id)
-        ON DELETE RESTRICT,
+        ON DELETE SET NULL,
 
     CONSTRAINT chk_help_request_resolved_at
         CHECK (
