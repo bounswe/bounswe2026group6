@@ -70,13 +70,13 @@ object JsonHttpClient {
             throw error
         } catch (_: UnknownHostException) {
             throw ApiException(
-                message = "Could not reach the server. Please check your connection and try again.",
+                message = "Something went wrong while connecting to the server. Please try again.",
                 status = 0,
                 code = "NETWORK_ERROR"
             )
         } catch (_: IOException) {
             throw ApiException(
-                message = "Could not reach the server. Please check your connection and try again.",
+                message = "Something went wrong while connecting to the server. Please try again.",
                 status = 0,
                 code = "NETWORK_ERROR"
             )

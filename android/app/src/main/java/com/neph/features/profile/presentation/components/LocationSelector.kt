@@ -15,7 +15,11 @@ fun LocationSelector(
     onCityChange: (String) -> Unit,
     onDistrictChange: (String) -> Unit,
     onNeighborhoodChange: (String) -> Unit,
-    locationData: LocationData
+    locationData: LocationData,
+    countryError: String? = null,
+    cityError: String? = null,
+    districtError: String? = null,
+    neighborhoodError: String? = null
 ) {
     val countryData = country.takeIf { it.isNotEmpty() }?.let { locationData[it] }
     
@@ -28,7 +32,8 @@ fun LocationSelector(
         onValueChange = { onCountryChange(it); onCityChange(""); onDistrictChange(""); onNeighborhoodChange("") },
         label = "Country",
         options = listOf(DropdownOption("Select Country", "")) + locationData.map { DropdownOption(it.value.label, it.key) },
-        selectedTextMapper = { it.label }
+        selectedTextMapper = { it.label },
+        error = countryError
     )
     
     AppDropdown(
@@ -37,7 +42,8 @@ fun LocationSelector(
         label = "City",
         options = listOf(DropdownOption("Select City", "")) + cityOptions,
         enabled = country.isNotEmpty(),
-        selectedTextMapper = { it.label }
+        selectedTextMapper = { it.label },
+        error = cityError
     )
     
     AppDropdown(
@@ -46,7 +52,8 @@ fun LocationSelector(
         label = "District",
         options = listOf(DropdownOption("Select District", "")) + districtOptions,
         enabled = city.isNotEmpty(),
-        selectedTextMapper = { it.label }
+        selectedTextMapper = { it.label },
+        error = districtError
     )
     
     AppDropdown(
@@ -55,6 +62,7 @@ fun LocationSelector(
         label = "Neighborhood",
         options = listOf(DropdownOption("Select Neighborhood", "")) + neighborhoodOptions.map { DropdownOption(it.label, it.value) },
         enabled = district.isNotEmpty(),
-        selectedTextMapper = { it.label }
+        selectedTextMapper = { it.label },
+        error = neighborhoodError
     )
 }
