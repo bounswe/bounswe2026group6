@@ -8,6 +8,8 @@ const {
   findHelpRequestByIdForUser,
   markHelpRequestAsSynced,
   markHelpRequestAsResolved,
+  markHelpRequestAsSyncedByRequestId,
+  markHelpRequestAsResolvedByRequestId,
 } = require('./repository');
 
 const JWT_SECRET = env.jwt.secret;
@@ -114,19 +116,13 @@ function buildInvalidTransitionError(message) {
   return error;
 }
 
-async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
-  const currentRequest = await findHelpRequestByIdForUser(userId, requestId);
-
-  if (!currentRequest) {
-    return null;
-  }
-
+async function applyStatusTransition(currentRequest, nextStatus, handlers) {
   if (nextStatus === 'SYNCED') {
     if (currentRequest.internalStatus === 'RESOLVED') {
       throw buildInvalidTransitionError('A resolved request cannot be moved back to synced.');
     }
 
-    return markHelpRequestAsSynced(userId, requestId);
+    return handlers.sync();
   }
 
   if (nextStatus === 'RESOLVED') {
@@ -134,10 +130,36 @@ async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
       return currentRequest;
     }
 
-    return markHelpRequestAsResolved(userId, requestId);
+    return handlers.resolve();
   }
 
   throw buildInvalidTransitionError('This status update is not supported in the help request module.');
+}
+
+async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
+  const currentRequest = await findHelpRequestByIdForUser(userId, requestId);
+
+  if (!currentRequest) {
+    return null;
+  }
+
+  return applyStatusTransition(currentRequest, nextStatus, {
+    sync: () => markHelpRequestAsSynced(userId, requestId),
+    resolve: () => markHelpRequestAsResolved(userId, requestId),
+  });
+}
+
+async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessToken) {
+  const currentRequest = await getGuestHelpRequest(requestId, guestAccessToken);
+
+  if (!currentRequest) {
+    return null;
+  }
+
+  return applyStatusTransition(currentRequest, nextStatus, {
+    sync: () => markHelpRequestAsSyncedByRequestId(requestId),
+    resolve: () => markHelpRequestAsResolvedByRequestId(requestId),
+  });
 }
 
 module.exports = {
@@ -147,4 +169,5 @@ module.exports = {
   issueGuestHelpRequestAccessToken,
   getGuestHelpRequest,
   updateMyHelpRequestStatus,
+  updateGuestHelpRequestStatus,
 };
