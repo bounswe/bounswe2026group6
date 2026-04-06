@@ -5,12 +5,14 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
 const { helpRequestsRouter } = require('../../../../src/modules/help-requests/routes');
+const { availabilityRouter } = require('../../../../src/modules/availability/routes');
 const { query } = require('../../../../src/db/pool');
 
 function createTestApp() {
 	const app = express();
 	app.use(express.json());
 	app.use('/api/help-requests', helpRequestsRouter);
+	app.use('/api/availability', availabilityRouter);
 	return app;
 }
 
@@ -95,14 +97,51 @@ beforeEach(async () => {
 });
 
 describe('help-requests integration', () => {
-	test('POST /api/help-requests returns 401 without token', async () => {
+	test('POST /api/help-requests creates request as guest without token', async () => {
 		const app = createTestApp();
 
 		const response = await request(app)
 			.post('/api/help-requests')
 			.send(buildCreatePayload());
 
-		expect(response.status).toBe(401);
+		expect(response.status).toBe(201);
+		expect(response.body.request.userId).toBeNull();
+		expect(response.body.request.helpTypes).toEqual(['first_aid', 'fire_brigade']);
+		expect(response.body.request.contact.fullName).toBe('Ayse Yilmaz');
+		expect(response.body.request.status).toBe('SYNCED');
+	});
+
+	test('guest-created request is visible in helper assignment endpoints', async () => {
+		const app = createTestApp();
+		const helperId = 'user_hr_guest_helper';
+		await seedActiveUser(helperId, 'guesthelper@example.com');
+		const helperToken = buildAuthToken(helperId);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+		expect(createRes.body.request.userId).toBeNull();
+
+		const toggleRes = await request(app)
+			.post('/api/availability/toggle')
+			.set('Authorization', `Bearer ${helperToken}`)
+			.send({ isAvailable: true });
+
+		expect(toggleRes.status).toBe(200);
+		expect(toggleRes.body.assignment).toBeTruthy();
+		expect(toggleRes.body.assignment.request_id).toBe(createRes.body.request.id);
+		expect(toggleRes.body.assignment.requester_email).toBeNull();
+
+		const assignmentRes = await request(app)
+			.get('/api/availability/my-assignment')
+			.set('Authorization', `Bearer ${helperToken}`);
+
+		expect(assignmentRes.status).toBe(200);
+		expect(assignmentRes.body.assignment).toBeTruthy();
+		expect(assignmentRes.body.assignment.request_id).toBe(createRes.body.request.id);
+		expect(assignmentRes.body.assignment.requester_email).toBeNull();
 	});
 
 	test('POST /api/help-requests creates request with the new payload shape', async () => {
@@ -465,5 +504,125 @@ describe('help-requests integration', () => {
 
 		expect(response.status).toBe(200);
 		expect(response.body.request.status).toBe('RESOLVED');
+	});
+
+	test('assigned helper sees full requester form details', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_hr_form_1';
+		const helperId = 'user_hr_form_2';
+		await seedActiveUser(requesterId, 'form1@example.com');
+		await seedActiveUser(helperId, 'form2@example.com');
+		const requesterToken = buildAuthToken(requesterId);
+		const helperToken = buildAuthToken(helperId);
+
+		// Requester creates a rich help request
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+
+		// Helper toggles availability to get assigned
+		const toggleRes = await request(app)
+			.post('/api/availability/toggle')
+			.set('Authorization', `Bearer ${helperToken}`)
+			.send({ isAvailable: true });
+
+		expect(toggleRes.status).toBe(200);
+		expect(toggleRes.body.assignment).toBeTruthy();
+
+		// Helper fetches their assignment — should see full form data
+		const assignmentRes = await request(app)
+			.get('/api/availability/my-assignment')
+			.set('Authorization', `Bearer ${helperToken}`);
+
+		expect(assignmentRes.status).toBe(200);
+		const asg = assignmentRes.body.assignment;
+		expect(asg.help_types).toEqual(['first_aid', 'fire_brigade']);
+		expect(asg.affected_people_count).toBe(3);
+		expect(asg.risk_flags).toEqual(['fire', 'electric_hazard']);
+		expect(asg.vulnerable_groups).toEqual(['children', 'pregnant']);
+		expect(asg.contact_full_name).toBe('Ayse Yilmaz');
+		expect(asg.contact_phone).toBe('5052318546');
+		expect(asg.request_country).toBe('turkiye');
+		expect(asg.request_city).toBe('istanbul');
+		expect(asg.request_district).toBe('besiktas');
+		expect(asg.request_neighborhood).toBe('levazim');
+	});
+
+	test('requester sees assigned helper contact details', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_hr_helper_1';
+		const helperId = 'user_hr_helper_2';
+		await seedActiveUser(requesterId, 'helper1@example.com');
+		await seedActiveUser(helperId, 'helper2@example.com');
+		const requesterToken = buildAuthToken(requesterId);
+		const helperToken = buildAuthToken(helperId);
+
+		// Create helper's profile with name, phone, and expertise
+		await query(
+			`INSERT INTO user_profiles (profile_id, user_id, first_name, last_name, phone_number)
+			 VALUES ('prf_helper_1', $1, 'Mehmet', 'Kaya', '5301234567')`,
+			[helperId],
+		);
+		await query(
+			`INSERT INTO expertise (expertise_id, profile_id, profession, expertise_area, is_verified)
+			 VALUES ('exp_helper_1', 'prf_helper_1', 'Doctor', 'First Aid', FALSE)`,
+		);
+
+		// Requester creates a help request
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+		const requestId = createRes.body.request.id;
+
+		// Initially, no helper assigned
+		expect(createRes.body.request.helper).toBeNull();
+
+		// Helper toggles availability → gets assigned
+		const toggleRes = await request(app)
+			.post('/api/availability/toggle')
+			.set('Authorization', `Bearer ${helperToken}`)
+			.send({ isAvailable: true });
+
+		expect(toggleRes.status).toBe(200);
+		expect(toggleRes.body.assignment).toBeTruthy();
+
+		// Requester fetches their request — should now see helper details
+		const getRes = await request(app)
+			.get(`/api/help-requests/${requestId}`)
+			.set('Authorization', `Bearer ${requesterToken}`);
+
+		expect(getRes.status).toBe(200);
+		expect(getRes.body.request.helper).toBeTruthy();
+		expect(getRes.body.request.helper.firstName).toBe('Mehmet');
+		expect(getRes.body.request.helper.lastName).toBe('Kaya');
+		expect(getRes.body.request.helper.phone).toBe(5301234567);
+		expect(getRes.body.request.helper.expertise).toBe('First Aid');
+	});
+
+	test('help request without assignment has null helper', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_hr_nohelper';
+		await seedActiveUser(requesterId, 'nohelper@example.com');
+		const requesterToken = buildAuthToken(requesterId);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload());
+
+		const requestId = createRes.body.request.id;
+
+		const getRes = await request(app)
+			.get(`/api/help-requests/${requestId}`)
+			.set('Authorization', `Bearer ${requesterToken}`);
+
+		expect(getRes.status).toBe(200);
+		expect(getRes.body.request.helper).toBeNull();
 	});
 });

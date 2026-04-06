@@ -46,6 +46,19 @@ function mapContact(row) {
   };
 }
 
+function mapHelper(row) {
+  if (!row.helper_first_name && !row.helper_last_name && !row.helper_phone_number) {
+    return null;
+  }
+
+  return {
+    firstName: row.helper_first_name || null,
+    lastName: row.helper_last_name || null,
+    phone: row.helper_phone_number ? Number(row.helper_phone_number) : null,
+    expertise: row.helper_expertise_area || null,
+  };
+}
+
 function mapHelpRequest(row) {
   return {
     id: row.request_id,
@@ -66,6 +79,7 @@ function mapHelpRequest(row) {
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
     isSavedLocally: row.is_saved_locally,
+    helper: mapHelper(row),
   };
 }
 
@@ -100,9 +114,21 @@ function buildSelectQuery() {
       rl.longitude,
       rl.is_gps_location,
       rl.is_last_known,
-      rl.captured_at
+      rl.captured_at,
+      helper_profile.first_name AS helper_first_name,
+      helper_profile.last_name AS helper_last_name,
+      helper_profile.phone_number AS helper_phone_number,
+      helper_expertise.expertise_area AS helper_expertise_area
     FROM help_requests hr
     LEFT JOIN request_locations rl ON rl.request_id = hr.request_id
+    LEFT JOIN assignments asg
+      ON asg.request_id = hr.request_id
+      AND asg.is_cancelled = FALSE
+    LEFT JOIN volunteers vol ON vol.volunteer_id = asg.volunteer_id
+    LEFT JOIN users helper_user ON helper_user.user_id = vol.user_id
+    LEFT JOIN user_profiles helper_profile ON helper_profile.user_id = vol.user_id
+    LEFT JOIN expertise helper_expertise
+      ON helper_expertise.profile_id = helper_profile.profile_id
   `;
 }
 
@@ -156,7 +182,7 @@ async function createHelpRequest(input) {
       `,
       [
         requestId,
-        input.userId,
+        input.userId || null,
         input.helpTypes,
         input.otherHelpText,
         input.affectedPeopleCount,
