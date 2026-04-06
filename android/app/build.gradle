@@ -1,6 +1,66 @@
+import java.util.Properties
+
 plugins {
     id 'com.android.application' version '9.1.0'
     id 'org.jetbrains.kotlin.plugin.compose' version '2.3.20'
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { stream ->
+        keystoreProperties.load(stream)
+    }
+}
+
+def configValue = { String key ->
+    def propValue = keystoreProperties.getProperty(key)
+    if (propValue != null && !propValue.trim().isEmpty()) {
+        return propValue.trim()
+    }
+
+    def envValue = System.getenv(key)
+    if (envValue != null && !envValue.trim().isEmpty()) {
+        return envValue.trim()
+    }
+
+    return null
+}
+
+def releaseApiBaseUrl = (
+    configValue("NEPH_RELEASE_API_BASE_URL")
+        ?: (project.findProperty("NEPH_RELEASE_API_BASE_URL")?.toString())
+        ?: "https://api.neph.app"
+).trim()
+
+def isReleaseTask = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains("release")
+}
+
+if (isReleaseTask) {
+    def missing = []
+
+    [
+        "ANDROID_KEYSTORE_PATH",
+        "ANDROID_KEYSTORE_PASSWORD",
+        "ANDROID_KEY_ALIAS",
+        "ANDROID_KEY_PASSWORD"
+    ].each { key ->
+        if (!configValue(key)) {
+            missing << key
+        }
+    }
+
+    if (!releaseApiBaseUrl || releaseApiBaseUrl == "https://api.neph.app-placeholder") {
+        missing << "NEPH_RELEASE_API_BASE_URL"
+    }
+
+    if (!missing.isEmpty()) {
+        throw new GradleException(
+            "Release build is not fully configured. Missing: ${missing.join(', ')}"
+        )
+    }
 }
 
 android {
@@ -21,15 +81,38 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            def keystorePath = configValue("ANDROID_KEYSTORE_PATH")
+            def keystorePassword = configValue("ANDROID_KEYSTORE_PASSWORD")
+            def keyAliasValue = configValue("ANDROID_KEY_ALIAS")
+            def keyPasswordValue = configValue("ANDROID_KEY_PASSWORD")
+
+            if (keystorePath) {
+                storeFile rootProject.file(keystorePath)
+            }
+            if (keystorePassword) {
+                storePassword keystorePassword
+            }
+            if (keyAliasValue) {
+                keyAlias keyAliasValue
+            }
+            if (keyPasswordValue) {
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
     buildTypes {
         debug {
-            // Emulator ile local backend geliştirme
-            buildConfigField 'String', 'API_BASE_URL', '"http://10.0.2.2:3000/api"'
+            buildConfigField 'String', 'API_BASE_URL', '"http://10.0.2.2:3000"'
         }
+
         release {
-            // Demo günü Railway/public backend URL buraya gelecek
-            buildConfigField 'String', 'API_BASE_URL', '"https://YOUR-RAILWAY-DOMAIN/api"'
+            buildConfigField 'String', 'API_BASE_URL', "\"${releaseApiBaseUrl}\""
             minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
             proguardFiles(
                 getDefaultProguardFile('proguard-android-optimize.txt'),
                 'proguard-rules.pro'
