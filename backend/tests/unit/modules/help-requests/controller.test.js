@@ -31,14 +31,38 @@ function buildResponse() {
 
 describe('help-requests controller', () => {
 	describe('createHelpRequest', () => {
-		test('returns 401 when user is missing', async () => {
+		test('proceeds to validation even when user is not authenticated (guest)', async () => {
 			validators.readUserId.mockReturnValueOnce(null);
+			validators.validateCreateHelpRequest.mockReturnValueOnce({
+				errors: ['`helpTypes` must contain at least one item.'],
+				warnings: [],
+				value: {},
+			});
 			const response = buildResponse();
 
 			await createHelpRequest({ body: {} }, response);
 
-			expect(response.status).toHaveBeenCalledWith(401);
-			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'UNAUTHORIZED' }));
+			// Should NOT return 401; should proceed to validation
+			expect(response.status).toHaveBeenCalledWith(400);
+			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+		});
+
+		test('returns 201 for guest submission (null userId)', async () => {
+			validators.readUserId.mockReturnValueOnce(null);
+			validators.validateCreateHelpRequest.mockReturnValueOnce({
+				errors: [],
+				warnings: [],
+				value: { helpTypes: ['first_aid'] },
+			});
+			const created = { id: 'req_1', userId: null, helpTypes: ['first_aid'] };
+			service.createMyHelpRequest.mockResolvedValueOnce(created);
+			const response = buildResponse();
+
+			await createHelpRequest({ body: {} }, response);
+
+			expect(service.createMyHelpRequest).toHaveBeenCalledWith(null, { helpTypes: ['first_aid'] });
+			expect(response.status).toHaveBeenCalledWith(201);
+			expect(response.json).toHaveBeenCalledWith({ request: created, warnings: [] });
 		});
 
 		test('returns 400 when validation fails', async () => {

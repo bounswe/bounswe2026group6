@@ -23,9 +23,7 @@ function sendError(response, status, code, message, details) {
 async function createHelpRequest(request, response) {
   const userId = readUserId(request);
 
-  if (!userId) {
-    return sendError(response, 401, 'UNAUTHORIZED', 'Authentication required');
-  }
+  // userId may be null for guest submissions — that is allowed
 
   const { errors, warnings, value } = validateCreateHelpRequest(request.body || {});
 
