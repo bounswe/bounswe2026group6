@@ -47,8 +47,8 @@ async function seedActiveUser(userId, email = 'user@example.com') {
 async function seedHelpRequest(requestId, userId, needType = 'general') {
   await query(
     `
-      INSERT INTO help_requests (request_id, user_id, need_type, description, status)
-      VALUES ($1, $2, $3, 'Need help', 'PENDING');
+      INSERT INTO help_requests (request_id, user_id, need_type, description, status, contact_full_name, contact_phone)
+      VALUES ($1, $2, $3, 'Need help', 'PENDING', 'Test Person', 5550000000);
     `,
     [requestId, userId, needType],
   );
@@ -218,5 +218,42 @@ describe('Availability integration', () => {
 
     const rResult = await query('SELECT status FROM help_requests WHERE request_id = $1', ['req_4']);
     expect(rResult.rows[0].status).toBe('RESOLVED');
+  });
+
+  test('GET /api/availability/status returns current availability and assignment', async () => {
+    const app = createTestApp();
+    const volunteerUserId = 'user_v_5';
+    const requesterUserId = 'user_r_5';
+    await seedActiveUser(volunteerUserId, 'v5@example.com');
+    await seedActiveUser(requesterUserId, 'r5@example.com');
+    await seedHelpRequest('req_5', requesterUserId);
+    const token = buildAuthToken(volunteerUserId);
+
+    // Initial status should be not available
+    let response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(false);
+    expect(response.body.volunteer).toBeNull();
+
+    // Toggle to available
+    await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: true });
+
+    // Status should now be available and have an assignment
+    response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.volunteer).toBeTruthy();
+    expect(response.body.volunteer.user_id).toBe(volunteerUserId);
+    expect(response.body.assignment).toBeTruthy();
+    expect(response.body.assignment.request_id).toBe('req_5');
   });
 });

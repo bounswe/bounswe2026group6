@@ -4,6 +4,7 @@ const {
   handleGetMyAssignment,
   handleCancelAssignment,
   handleResolveAssignment,
+  handleGetAvailabilityStatus,
 } = require('../../../../src/modules/availability/controller');
 const service = require('../../../../src/modules/availability/service');
 
@@ -93,6 +94,27 @@ describe('Availability Controller', () => {
       await handleResolveAssignment(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
+    });
+  });
+
+  describe('handleGetAvailabilityStatus', () => {
+    it('should return 200 and the result from service', async () => {
+      const mockResult = { isAvailable: true, volunteer: {}, assignment: null };
+      service.getAvailabilityStatus.mockResolvedValue(mockResult);
+
+      await handleGetAvailabilityStatus(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(mockResult);
+    });
+
+    it('should return 500 on service error', async () => {
+      service.getAvailabilityStatus.mockRejectedValue(new Error('Unexpected error'));
+
+      await handleGetAvailabilityStatus(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INTERNAL_ERROR' }));
     });
   });
 });

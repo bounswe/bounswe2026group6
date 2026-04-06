@@ -4,6 +4,7 @@ const {
   getMyAssignment,
   cancelMyAssignment,
   resolveMyAssignment,
+  getAvailabilityStatus,
 } = require('../../../../src/modules/availability/service');
 const repository = require('../../../../src/modules/availability/repository');
 
@@ -145,6 +146,29 @@ describe('Availability Service', () => {
 
       expect(repository.createAssignment).toHaveBeenCalledWith('vol_123', 'req_456');
       expect(result.newAssignment).toBeDefined();
+    });
+  });
+
+  describe('getAvailabilityStatus', () => {
+    it('should return isAvailable false and nulls if volunteer does not exist', async () => {
+      repository.findVolunteerByUserId.mockResolvedValue(null);
+
+      const result = await getAvailabilityStatus(userId);
+
+      expect(result.isAvailable).toBe(false);
+      expect(result.volunteer).toBeNull();
+      expect(result.assignment).toBeNull();
+    });
+
+    it('should return the current status and assignment if volunteer exists', async () => {
+      repository.findVolunteerByUserId.mockResolvedValue({ ...volunteer, is_available: true });
+      repository.getAssignmentByVolunteerId.mockResolvedValue(assignment);
+
+      const result = await getAvailabilityStatus(userId);
+
+      expect(result.isAvailable).toBe(true);
+      expect(result.volunteer.is_available).toBe(true);
+      expect(result.assignment).toEqual(assignment);
     });
   });
 });
