@@ -1,6 +1,7 @@
 package com.neph.features.myhelprequests.data
 
 import com.neph.core.network.JsonHttpClient
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -41,6 +42,16 @@ object MyHelpRequestsRepository {
         }
 
         return mappedRequests.distinctBy { it.id }
+    }
+
+    suspend fun fetchGuestHelpRequests(): List<MyHelpRequestUiModel> {
+        val trackedRequests = RequestHelpRepository.getGuestTrackedRequests()
+        return buildList {
+            for (trackedRequest in trackedRequests) {
+                val request = RequestHelpRepository.fetchGuestHelpRequest(trackedRequest) ?: continue
+                add(mapRequest(request))
+            }
+        }.distinctBy { it.id }
     }
 
     suspend fun markRequestAsResolved(token: String, requestId: String): MyHelpRequestUiModel? {

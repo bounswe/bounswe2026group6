@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.navigation.AppNavGraph
 import com.neph.navigation.Routes
 import com.neph.ui.theme.NephTheme
@@ -19,6 +20,7 @@ class MainActivity : ComponentActivity() {
         AuthSessionStore.initialize(applicationContext)
         AvailabilityRepository.initialize(applicationContext)
         ProfileRepository.initialize(applicationContext)
+        RequestHelpRepository.initialize(applicationContext)
         setContent {
             NephApp()
         }
