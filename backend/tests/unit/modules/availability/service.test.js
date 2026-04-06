@@ -5,6 +5,7 @@ const {
   cancelMyAssignment,
   resolveMyAssignment,
   getAvailabilityStatus,
+  tryToAssignRequest,
 } = require('../../../../src/modules/availability/service');
 const repository = require('../../../../src/modules/availability/repository');
 
@@ -169,6 +170,30 @@ describe('Availability Service', () => {
       expect(result.isAvailable).toBe(true);
       expect(result.volunteer.is_available).toBe(true);
       expect(result.assignment).toEqual(assignment);
+    });
+  });
+
+  describe('tryToAssignRequest', () => {
+    it('should assign a volunteer if a match is found', async () => {
+      repository.findMatchingVolunteerForRequest.mockResolvedValue(volunteer);
+      repository.createAssignment.mockResolvedValue(assignment);
+
+      const result = await tryToAssignRequest('req_123');
+
+      expect(repository.findMatchingVolunteerForRequest).toHaveBeenCalledWith('req_123');
+      expect(repository.createAssignment).toHaveBeenCalledWith('vol_123', 'req_123');
+      expect(repository.updateRequestStatus).toHaveBeenCalledWith('req_123', 'ASSIGNED');
+      expect(result).toBe(true);
+    });
+
+    it('should return false if no matching volunteer is found', async () => {
+      repository.findMatchingVolunteerForRequest.mockResolvedValue(null);
+
+      const result = await tryToAssignRequest('req_123');
+
+      expect(repository.findMatchingVolunteerForRequest).toHaveBeenCalledWith('req_123');
+      expect(repository.createAssignment).not.toHaveBeenCalled();
+      expect(result).toBe(false);
     });
   });
 });

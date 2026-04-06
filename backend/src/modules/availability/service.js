@@ -9,6 +9,7 @@ const {
   getAssignmentByVolunteerId,
   getAssignmentById,
   cancelAssignment,
+  findMatchingVolunteerForRequest,
 } = require('./repository');
 
 async function setAvailability(userId, { isAvailable, latitude, longitude }) {
@@ -192,6 +193,16 @@ async function getAvailabilityStatus(userId) {
   };
 }
 
+async function tryToAssignRequest(requestId) {
+  const matchingVolunteer = await findMatchingVolunteerForRequest(requestId);
+  if (matchingVolunteer) {
+    await createAssignment(matchingVolunteer.volunteer_id, requestId);
+    await updateRequestStatus(requestId, 'ASSIGNED');
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   setAvailability,
   syncAvailability,
@@ -199,4 +210,5 @@ module.exports = {
   cancelMyAssignment,
   resolveMyAssignment,
   getAvailabilityStatus,
+  tryToAssignRequest,
 };

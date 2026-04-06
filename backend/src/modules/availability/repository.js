@@ -102,6 +102,32 @@ async function findMatchingRequestForVolunteer(volunteerId) {
   return result.rows[0] || null;
 }
 
+async function findMatchingVolunteerForRequest(requestId) {
+  const requestSql = `SELECT need_type FROM help_requests WHERE request_id = $1;`;
+  const rResult = await query(requestSql, [requestId]);
+  const request = rResult.rows[0];
+
+  if (!request) return null;
+
+  const sql = `
+    SELECT v.*
+    FROM volunteers v
+    WHERE v.is_available = TRUE
+      AND NOT EXISTS (
+        SELECT 1 FROM assignments a
+        JOIN help_requests hr ON a.request_id = hr.request_id
+        WHERE a.volunteer_id = v.volunteer_id
+          AND a.is_cancelled = FALSE
+          AND hr.status NOT IN ('RESOLVED', 'CANCELLED')
+      )
+      AND (v.need_types IS NULL OR v.need_types = '{}' OR $1 = ANY(v.need_types))
+    ORDER BY v.location_updated_at DESC NULLS LAST
+    LIMIT 1;
+  `;
+  const result = await query(sql, [request.need_type]);
+  return result.rows[0] || null;
+}
+
 async function createAssignment(volunteerId, requestId) {
   const assignmentId = makeId('asg');
   const sql = `
@@ -175,6 +201,7 @@ module.exports = {
   createAvailabilityRecord,
   findPendingRequests,
   findMatchingRequestForVolunteer,
+  findMatchingVolunteerForRequest,
   createAssignment,
   updateRequestStatus,
   getAssignmentByVolunteerId,

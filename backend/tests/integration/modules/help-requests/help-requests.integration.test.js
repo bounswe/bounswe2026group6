@@ -794,4 +794,42 @@ describe('help-requests integration', () => {
 		expect(getRes.status).toBe(200);
 		expect(getRes.body.request.helper).toBeNull();
 	});
+
+	test('POST /api/help-requests auto-assigns to already available volunteer', async () => {
+		const app = createTestApp();
+		const helperId = 'user_auto_1';
+		const requesterId = 'user_auto_2';
+		await seedActiveUser(helperId, 'auto1@example.com');
+		await seedActiveUser(requesterId, 'auto2@example.com');
+		const helperToken = buildAuthToken(helperId);
+		const requesterToken = buildAuthToken(requesterId);
+
+		// 1. Volunteer becomes available FIRST
+		const toggleRes = await request(app)
+			.post('/api/availability/toggle')
+			.set('Authorization', `Bearer ${helperToken}`)
+			.send({ isAvailable: true });
+
+		expect(toggleRes.status).toBe(200);
+		expect(toggleRes.body.assignment).toBeNull(); // No requests yet
+
+		// 2. Requester creates a request
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload({ needType: 'first_aid' }));
+
+		expect(createRes.status).toBe(201);
+		// It should be MATCHED (which corresponds to internal status ASSIGNED)
+		expect(createRes.body.request.status).toBe('MATCHED');
+
+		// 3. Verify helper has the assignment
+		const statusRes = await request(app)
+			.get('/api/availability/status')
+			.set('Authorization', `Bearer ${helperToken}`);
+
+		expect(statusRes.status).toBe(200);
+		expect(statusRes.body.assignment).toBeTruthy();
+		expect(statusRes.body.assignment.request_id).toBe(createRes.body.request.id);
+	});
 });

@@ -14,6 +14,12 @@ jest.mock('../../../../src/modules/help-requests/repository', () => ({
 }));
 
 const repository = require('../../../../src/modules/help-requests/repository');
+const availabilityService = require('../../../../src/modules/availability/service');
+
+jest.mock('../../../../src/modules/availability/service', () => ({
+	tryToAssignRequest: jest.fn(),
+}));
+
 const {
 	createMyHelpRequest,
 	listMyHelpRequests,
@@ -51,6 +57,8 @@ describe('help-requests service', () => {
 			};
 			const expected = { id: 'req_1', userId: 'u1', helpTypes: ['first_aid', 'fire_brigade'] };
 			repository.createHelpRequest.mockResolvedValueOnce(expected);
+			repository.findHelpRequestById.mockResolvedValueOnce(expected);
+			availabilityService.tryToAssignRequest.mockResolvedValueOnce(false);
 
 			const result = await createMyHelpRequest('u1', input);
 
@@ -77,6 +85,8 @@ describe('help-requests service', () => {
 				consentGiven: true,
 				userId: 'u1',
 			});
+			expect(availabilityService.tryToAssignRequest).toHaveBeenCalledWith('req_1');
+			expect(repository.findHelpRequestById).toHaveBeenCalledWith('req_1');
 			expect(result).toEqual(expected);
 		});
 

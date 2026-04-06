@@ -11,6 +11,7 @@ const {
   markHelpRequestAsSyncedByRequestId,
   markHelpRequestAsResolvedByRequestId,
 } = require('./repository');
+const { tryToAssignRequest } = require('../availability/service');
 
 const JWT_SECRET = env.jwt.secret;
 const GUEST_HELP_REQUEST_SCOPE = 'help_request_guest_read';
@@ -18,10 +19,16 @@ const GUEST_HELP_REQUEST_TOKEN_TTL = '30d';
 
 async function createMyHelpRequest(userId, input) {
   try {
-    return await createHelpRequest({
+    const helpRequest = await createHelpRequest({
       ...input,
       userId,
     });
+
+    // Try to auto-assign a volunteer
+    await tryToAssignRequest(helpRequest.id);
+
+    // Return the request (it might have been updated to ASSIGNED status)
+    return await findHelpRequestById(helpRequest.id);
   } catch (error) {
     if (error.code === '23503') {
       const wrappedError = new Error('The provided user does not exist in the database yet.');
