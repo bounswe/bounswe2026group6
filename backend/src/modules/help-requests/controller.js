@@ -5,6 +5,7 @@ const {
   issueGuestHelpRequestAccessToken,
   getGuestHelpRequest,
   updateMyHelpRequestStatus,
+  updateGuestHelpRequestStatus,
 } = require('./service');
 const {
   readUserId,
@@ -122,8 +123,10 @@ async function getHelpRequest(request, response) {
 
 async function patchHelpRequestStatus(request, response) {
   const userId = readUserId(request);
+  const requestId = request.params.requestId;
+  const guestAccessToken = !userId ? readGuestAccessToken(request) : null;
 
-  if (!userId) {
+  if (!userId && !guestAccessToken) {
     return sendError(response, 401, 'UNAUTHORIZED', 'Authentication required');
   }
 
@@ -134,11 +137,9 @@ async function patchHelpRequestStatus(request, response) {
   }
 
   try {
-    const updatedRequest = await updateMyHelpRequestStatus(
-      userId,
-      request.params.requestId,
-      value.status,
-    );
+    const updatedRequest = userId
+      ? await updateMyHelpRequestStatus(userId, requestId, value.status)
+      : await updateGuestHelpRequestStatus(requestId, value.status, guestAccessToken);
 
     if (!updatedRequest) {
       return sendError(response, 404, 'NOT_FOUND', 'Help request not found');
@@ -148,6 +149,14 @@ async function patchHelpRequestStatus(request, response) {
   } catch (error) {
     if (error.code === 'INVALID_STATUS_TRANSITION') {
       return sendError(response, 409, 'INVALID_STATUS_TRANSITION', error.message);
+    }
+
+    if (error.code === 'INVALID_GUEST_ACCESS_TOKEN') {
+      return sendError(response, 401, 'UNAUTHORIZED', error.message);
+    }
+
+    if (error.code === 'FORBIDDEN_GUEST_ACCESS') {
+      return sendError(response, 403, 'FORBIDDEN', error.message);
     }
 
     console.error('helpRequests.patchHelpRequestStatus failed', error);
