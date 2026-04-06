@@ -432,6 +432,68 @@ describe('help-requests integration', () => {
 		expect(response.status).toBe(404);
 	});
 
+	test('PATCH /:id/status allows guest to resolve their own request with guest token', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest will resolve this' }));
+
+		const requestId = createResponse.body.request.id;
+		const guestAccessToken = createResponse.body.guestAccessToken;
+
+		const patchResponse = await request(app)
+			.patch(`/api/help-requests/${requestId}/status`)
+			.set('x-help-request-access-token', guestAccessToken)
+			.send({ status: 'RESOLVED' });
+
+		expect(patchResponse.status).toBe(200);
+		expect(patchResponse.body.request.status).toBe('RESOLVED');
+		expect(patchResponse.body.request.resolvedAt).toBeTruthy();
+
+		const getResponse = await request(app)
+			.get(`/api/help-requests/${requestId}`)
+			.set('x-help-request-access-token', guestAccessToken);
+
+		expect(getResponse.status).toBe(200);
+		expect(getResponse.body.request.status).toBe('RESOLVED');
+	});
+
+	test('PATCH /:id/status returns 401 for guest request when token is missing', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload());
+
+		const response = await request(app)
+			.patch(`/api/help-requests/${createResponse.body.request.id}/status`)
+			.send({ status: 'RESOLVED' });
+
+		expect(response.status).toBe(401);
+		expect(response.body.code).toBe('UNAUTHORIZED');
+	});
+
+	test('PATCH /:id/status returns 403 for guest request when token belongs to another request', async () => {
+		const app = createTestApp();
+
+		const firstCreate = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest request one' }));
+
+		const secondCreate = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest request two' }));
+
+		const response = await request(app)
+			.patch(`/api/help-requests/${secondCreate.body.request.id}/status`)
+			.set('x-help-request-access-token', firstCreate.body.guestAccessToken)
+			.send({ status: 'RESOLVED' });
+
+		expect(response.status).toBe(403);
+		expect(response.body.code).toBe('FORBIDDEN');
+	});
+
 	test('PATCH /:id/status syncs a locally saved request', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_11';
@@ -659,6 +721,57 @@ describe('help-requests integration', () => {
 		expect(getRes.body.request.helper.lastName).toBe('Kaya');
 		expect(getRes.body.request.helper.phone).toBe(5301234567);
 		expect(getRes.body.request.helper.expertise).toBe('First Aid');
+	});
+
+	test('request list does not duplicate when helper has multiple expertise rows', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_hr_dedupe_1';
+		const helperId = 'user_hr_dedupe_2';
+		await seedActiveUser(requesterId, 'dedupe1@example.com');
+		await seedActiveUser(helperId, 'dedupe2@example.com');
+		const requesterToken = buildAuthToken(requesterId);
+		const helperToken = buildAuthToken(helperId);
+
+		await query(
+			`INSERT INTO user_profiles (profile_id, user_id, first_name, last_name, phone_number)
+			 VALUES ('prf_dedupe_1', $1, 'Selim', 'Aydin', '5305551111')`,
+			[helperId],
+		);
+
+		await query(
+			`INSERT INTO expertise (expertise_id, profile_id, profession, expertise_area, is_verified)
+			 VALUES ('exp_dedupe_1', 'prf_dedupe_1', 'Volunteer', 'Logistics', FALSE)`,
+		);
+
+		await query(
+			`INSERT INTO expertise (expertise_id, profile_id, profession, expertise_area, is_verified)
+			 VALUES ('exp_dedupe_2', 'prf_dedupe_1', 'Volunteer', 'Medical', TRUE)`,
+		);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload());
+
+		const requestId = createRes.body.request.id;
+
+		const toggleRes = await request(app)
+			.post('/api/availability/toggle')
+			.set('Authorization', `Bearer ${helperToken}`)
+			.send({ isAvailable: true });
+
+		expect(toggleRes.status).toBe(200);
+		expect(toggleRes.body.assignment).toBeTruthy();
+
+		const listRes = await request(app)
+			.get('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`);
+
+		expect(listRes.status).toBe(200);
+		expect(listRes.body.requests).toHaveLength(1);
+		expect(listRes.body.requests[0].id).toBe(requestId);
+		expect(listRes.body.requests[0].helper).toBeTruthy();
+		expect(listRes.body.requests[0].helper.expertise).toBe('Medical');
 	});
 
 	test('help request without assignment has null helper', async () => {

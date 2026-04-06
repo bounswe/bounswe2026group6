@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,7 +57,9 @@ fun AppDrawerScaffold(
     profileBadgeText: String = "PP",
     profileLabel: String = "Profile",
     contentMaxWidth: Dp = 960.dp,
+    contentFillMaxSize: Boolean = false,
     contentAlignment: Alignment = Alignment.TopCenter,
+    topBarActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -186,6 +189,8 @@ fun AppDrawerScaffold(
                             }
                         },
                         actions = {
+                            topBarActions()
+
                             if (onOpenSettings != null) {
                                 IconButton(onClick = onOpenSettings) {
                                     Icon(
@@ -216,7 +221,13 @@ fun AppDrawerScaffold(
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .then(
+                            if (contentFillMaxSize) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.fillMaxWidth()
+                            }
+                        )
                         .widthIn(max = contentMaxWidth)
                         .align(contentAlignment),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg)

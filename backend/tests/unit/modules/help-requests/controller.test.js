@@ -7,6 +7,7 @@ jest.mock('../../../../src/modules/help-requests/service', () => ({
 	issueGuestHelpRequestAccessToken: jest.fn(),
 	getGuestHelpRequest: jest.fn(),
 	updateMyHelpRequestStatus: jest.fn(),
+	updateGuestHelpRequestStatus: jest.fn(),
 }));
 
 jest.mock('../../../../src/modules/help-requests/validators', () => ({
@@ -304,13 +305,85 @@ describe('help-requests controller', () => {
 	});
 
 	describe('patchHelpRequestStatus', () => {
-		test('returns 401 when user is missing', async () => {
+		test('returns 401 when user is missing and guest token is not provided', async () => {
 			validators.readUserId.mockReturnValueOnce(null);
 			const response = buildResponse();
 
-			await patchHelpRequestStatus({ body: {} }, response);
+			await patchHelpRequestStatus({ body: {}, headers: {}, params: { requestId: 'req_1' } }, response);
 
 			expect(response.status).toHaveBeenCalledWith(401);
+		});
+
+		test('returns 200 for guest when valid guest access token is provided', async () => {
+			validators.readUserId.mockReturnValueOnce(null);
+			validators.validateHelpRequestStatusUpdate.mockReturnValueOnce({
+				errors: [],
+				value: { status: 'RESOLVED' },
+			});
+			const updated = { id: 'req_guest_1', status: 'RESOLVED' };
+			service.updateGuestHelpRequestStatus.mockResolvedValueOnce(updated);
+			const response = buildResponse();
+
+			await patchHelpRequestStatus(
+				{
+					body: { status: 'RESOLVED' },
+					headers: { 'x-help-request-access-token': 'guest-token' },
+					params: { requestId: 'req_guest_1' },
+				},
+				response,
+			);
+
+			expect(service.updateGuestHelpRequestStatus).toHaveBeenCalledWith('req_guest_1', 'RESOLVED', 'guest-token');
+			expect(response.status).toHaveBeenCalledWith(200);
+			expect(response.json).toHaveBeenCalledWith({ request: updated });
+		});
+
+		test('returns 401 when guest status update token is invalid', async () => {
+			validators.readUserId.mockReturnValueOnce(null);
+			validators.validateHelpRequestStatusUpdate.mockReturnValueOnce({
+				errors: [],
+				value: { status: 'RESOLVED' },
+			});
+			const error = new Error('Invalid or expired guest access token.');
+			error.code = 'INVALID_GUEST_ACCESS_TOKEN';
+			service.updateGuestHelpRequestStatus.mockRejectedValueOnce(error);
+			const response = buildResponse();
+
+			await patchHelpRequestStatus(
+				{
+					body: { status: 'RESOLVED' },
+					headers: { 'x-help-request-access-token': 'bad-token' },
+					params: { requestId: 'req_guest_2' },
+				},
+				response,
+			);
+
+			expect(response.status).toHaveBeenCalledWith(401);
+			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'UNAUTHORIZED' }));
+		});
+
+		test('returns 403 when guest token does not authorize status update', async () => {
+			validators.readUserId.mockReturnValueOnce(null);
+			validators.validateHelpRequestStatusUpdate.mockReturnValueOnce({
+				errors: [],
+				value: { status: 'RESOLVED' },
+			});
+			const error = new Error('Guest access token is not valid for this help request.');
+			error.code = 'FORBIDDEN_GUEST_ACCESS';
+			service.updateGuestHelpRequestStatus.mockRejectedValueOnce(error);
+			const response = buildResponse();
+
+			await patchHelpRequestStatus(
+				{
+					body: { status: 'RESOLVED' },
+					headers: { 'x-help-request-access-token': 'guest-token' },
+					params: { requestId: 'req_guest_3' },
+				},
+				response,
+			);
+
+			expect(response.status).toHaveBeenCalledWith(403);
+			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'FORBIDDEN' }));
 		});
 
 		test('returns 400 when validation fails', async () => {
@@ -321,7 +394,7 @@ describe('help-requests controller', () => {
 			});
 			const response = buildResponse();
 
-			await patchHelpRequestStatus({ body: {} }, response);
+			await patchHelpRequestStatus({ body: {}, params: { requestId: 'req_1' } }, response);
 
 			expect(response.status).toHaveBeenCalledWith(400);
 			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
