@@ -256,4 +256,78 @@ describe('Availability integration', () => {
     expect(response.body.assignment).toBeTruthy();
     expect(response.body.assignment.request_id).toBe('req_5');
   });
+
+  test('POST /api/availability/toggle to false cancels active assignment', async () => {
+    const app = createTestApp();
+    const volunteerUserId = 'user_v_6';
+    const requesterUserId = 'user_r_6';
+    await seedActiveUser(volunteerUserId, 'v6@example.com');
+    await seedActiveUser(requesterUserId, 'r6@example.com');
+    await seedHelpRequest('req_6', requesterUserId);
+    const token = buildAuthToken(volunteerUserId);
+
+    // 1. Become available first to get assigned
+    await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: true });
+
+    // Verify assignment exists
+    const beforeResult = await query('SELECT * FROM assignments WHERE request_id = $1', ['req_6']);
+    expect(beforeResult.rows).toHaveLength(1);
+
+    // 2. Set to unavailable
+    const response = await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: false });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
+    expect(response.body.assignment).toBeNull();
+
+    // 3. Verify assignment is deleted and request is PENDING again
+    const afterResult = await query('SELECT * FROM assignments WHERE request_id = $1', ['req_6']);
+    expect(afterResult.rows).toHaveLength(0);
+
+    const rResult = await query('SELECT status FROM help_requests WHERE request_id = $1', ['req_6']);
+    expect(rResult.rows[0].status).toBe('PENDING');
+  });
+
+  test('POST /api/availability/sync to false cancels active assignment', async () => {
+    const app = createTestApp();
+    const volunteerUserId = 'user_v_7';
+    const requesterUserId = 'user_r_7';
+    await seedActiveUser(volunteerUserId, 'v7@example.com');
+    await seedActiveUser(requesterUserId, 'r7@example.com');
+    await seedHelpRequest('req_7', requesterUserId);
+    const token = buildAuthToken(volunteerUserId);
+
+    // 1. Become available
+    await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: true });
+
+    // 2. Sync to unavailable
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          { isAvailable: false, timestamp: new Date().toISOString() },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
+    expect(response.body.assignment).toBeNull();
+
+    // 3. Verify
+    const afterResult = await query('SELECT * FROM assignments WHERE request_id = $1', ['req_7']);
+    expect(afterResult.rows).toHaveLength(0);
+
+    const rResult = await query('SELECT status FROM help_requests WHERE request_id = $1', ['req_7']);
+    expect(rResult.rows[0].status).toBe('PENDING');
+  });
 });

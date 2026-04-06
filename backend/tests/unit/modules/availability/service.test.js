@@ -51,6 +51,18 @@ describe('Availability Service', () => {
       expect(repository.updateRequestStatus).toHaveBeenCalledWith('req_123', 'ASSIGNED');
       expect(result.assignment).toEqual(assignment);
     });
+
+    it('should cancel assignment if volunteer becomes unavailable', async () => {
+      repository.findVolunteerByUserId.mockResolvedValue(volunteer);
+      repository.updateVolunteerAvailability.mockResolvedValue({ ...volunteer, is_available: false });
+      repository.getAssignmentByVolunteerId.mockResolvedValue(assignment);
+
+      const result = await setAvailability(userId, { isAvailable: false });
+
+      expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
+      expect(repository.updateRequestStatus).toHaveBeenCalledWith('req_123', 'PENDING');
+      expect(result.volunteer.is_available).toBe(false);
+    });
   });
 
   describe('syncAvailability', () => {
@@ -80,6 +92,21 @@ describe('Availability Service', () => {
       await syncAvailability(userId, { records });
 
       expect(repository.createAssignment).toHaveBeenCalledWith('vol_123', 'req_123');
+    });
+
+    it('should cancel assignment if volunteer is now unavailable', async () => {
+      repository.findVolunteerByUserId
+        .mockResolvedValueOnce(volunteer)
+        .mockResolvedValueOnce({ ...volunteer, is_available: false });
+      repository.getAssignmentByVolunteerId.mockResolvedValue(assignment);
+      
+      const records = [{ isAvailable: false, timestamp: '2023-01-01T10:00:00Z' }];
+
+      const result = await syncAvailability(userId, { records });
+
+      expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
+      expect(repository.updateRequestStatus).toHaveBeenCalledWith('req_123', 'PENDING');
+      expect(result.assignment).toBeNull();
     });
   });
 

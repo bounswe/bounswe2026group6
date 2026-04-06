@@ -43,6 +43,13 @@ async function setAvailability(userId, { isAvailable, latitude, longitude }) {
     } else {
       assignment = existingAssignment;
     }
+  } else {
+    // If volunteer just became unavailable, cancel their active assignments
+    const activeAssignment = await getAssignmentByVolunteerId(volunteer.volunteer_id);
+    if (activeAssignment) {
+      await cancelAssignment(activeAssignment.assignment_id);
+      await updateRequestStatus(activeAssignment.request_id, 'PENDING');
+    }
   }
 
   return {
@@ -86,6 +93,11 @@ async function syncAvailability(userId, { records }) {
       await updateRequestStatus(matchingRequest.request_id, 'ASSIGNED');
       currentAssignment = await getAssignmentByVolunteerId(volunteer.volunteer_id);
     }
+  } else if (!updatedVolunteer.is_available && currentAssignment) {
+    // If volunteer is now unavailable, cancel their active assignment
+    await cancelAssignment(currentAssignment.assignment_id);
+    await updateRequestStatus(currentAssignment.request_id, 'PENDING');
+    currentAssignment = null;
   }
 
   return {
