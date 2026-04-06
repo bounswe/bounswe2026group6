@@ -14,7 +14,7 @@ helpRequestsRouter.post('/', optionalAuth, createHelpRequest);
 
 // These routes require authentication
 helpRequestsRouter.get('/', requireAuth, listHelpRequests);
-helpRequestsRouter.get('/:requestId', requireAuth, getHelpRequest);
+helpRequestsRouter.get('/:requestId', optionalAuth, getHelpRequest);
 helpRequestsRouter.patch('/:requestId/status', requireAuth, patchHelpRequestStatus);
 
 module.exports = {
