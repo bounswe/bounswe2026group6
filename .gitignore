@@ -17,28 +17,50 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!/infra/compose/.env.example
 
 # Dependencies
 node_modules/
+web/node_modules/
+backend/node_modules/
 
-# Build outputs
+# Web build outputs
+.next/
+out/
+web/.next/
+web/out/
+web/next-env.d.ts
+
+# General build outputs
 dist/
 build/
 coverage/
+web/dist/
+web/build/
+backend/dist/
+backend/build/
 
 # Cache
 .cache/
 .tmp/
 temp/
 
-# Mobile
+# Mobile / Android
 android/.gradle/
-android/app/build/
+android/**/build/
+android/local.properties
+*.keystore
+*.jks
 
 # Test artifacts
 playwright-report/
 test-results/
+.playwright-browsers/
 
 # Runtime
 *.pid
 *.seed
+
+# Agent files
+.sisyphus
+mvp354/
