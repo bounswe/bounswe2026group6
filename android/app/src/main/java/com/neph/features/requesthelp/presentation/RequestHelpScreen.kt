@@ -23,11 +23,11 @@ import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.PhoneParts
 import com.neph.features.profile.data.bloodTypeOptions
-import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
 import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
 import com.neph.features.profile.presentation.components.LocationSelector
+import com.neph.features.profile.presentation.components.rememberLocationSelectionState
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.requesthelp.data.RequestHelpSubmission
 import com.neph.ui.components.buttons.PrimaryButton
@@ -82,9 +82,11 @@ private data class RequestHelpFormState(
     val vulnerableGroups: List<String> = emptyList(),
     val situationDescription: String = "",
     val bloodType: String = "",
-    val country: String = "",
-    val city: String = "",
+    val provinceCode: String = "",
+    val province: String = "",
+    val districtId: String = "",
     val district: String = "",
+    val neighborhoodId: String = "",
     val neighborhood: String = "",
     val shortAddress: String = "",
     val fullName: String = "",
@@ -138,9 +140,11 @@ private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
 
     return RequestHelpFormState(
         bloodType = profile.bloodType.orEmpty(),
-        country = profile.country.orEmpty(),
-        city = profile.city.orEmpty(),
+        provinceCode = profile.provinceCode.orEmpty(),
+        province = profile.province.orEmpty(),
+        districtId = profile.districtId.orEmpty(),
         district = profile.district.orEmpty(),
+        neighborhoodId = profile.neighborhoodId.orEmpty(),
         neighborhood = profile.neighborhood.orEmpty(),
         shortAddress = profile.extraAddress.orEmpty(),
         fullName = profile.fullName.orEmpty(),
@@ -157,31 +161,6 @@ private fun toggleSelection(current: List<String>, option: String): List<String>
     }
 }
 
-private fun findCountryLabel(countryKey: String): String =
-    locationData[countryKey]?.label.orEmpty()
-
-private fun findCityLabel(countryKey: String, cityKey: String): String =
-    locationData[countryKey]?.cities?.get(cityKey)?.label.orEmpty()
-
-private fun findDistrictLabel(countryKey: String, cityKey: String, districtKey: String): String =
-    locationData[countryKey]?.cities?.get(cityKey)?.districts?.get(districtKey)?.label.orEmpty()
-
-private fun findNeighborhoodLabel(
-    countryKey: String,
-    cityKey: String,
-    districtKey: String,
-    neighborhoodKey: String
-): String =
-    locationData[countryKey]
-        ?.cities
-        ?.get(cityKey)
-        ?.districts
-        ?.get(districtKey)
-        ?.neighborhoods
-        ?.firstOrNull { it.value == neighborhoodKey }
-        ?.label
-        .orEmpty()
-
 private fun validateForm(state: RequestHelpFormState): RequestHelpFieldErrors {
     val affectedPeople = state.affectedPeopleCount.toIntOrNull()
 
@@ -197,10 +176,10 @@ private fun validateForm(state: RequestHelpFormState): RequestHelpFieldErrors {
         } else {
             null
         },
-        country = if (state.country.isBlank()) "Country is required." else null,
-        city = if (state.city.isBlank()) "City is required." else null,
-        district = if (state.district.isBlank()) "District is required." else null,
-        neighborhood = if (state.neighborhood.isBlank()) "Neighborhood is required." else null,
+        country = if (state.provinceCode.isBlank()) "Province is required." else null,
+        city = if (state.districtId.isBlank()) "District is required." else null,
+        district = if (state.neighborhoodId.isBlank()) "Neighborhood is required." else null,
+        neighborhood = null,
         shortAddress = if (state.shortAddress.isBlank()) "Short address is required." else null,
         fullName = if (state.fullName.isBlank()) "Full name cannot be blank." else null,
         phoneNumber = when {
@@ -255,16 +234,9 @@ private fun buildSubmission(state: RequestHelpFormState): RequestHelpSubmission 
         vulnerableGroups = state.vulnerableGroups.map { it.trim() },
         bloodType = state.bloodType.trim(),
         location = RequestHelpLocationSubmission(
-            country = findCountryLabel(state.country).ifBlank { state.country.trim() },
-            city = findCityLabel(state.country, state.city).ifBlank { state.city.trim() },
-            district = findDistrictLabel(state.country, state.city, state.district)
-                .ifBlank { state.district.trim() },
-            neighborhood = findNeighborhoodLabel(
-                state.country,
-                state.city,
-                state.district,
-                state.neighborhood
-            ).ifBlank { state.neighborhood.trim() },
+            provinceCode = state.provinceCode.trim(),
+            districtId = state.districtId.trim(),
+            neighborhoodId = state.neighborhoodId.trim(),
             extraAddress = state.shortAddress.trim()
         ),
         contact = RequestHelpContactSubmission(
@@ -297,6 +269,10 @@ fun RequestHelpScreen(
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
+    val locationState = rememberLocationSelectionState(
+        provinceCode = formState.provinceCode,
+        districtId = formState.districtId
+    )
 
     LaunchedEffect(sessionToken) {
         if (!isLoggedIn) {
@@ -508,27 +484,48 @@ fun RequestHelpScreen(
                     )
 
                     LocationSelector(
-                        country = formState.country,
-                        city = formState.city,
-                        district = formState.district,
-                        neighborhood = formState.neighborhood,
-                        onCountryChange = {
-                            formState = formState.copy(country = it, city = "", district = "", neighborhood = "")
-                        },
-                        onCityChange = {
-                            formState = formState.copy(city = it, district = "", neighborhood = "")
+                        provinceCode = formState.provinceCode,
+                        districtId = formState.districtId,
+                        neighborhoodId = formState.neighborhoodId,
+                        provinces = locationState.provinces,
+                        districts = locationState.districts,
+                        neighborhoods = locationState.neighborhoods,
+                        loadingProvinces = locationState.loadingProvinces,
+                        loadingDistricts = locationState.loadingDistricts,
+                        loadingNeighborhoods = locationState.loadingNeighborhoods,
+                        provinceErrorMessage = locationState.provinceErrorMessage,
+                        districtErrorMessage = locationState.districtErrorMessage,
+                        neighborhoodErrorMessage = locationState.neighborhoodErrorMessage,
+                        onRetryProvinces = locationState.retryProvinces,
+                        onRetryDistricts = locationState.retryDistricts,
+                        onRetryNeighborhoods = locationState.retryNeighborhoods,
+                        onProvinceChange = {
+                            formState = formState.copy(
+                                provinceCode = it,
+                                province = locationState.provinces.firstOrNull { option -> option.code == it }?.name.orEmpty(),
+                                districtId = "",
+                                district = "",
+                                neighborhoodId = "",
+                                neighborhood = ""
+                            )
                         },
                         onDistrictChange = {
-                            formState = formState.copy(district = it, neighborhood = "")
+                            formState = formState.copy(
+                                districtId = it,
+                                district = locationState.districts.firstOrNull { option -> option.id == it }?.name.orEmpty(),
+                                neighborhoodId = "",
+                                neighborhood = ""
+                            )
                         },
                         onNeighborhoodChange = {
-                            formState = formState.copy(neighborhood = it)
+                            formState = formState.copy(
+                                neighborhoodId = it,
+                                neighborhood = locationState.neighborhoods.firstOrNull { option -> option.id == it }?.name.orEmpty()
+                            )
                         },
-                        locationData = locationData,
-                        countryError = fieldErrors.country,
-                        cityError = fieldErrors.city,
-                        districtError = fieldErrors.district,
-                        neighborhoodError = fieldErrors.neighborhood
+                        provinceError = fieldErrors.country,
+                        districtError = fieldErrors.city,
+                        neighborhoodError = fieldErrors.district
                     )
 
                     AppTextField(

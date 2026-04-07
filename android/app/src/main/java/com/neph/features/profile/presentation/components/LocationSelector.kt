@@ -1,68 +1,112 @@
 package com.neph.features.profile.presentation.components
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
-import com.neph.features.profile.data.LocationData
+import com.neph.features.profile.data.DistrictOption
+import com.neph.features.profile.data.NeighborhoodOption
+import com.neph.features.profile.data.ProvinceOption
+import com.neph.ui.components.buttons.TextActionButton
+import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.DropdownOption
+import com.neph.ui.theme.LocalNephSpacing
 
 @Composable
 fun LocationSelector(
-    country: String,
-    city: String,
-    district: String,
-    neighborhood: String,
-    onCountryChange: (String) -> Unit,
-    onCityChange: (String) -> Unit,
+    provinceCode: String,
+    districtId: String,
+    neighborhoodId: String,
+    provinces: List<ProvinceOption>,
+    districts: List<DistrictOption>,
+    neighborhoods: List<NeighborhoodOption>,
+    loadingProvinces: Boolean,
+    loadingDistricts: Boolean,
+    loadingNeighborhoods: Boolean,
+    provinceErrorMessage: String? = null,
+    districtErrorMessage: String? = null,
+    neighborhoodErrorMessage: String? = null,
+    onRetryProvinces: (() -> Unit)? = null,
+    onRetryDistricts: (() -> Unit)? = null,
+    onRetryNeighborhoods: (() -> Unit)? = null,
+    onProvinceChange: (String) -> Unit,
     onDistrictChange: (String) -> Unit,
     onNeighborhoodChange: (String) -> Unit,
-    locationData: LocationData,
-    countryError: String? = null,
-    cityError: String? = null,
+    provinceError: String? = null,
     districtError: String? = null,
     neighborhoodError: String? = null
 ) {
-    val countryData = country.takeIf { it.isNotEmpty() }?.let { locationData[it] }
-    
-    val cityOptions = countryData?.cities?.map { DropdownOption(it.value.label, it.key) } ?: emptyList()
-    val districtOptions = countryData?.cities?.get(city)?.districts?.map { DropdownOption(it.value.label, it.key) } ?: emptyList()
-    val neighborhoodOptions = countryData?.cities?.get(city)?.districts?.get(district)?.neighborhoods ?: emptyList()
-    
-    AppDropdown(
-        value = country,
-        onValueChange = { onCountryChange(it); onCityChange(""); onDistrictChange(""); onNeighborhoodChange("") },
-        label = "Country",
-        options = listOf(DropdownOption("Select Country", "")) + locationData.map { DropdownOption(it.value.label, it.key) },
-        selectedTextMapper = { it.label },
-        error = countryError
-    )
-    
-    AppDropdown(
-        value = city,
-        onValueChange = { onCityChange(it); onDistrictChange(""); onNeighborhoodChange("") },
-        label = "City",
-        options = listOf(DropdownOption("Select City", "")) + cityOptions,
-        enabled = country.isNotEmpty(),
-        selectedTextMapper = { it.label },
-        error = cityError
-    )
-    
-    AppDropdown(
-        value = district,
-        onValueChange = { onDistrictChange(it); onNeighborhoodChange("") },
-        label = "District",
-        options = listOf(DropdownOption("Select District", "")) + districtOptions,
-        enabled = city.isNotEmpty(),
-        selectedTextMapper = { it.label },
-        error = districtError
-    )
-    
-    AppDropdown(
-        value = neighborhood,
-        onValueChange = onNeighborhoodChange,
-        label = "Neighborhood",
-        options = listOf(DropdownOption("Select Neighborhood", "")) + neighborhoodOptions.map { DropdownOption(it.label, it.value) },
-        enabled = district.isNotEmpty(),
-        selectedTextMapper = { it.label },
-        error = neighborhoodError
-    )
+    val spacing = LocalNephSpacing.current
+    val provinceOptions = provinces.map { DropdownOption(it.name, it.code) }
+    val districtOptions = districts.map { DropdownOption(it.name, it.id) }
+    val neighborhoodOptions = neighborhoods.map { DropdownOption(it.name, it.id) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+        AppDropdown(
+            value = provinceCode,
+            onValueChange = onProvinceChange,
+            label = "Province",
+            options = listOf(DropdownOption("Select Province", "")) + provinceOptions,
+            placeholder = if (loadingProvinces) "Loading provinces..." else "Select province",
+            enabled = !loadingProvinces,
+            error = provinceError
+        )
+
+        if (!provinceErrorMessage.isNullOrBlank()) {
+            HelperText(text = provinceErrorMessage)
+            if (onRetryProvinces != null) {
+                TextActionButton(text = "Retry provinces", onClick = onRetryProvinces)
+            }
+        }
+
+        AppDropdown(
+            value = districtId,
+            onValueChange = onDistrictChange,
+            label = "District",
+            options = listOf(DropdownOption("Select District", "")) + districtOptions,
+            placeholder = when {
+                provinceCode.isBlank() -> "Select province first"
+                loadingDistricts -> "Loading districts..."
+                else -> "Select district"
+            },
+            enabled = provinceCode.isNotBlank() && !loadingDistricts,
+            error = districtError
+        )
+
+        when {
+            provinceCode.isBlank() -> HelperText(text = "Select a province to load districts.")
+            !districtErrorMessage.isNullOrBlank() -> {
+                HelperText(text = districtErrorMessage)
+                if (onRetryDistricts != null) {
+                    TextActionButton(text = "Retry districts", onClick = onRetryDistricts)
+                }
+            }
+            !loadingDistricts && districts.isEmpty() -> HelperText(text = "No districts found for this province.")
+        }
+
+        AppDropdown(
+            value = neighborhoodId,
+            onValueChange = onNeighborhoodChange,
+            label = "Neighborhood",
+            options = listOf(DropdownOption("Select Neighborhood", "")) + neighborhoodOptions,
+            placeholder = when {
+                districtId.isBlank() -> "Select district first"
+                loadingNeighborhoods -> "Loading neighborhoods..."
+                else -> "Select neighborhood"
+            },
+            enabled = districtId.isNotBlank() && !loadingNeighborhoods,
+            error = neighborhoodError
+        )
+
+        when {
+            districtId.isBlank() -> HelperText(text = "Select a district to load neighborhoods.")
+            !neighborhoodErrorMessage.isNullOrBlank() -> {
+                HelperText(text = neighborhoodErrorMessage)
+                if (onRetryNeighborhoods != null) {
+                    TextActionButton(text = "Retry neighborhoods", onClick = onRetryNeighborhoods)
+                }
+            }
+            !loadingNeighborhoods && neighborhoods.isEmpty() -> HelperText(text = "No neighborhoods found for this district.")
+        }
+    }
 }

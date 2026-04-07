@@ -17,7 +17,6 @@ import { ApiError } from "@/lib/api";
 import {
     BackendProfileResponse,
     EditableProfileData,
-    buildAddress,
     calculateAgeFromBirthDate,
     fetchMyProfile,
     mapBackendProfileToEditableProfile,
@@ -30,12 +29,8 @@ import {
     validateExpertiseAreas,
     putMyExpertiseAreas,
 } from "@/lib/profile";
+import { useTurkishLocations } from "@/lib/useTurkishLocations";
 
-type Neighborhood = { label: string; value: string };
-type District = { label: string; neighborhoods: Neighborhood[] };
-type City = { label: string; districts: Record<string, District> };
-type Country = { label: string; cities: Record<string, City> };
-type LocationData = Record<string, Country>;
 type UploadedFile = { name: string; data: string };
 type UploadField = "chronicDiseasesFiles" | "allergiesFiles";
 type EmptyStateAction = "login" | "complete-profile" | null;
@@ -47,153 +42,14 @@ type ProfileData = EditableProfileData & {
     allergiesVerified: boolean;
 };
 
-const locationData: LocationData = {
-    tr: {
-        label: "Turkey",
-        cities: {
-            istanbul: {
-                label: "Istanbul",
-                districts: {
-                    kadikoy: {
-                        label: "Kadıköy",
-                        neighborhoods: [
-                            { label: "Bostancı", value: "bostanci" },
-                            { label: "Erenköy", value: "erenkoy" },
-                        ],
-                    },
-                    besiktas: {
-                        label: "Beşiktaş",
-                        neighborhoods: [
-                            { label: "Balmumcu", value: "balmumcu" },
-                            { label: "Kuruçeşme", value: "kurucesme" },
-                        ],
-                    },
-                },
-            },
-            ankara: {
-                label: "Ankara",
-                districts: {
-                    cankaya: {
-                        label: "Çankaya",
-                        neighborhoods: [{ label: "Anıttepe", value: "anittepe" }],
-                    },
-                },
-            },
-        },
-    },
-};
-
-function findCountryKeyByLabel(label: string) {
-    return (
-        Object.entries(locationData).find(([, country]) => country.label === label)?.[0] ||
-        ""
-    );
-}
-
-function findCityKeyByLabel(countryKey: string, label: string) {
-    const country = locationData[countryKey];
-
-    if (!country) {
-        return "";
-    }
-
-    return (
-        Object.entries(country.cities).find(([, city]) => city.label === label)?.[0] ||
-        ""
-    );
-}
-
-function normalizeAddressPart(value: string) {
-    return value
-        .toLocaleLowerCase("tr")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim();
-}
-
-function parseLocationAddress(countryKey: string, cityKey: string, address: string) {
-    const tokens = address
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
-
-    if (!countryKey || !cityKey || tokens.length === 0) {
-        return {
-            district: "",
-            neighborhood: "",
-            extraAddress: address,
-        };
-    }
-
-    const city = locationData[countryKey]?.cities[cityKey];
-    if (!city) {
-        return {
-            district: "",
-            neighborhood: "",
-            extraAddress: address,
-        };
-    }
-
-    const remainingTokens = new Map(
-        tokens.map((token) => [normalizeAddressPart(token), token])
-    );
-
-    let district = "";
-    let neighborhood = "";
-
-    for (const [districtKey, districtValue] of Object.entries(city.districts)) {
-        const matchedDistrict = [districtKey, districtValue.label]
-            .map(normalizeAddressPart)
-            .find((candidate) => remainingTokens.has(candidate));
-
-        if (!matchedDistrict) {
-            continue;
-        }
-
-        district = districtKey;
-        remainingTokens.delete(matchedDistrict);
-
-        const matchedNeighborhood = districtValue.neighborhoods.find((item) =>
-            [item.value, item.label]
-                .map(normalizeAddressPart)
-                .some((candidate) => remainingTokens.has(candidate))
-        );
-
-        if (matchedNeighborhood) {
-            neighborhood = matchedNeighborhood.value;
-            for (const candidate of [matchedNeighborhood.value, matchedNeighborhood.label].map(
-                normalizeAddressPart
-            )) {
-                remainingTokens.delete(candidate);
-            }
-        }
-
-        break;
-    }
-
-    return {
-        district,
-        neighborhood,
-        extraAddress: Array.from(remainingTokens.values()).join(", "),
-    };
-}
-
 function toProfileData(
     backendProfile: BackendProfileResponse,
     email: string
 ): ProfileData {
     const mapped = mapBackendProfileToEditableProfile(backendProfile, email);
-    const countryKey = findCountryKeyByLabel(mapped.country);
-    const cityKey = countryKey ? findCityKeyByLabel(countryKey, mapped.city) : "";
-    const parsedAddress = parseLocationAddress(countryKey, cityKey, mapped.extraAddress);
 
     return {
         ...mapped,
-        country: countryKey,
-        city: cityKey,
-        district: parsedAddress.district,
-        neighborhood: parsedAddress.neighborhood,
-        extraAddress: parsedAddress.extraAddress,
         chronicDiseasesFiles: [],
         chronicDiseasesVerified: false,
         allergiesFiles: [],
@@ -212,6 +68,23 @@ export default function ProfileView() {
     const [info, setInfo] = React.useState("");
     const [emptyStateAction, setEmptyStateAction] =
         React.useState<EmptyStateAction>(null);
+    const {
+        provinces,
+        districts,
+        neighborhoods,
+        loadingProvinces,
+        loadingDistricts,
+        loadingNeighborhoods,
+        provinceError,
+        districtError,
+        neighborhoodError,
+        retryProvinces,
+        retryDistricts,
+        retryNeighborhoods,
+    } = useTurkishLocations({
+        provinceCode: profile?.provinceCode || "",
+        districtId: profile?.districtId || "",
+    });
 
     const refreshProfileFromBackend = React.useCallback(
         async (token: string, birthDateOverride?: string) => {
@@ -309,15 +182,6 @@ export default function ProfileView() {
             setError("");
             setInfo("");
 
-            const districtLabel =
-                locationData[profile.country]?.cities[profile.city]?.districts[profile.district]
-                    ?.label || profile.district;
-            const neighborhoodLabel =
-                locationData[profile.country]?.cities[profile.city]?.districts[
-                    profile.district
-                ]?.neighborhoods.find((item) => item.value === profile.neighborhood)
-                    ?.label || profile.neighborhood;
-
             await patchMyPhysical(token, {
                 age: profile.birthDate
                     ? calculateAgeFromBirthDate(profile.birthDate)
@@ -335,17 +199,10 @@ export default function ProfileView() {
             });
 
             await patchMyLocation(token, {
-                country: locationData[profile.country]?.label || profile.country || null,
-                city:
-                    locationData[profile.country]?.cities[profile.city]?.label ||
-                    profile.city ||
-                    null,
-                address:
-                    buildAddress({
-                        district: districtLabel,
-                        neighborhood: neighborhoodLabel,
-                        extraAddress: profile.extraAddress,
-                    }) || null,
+                provinceCode: profile.provinceCode || null,
+                districtId: profile.districtId || null,
+                neighborhoodId: profile.neighborhoodId || null,
+                extraAddress: profile.extraAddress.trim() || null,
             });
 
             await patchMyPrivacy(token, {
@@ -460,36 +317,20 @@ export default function ProfileView() {
         );
     }
 
-    const countryData = profile.country ? locationData[profile.country] : undefined;
-
-    const countryOptions = Object.entries(locationData).map(([key, value]) => ({
-        label: value.label,
-        value: key,
+    const provinceOptions = provinces.map((province) => ({
+        label: province.name,
+        value: province.code,
     }));
 
-    const cityOptions = countryData
-        ? Object.entries(countryData.cities).map(([key, value]) => ({
-            label: value.label,
-            value: key,
-        }))
-        : [];
+    const districtOptions = districts.map((district) => ({
+        label: district.name,
+        value: district.id,
+    }));
 
-    const districtOptions =
-        profile.city && countryData?.cities[profile.city]
-            ? Object.entries(countryData.cities[profile.city].districts).map(
-                ([key, value]) => ({
-                    label: value.label,
-                    value: key,
-                })
-            )
-            : [];
-
-    const neighborhoodOptions =
-        profile.city &&
-            profile.district &&
-            countryData?.cities[profile.city]?.districts[profile.district]
-            ? countryData.cities[profile.city].districts[profile.district].neighborhoods
-            : [];
+    const neighborhoodOptions = neighborhoods.map((neighborhood) => ({
+        label: neighborhood.name,
+        value: neighborhood.id,
+    }));
 
     return (
         <div className="flex gap-10">
@@ -774,32 +615,24 @@ export default function ProfileView() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <SelectInput
-                            id="country"
-                            label="Country"
-                            value={profile.country}
-                            options={[{ label: "Select Country", value: "" }, ...countryOptions]}
-                            onChange={(e) =>
-                                setProfile({
-                                    ...profile,
-                                    country: e.target.value,
-                                    city: "",
-                                    district: "",
-                                    neighborhood: "",
-                                })
+                            id="province"
+                            label="Province"
+                            value={profile.provinceCode}
+                            disabled={loadingProvinces}
+                            options={[{ label: "Select Province", value: "" }, ...provinceOptions]}
+                            helperText={
+                                loadingProvinces
+                                    ? "Loading provinces..."
+                                    : provinceError || undefined
                             }
-                        />
-
-                        <SelectInput
-                            id="city"
-                            label="City"
-                            value={profile.city}
-                            disabled={!profile.country}
-                            options={[{ label: "Select City", value: "" }, ...cityOptions]}
                             onChange={(e) =>
                                 setProfile({
                                     ...profile,
-                                    city: e.target.value,
+                                    provinceCode: e.target.value,
+                                    province: "",
+                                    districtId: "",
                                     district: "",
+                                    neighborhoodId: "",
                                     neighborhood: "",
                                 })
                             }
@@ -808,16 +641,25 @@ export default function ProfileView() {
                         <SelectInput
                             id="district"
                             label="District"
-                            value={profile.district}
-                            disabled={!profile.city}
-                            options={[
-                                { label: "Select District", value: "" },
-                                ...districtOptions,
-                            ]}
+                            value={profile.districtId}
+                            disabled={!profile.provinceCode || loadingDistricts}
+                            options={[{ label: "Select District", value: "" }, ...districtOptions]}
+                            helperText={
+                                !profile.provinceCode
+                                    ? "Select a province first."
+                                    : loadingDistricts
+                                        ? "Loading districts..."
+                                        : districtError ||
+                                          (districtOptions.length === 0
+                                              ? "No districts found for this province."
+                                              : undefined)
+                            }
                             onChange={(e) =>
                                 setProfile({
                                     ...profile,
-                                    district: e.target.value,
+                                    districtId: e.target.value,
+                                    district: "",
+                                    neighborhoodId: "",
                                     neighborhood: "",
                                 })
                             }
@@ -826,16 +668,27 @@ export default function ProfileView() {
                         <SelectInput
                             id="neighborhood"
                             label="Neighborhood"
-                            value={profile.neighborhood}
-                            disabled={!profile.district}
+                            value={profile.neighborhoodId}
+                            disabled={!profile.districtId || loadingNeighborhoods}
                             options={[
                                 { label: "Select Neighborhood", value: "" },
                                 ...neighborhoodOptions,
                             ]}
+                            helperText={
+                                !profile.districtId
+                                    ? "Select a district first."
+                                    : loadingNeighborhoods
+                                        ? "Loading neighborhoods..."
+                                        : neighborhoodError ||
+                                          (neighborhoodOptions.length === 0
+                                              ? "No neighborhoods found for this district."
+                                              : undefined)
+                            }
                             onChange={(e) =>
                                 setProfile({
                                     ...profile,
-                                    neighborhood: e.target.value,
+                                    neighborhoodId: e.target.value,
+                                    neighborhood: "",
                                 })
                             }
                         />
@@ -852,11 +705,37 @@ export default function ProfileView() {
                                     })
                                 }
                             />
-                            <HelperText>
-                                District and neighborhood are flattened into a single backend
-                                address field for now.
-                            </HelperText>
                         </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-3">
+                        {provinceError ? (
+                            <button
+                                type="button"
+                                onClick={() => void retryProvinces()}
+                                className="text-xs font-semibold text-[color:var(--primary-500)] hover:underline"
+                            >
+                                Retry loading provinces
+                            </button>
+                        ) : null}
+                        {districtError ? (
+                            <button
+                                type="button"
+                                onClick={() => void retryDistricts()}
+                                className="text-xs font-semibold text-[color:var(--primary-500)] hover:underline"
+                            >
+                                Retry loading districts
+                            </button>
+                        ) : null}
+                        {neighborhoodError ? (
+                            <button
+                                type="button"
+                                onClick={() => void retryNeighborhoods()}
+                                className="text-xs font-semibold text-[color:var(--primary-500)] hover:underline"
+                            >
+                                Retry loading neighborhoods
+                            </button>
+                        ) : null}
                     </div>
 
                     <div className="mt-4 flex items-center justify-between">

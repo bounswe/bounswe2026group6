@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.neph.core.network.JsonHttpClient
 import com.neph.features.auth.data.AuthSessionStore
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlinx.coroutines.CancellationException
 
 object ProfileRepository {
     private const val PrefsName = "neph_profile"
@@ -117,19 +117,10 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    putNullable("country", profile.country?.takeIf(String::isNotBlank)?.let { locationData[it]?.label ?: it })
-                    putNullable(
-                        "city",
-                        profile.city?.takeIf(String::isNotBlank)?.let {
-                            profile.country?.let { countryKey ->
-                                locationData[countryKey]?.cities?.get(it)?.label
-                            } ?: it
-                        }
-                    )
-                    putNullable(
-                        "address",
-                        buildAddress(profile.district, profile.neighborhood, profile.extraAddress)
-                    )
+                    putNullable("provinceCode", profile.provinceCode)
+                    putNullable("districtId", profile.districtId)
+                    putNullable("neighborhoodId", profile.neighborhoodId)
+                    putNullable("extraAddress", profile.extraAddress)
                 }
             )
 
@@ -163,10 +154,7 @@ object ProfileRepository {
             saveProfile(profile)
 
             val refreshed = fetchAndCacheRemoteProfile().copy(
-                birthDate = profile.birthDate,
-                district = profile.district,
-                neighborhood = profile.neighborhood,
-                extraAddress = profile.extraAddress
+                birthDate = profile.birthDate
             )
             saveProfile(refreshed)
             refreshed
@@ -175,10 +163,7 @@ object ProfileRepository {
         } catch (error: Exception) {
             try {
                 val refreshed = fetchAndCacheRemoteProfile().copy(
-                    birthDate = profile.birthDate,
-                    district = profile.district,
-                    neighborhood = profile.neighborhood,
-                    extraAddress = profile.extraAddress
+                    birthDate = profile.birthDate
                 )
                 saveProfile(refreshed)
             } catch (_: Exception) {
@@ -203,9 +188,11 @@ object ProfileRepository {
             putString("medicalHistory", profile.medicalHistory)
             putString("chronicDiseases", profile.chronicDiseases)
             putString("allergies", profile.allergies)
-            putString("country", profile.country)
-            putString("city", profile.city)
+            putString("provinceCode", profile.provinceCode)
+            putString("province", profile.province)
+            putString("districtId", profile.districtId)
             putString("district", profile.district)
+            putString("neighborhoodId", profile.neighborhoodId)
             putString("neighborhood", profile.neighborhood)
             putString("extraAddress", profile.extraAddress)
             putBoolean("shareLocation", profile.shareLocation ?: false)
@@ -238,9 +225,11 @@ object ProfileRepository {
             medicalHistory = prefs.getString("medicalHistory", null),
             chronicDiseases = prefs.getString("chronicDiseases", null),
             allergies = prefs.getString("allergies", null),
-            country = prefs.getString("country", null),
-            city = prefs.getString("city", null),
+            provinceCode = prefs.getString("provinceCode", null),
+            province = prefs.getString("province", null),
+            districtId = prefs.getString("districtId", null),
             district = prefs.getString("district", null),
+            neighborhoodId = prefs.getString("neighborhoodId", null),
             neighborhood = prefs.getString("neighborhood", null),
             extraAddress = prefs.getString("extraAddress", null),
             shareLocation = if (prefs.contains("shareLocation")) prefs.getBoolean("shareLocation", false) else null
@@ -259,11 +248,6 @@ object ProfileRepository {
         val privacySettings = profileJson.optJSONObject("privacySettings") ?: JSONObject()
         val expertise = profileJson.optJSONArray("expertise")?.optJSONObject(0)
 
-        val countryLabel = locationProfile.optStringOrNull("country")
-        val cityLabel = locationProfile.optStringOrNull("city")
-        val countryKey = findCountryKeyByLabel(locationProfile.optStringOrNull("country"))
-        val cityKey = findCityKeyByLabel(countryKey, cityLabel)
-
         return ProfileData(
             fullName = listOf(
                 profile.optStringOrNull("firstName"),
@@ -281,11 +265,15 @@ object ProfileRepository {
             medicalHistory = healthInfo.optJSONArray("medicalConditions").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             chronicDiseases = healthInfo.optJSONArray("chronicDiseases").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             allergies = healthInfo.optJSONArray("allergies").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
-            country = countryKey.ifBlank { countryLabel.orEmpty() }.takeIf { it.isNotBlank() },
-            city = cityKey.ifBlank { cityLabel.orEmpty() }.takeIf { it.isNotBlank() },
-            district = cachedProfileSnapshot.district,
-            neighborhood = cachedProfileSnapshot.neighborhood,
-            extraAddress = cachedProfileSnapshot.extraAddress ?: locationProfile.optStringOrNull("address"),
+            provinceCode = locationProfile.optStringOrNull("provinceCode"),
+            province = locationProfile.optStringOrNull("province"),
+            districtId = locationProfile.optStringOrNull("districtId"),
+            district = locationProfile.optStringOrNull("district"),
+            neighborhoodId = locationProfile.optStringOrNull("neighborhoodId"),
+            neighborhood = locationProfile.optStringOrNull("neighborhood"),
+            extraAddress = locationProfile.optStringOrNull("extraAddress")
+                ?: locationProfile.optStringOrNull("address")
+                ?: cachedProfileSnapshot.extraAddress,
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled")
         )
     }

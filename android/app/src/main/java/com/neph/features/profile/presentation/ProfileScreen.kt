@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.profile.data.ProfileRepository
-import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.toEditableString
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
@@ -75,12 +74,6 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(spacing.lg)
             ) {
-                val countryLabel = profile.country?.let { locationData[it]?.label ?: it }
-                val cityLabel = profile.city?.let { cityKey ->
-                    val countryKey = profile.country.orEmpty()
-                    locationData[countryKey]?.cities?.get(cityKey)?.label ?: cityKey
-                }
-
                 if (error.isNotBlank()) {
                     HelperText(text = error)
                 }
@@ -134,8 +127,7 @@ fun ProfileScreen(
                         subtitle = "Your current saved location details"
                     )
 
-                    ProfileField(label = "Country", value = countryLabel)
-                    ProfileField(label = "City", value = cityLabel)
+                    ProfileField(label = "Province", value = profile.province)
                     ProfileField(label = "District", value = profile.district)
                     ProfileField(label = "Neighborhood", value = profile.neighborhood)
                     ProfileField(label = "Extra Address", value = profile.extraAddress)
