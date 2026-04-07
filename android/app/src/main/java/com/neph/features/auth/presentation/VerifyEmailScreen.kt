@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun VerifyEmailScreen(
+    initialToken: String? = null,
+    onVerificationSuccess: () -> Unit,
     onContinueToLogin: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
@@ -44,13 +47,13 @@ fun VerifyEmailScreen(
     var error by rememberSaveable { mutableStateOf("") }
     var info by rememberSaveable { mutableStateOf("") }
 
-    fun handleVerify() {
+    fun handleVerify(input: String = tokenOrLink) {
         if (loading || resending) return
 
         error = ""
         info = ""
 
-        if (tokenOrLink.trim().isEmpty()) {
+        if (input.trim().isEmpty()) {
             error = "Paste the verification link or token from your email, or open the link in your browser and continue to log in."
             return
         }
@@ -58,8 +61,8 @@ fun VerifyEmailScreen(
         loading = true
         scope.launch {
             try {
-                info = AuthRepository.verifyEmail(tokenOrLink)
-                onContinueToLogin()
+                info = AuthRepository.verifyEmail(input)
+                onVerificationSuccess()
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (errorResponse: ApiException) {
@@ -70,6 +73,16 @@ fun VerifyEmailScreen(
                 loading = false
             }
         }
+    }
+
+    LaunchedEffect(initialToken) {
+        val token = initialToken?.trim().orEmpty()
+        if (token.isBlank() || loading || resending) {
+            return@LaunchedEffect
+        }
+
+        tokenOrLink = token
+        handleVerify(token)
     }
 
     fun handleResend() {

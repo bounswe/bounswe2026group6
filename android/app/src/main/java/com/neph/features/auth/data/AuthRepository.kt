@@ -117,6 +117,11 @@ object AuthRepository {
             path = "/auth/verify-email?token=$encodedToken"
         )
 
+        val accessToken = response.optString("accessToken")
+        if (accessToken.isNotBlank()) {
+            AuthSessionStore.saveAccessToken(accessToken, rememberMe = true)
+        }
+
         AuthSessionStore.clearPendingVerificationEmail()
         return response.optString("message").ifBlank { "Email verified successfully." }
     }

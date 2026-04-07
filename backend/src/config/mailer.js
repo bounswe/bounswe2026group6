@@ -12,7 +12,9 @@ const transporter = nodemailer.createTransport({
 });
 
 async function sendVerificationEmail(toEmail, token) {
-  const verifyUrl = `${env.appUrl}/api/auth/verify-email?token=${token}`;
+  const encodedToken = encodeURIComponent(token);
+  const encodedEmail = encodeURIComponent(toEmail);
+  const verifyUrl = `${env.frontendUrl}/verify-email?token=${encodedToken}&email=${encodedEmail}`;
 
   await transporter.sendMail({
     from: `"Neph" <${env.smtp.user}>`,

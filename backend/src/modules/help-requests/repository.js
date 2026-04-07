@@ -371,6 +371,34 @@ async function markHelpRequestAsResolvedByRequestId(requestId) {
   return findHelpRequestById(requestId);
 }
 
+async function markHelpRequestAsCancelled(userId, requestId) {
+  await query(
+    `
+      UPDATE help_requests
+      SET status = 'CANCELLED',
+          is_saved_locally = FALSE
+      WHERE user_id = $1 AND request_id = $2
+    `,
+    [userId, requestId],
+  );
+
+  return findHelpRequestByIdForUser(userId, requestId);
+}
+
+async function markHelpRequestAsCancelledByRequestId(requestId) {
+  await query(
+    `
+      UPDATE help_requests
+      SET status = 'CANCELLED',
+          is_saved_locally = FALSE
+      WHERE request_id = $1
+    `,
+    [requestId],
+  );
+
+  return findHelpRequestById(requestId);
+}
+
 module.exports = {
   createHelpRequest,
   listHelpRequestsByUserId,
@@ -380,4 +408,6 @@ module.exports = {
   markHelpRequestAsSyncedByRequestId,
   markHelpRequestAsResolved,
   markHelpRequestAsResolvedByRequestId,
+  markHelpRequestAsCancelled,
+  markHelpRequestAsCancelledByRequestId,
 };

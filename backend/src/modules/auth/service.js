@@ -161,13 +161,19 @@ async function verifyUserEmail(token) {
   }
 
   const updatedUser = await markEmailVerified(decoded.userId);
+  const adminRecord = await findAdminByUserId(updatedUser.user_id);
+  const tokenPayload = buildAccessTokenPayload(updatedUser, adminRecord);
+  const accessToken = signAccessToken(tokenPayload);
 
   return {
     message: 'Email verified successfully',
+    accessToken,
     user: {
       userId: updatedUser.user_id,
       email: updatedUser.email,
       isEmailVerified: updatedUser.is_email_verified,
+      isAdmin: Boolean(adminRecord),
+      adminRole: adminRecord ? adminRecord.role : null,
     },
   };
 }

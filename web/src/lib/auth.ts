@@ -27,6 +27,7 @@ type LoginResponse = {
 type VerifyEmailResponse = {
     message: string;
     user: AuthUser;
+    accessToken?: string;
 };
 
 type ResendVerificationResponse = {
