@@ -55,6 +55,7 @@ function mapHelper(row) {
     firstName: row.helper_first_name || null,
     lastName: row.helper_last_name || null,
     phone: row.helper_phone_number ? Number(row.helper_phone_number) : null,
+    profession: row.helper_profession || null,
     expertise: row.helper_expertise_area || null,
   };
 }
@@ -118,6 +119,7 @@ function buildSelectQuery() {
       helper_profile.first_name AS helper_first_name,
       helper_profile.last_name AS helper_last_name,
       helper_profile.phone_number AS helper_phone_number,
+      helper_expertise.profession AS helper_profession,
       helper_expertise.expertise_area AS helper_expertise_area
     FROM help_requests hr
     LEFT JOIN request_locations rl ON rl.request_id = hr.request_id
@@ -128,7 +130,7 @@ function buildSelectQuery() {
     LEFT JOIN users helper_user ON helper_user.user_id = vol.user_id
     LEFT JOIN user_profiles helper_profile ON helper_profile.user_id = vol.user_id
     LEFT JOIN LATERAL (
-      SELECT e.expertise_area
+      SELECT e.profession, e.expertise_area
       FROM expertise e
       WHERE e.profile_id = helper_profile.profile_id
       ORDER BY e.is_verified DESC, e.expertise_id ASC

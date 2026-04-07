@@ -1,180 +1,220 @@
-# Neighborhood Emergency Preparedness Hub
+# Neighborhood Emergency Preparedness Hub (NEPH)
 
-Neighborhood Emergency Preparedness Hub (NEPH) is a disaster-preparedness MVP focused on three core flows:
+NEPH is an MVP-focused disaster preparedness platform. This repository contains the backend API, web application, and Android client for core emergency support flows such as authentication, profile management, help requests, and volunteer availability.
 
-- people can create accounts and sign in
-- users can complete and manage their profiles
-- users can create and track help requests, while volunteers can manage availability and matching-related flows
+For local evaluation, the recommended path is the Dockerized web + backend + PostgreSQL setup. The Android project lives in the same repository, but it is built and run separately from Docker Compose.
 
-This repository already includes a runnable local MVP stack for the backend and web app, plus an Android project and infrastructure files for local PostgreSQL.
+## Current scope
 
-## What is included in the MVP
+This repository currently includes the main pieces of the MVP:
 
-The current MVP includes these implemented or locally runnable parts:
+- authentication flows such as signup, login, email verification, and current-user access
+- profile and privacy-related flows
+- help-request creation, listing, and status handling
+- volunteer availability and related backend flows
+- web pages for core product flows and supporting informational pages
+- an Android client in the same monorepo
 
-- **Backend API** in `backend/`
-  - authentication: signup, login, email verification, current-user lookup
-  - profile flows
-  - help-request flows
-  - volunteer availability and assignment-related flows
-- **Web app** in `web/`
-  - Next.js frontend for auth and user-facing flows
-- **Android app** in `android/`
-  - Android project scaffold with local API base URL configuration
-- **Infrastructure** in `infra/`
-  - Docker Compose setup for local PostgreSQL
-  - database schema bootstrap script
+This should be read as a runnable MVP rather than a finished production system.
 
 ## Repository structure
 
 ```text
 .
-├── web/        # Next.js web application
-├── android/    # Android application project
-├── backend/    # Node.js + Express API
-├── docs/       # Reports and project documentation
-├── infra/      # Docker Compose, Postgres init, and infra files
-└── .github/    # GitHub templates and workflows
+├── backend/   Backend API, tests, environment examples, Dockerfile
+├── web/       Next.js web application, environment examples, Dockerfile
+├── android/   Android application project
+├── infra/     PostgreSQL bootstrap SQL and related infrastructure files
+├── docs/      Project documents and reports
+├── .github/   Workflows and repository templates
+└── README.md  Top-level project guide
 ```
+
+## Tech stack
+
+### Backend
+
+- Node.js
+- Express
+- PostgreSQL
+- JWT-based authentication
+- Nodemailer
+- Jest and Supertest
+
+### Web
+
+- Next.js
+- React
+- TypeScript
+
+### Android
+
+- Kotlin
+- Jetpack Compose
+- Gradle
+
+### Local tooling
+
+- Docker Compose
+- PostgreSQL
 
 ## Prerequisites
 
-Install these before starting:
+For the recommended local setup:
 
-- Git
-- Docker Desktop (or Docker Engine + Compose plugin)
-- Node.js 20 LTS or newer
+- Docker Desktop, or Docker Engine with the Compose plugin
+
+For module-level development outside Docker:
+
+- Node.js
 - npm
 
-To use signup and email-based flows locally, you will also need:
-
-- a working SMTP account or a local/test SMTP service
-
-For Android development, you will also need:
+For Android development:
 
 - Android Studio
-- Android SDK matching the project configuration
+- Android SDK compatible with the project
 
-## Quick setup
+## Environment variables
 
-These steps are the fastest way to run the local MVP.
+Keep secrets and real credentials out of the repository. Use local env files or shell overrides.
 
-### 1. Clone the repository
+### Backend
+
+Example file:
+
+- `backend/.env.example`
+
+Important variables include:
+
+- `POSTGRES_HOST`
+- `POSTGRES_PORT`
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL` if the backend uses a single connection string
+- `JWT_SECRET`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `APP_URL`
+- `FRONTEND_URL`
+
+Notes:
+
+- Email-based flows require valid SMTP credentials.
+- Placeholder SMTP values in the example file are not usable as-is.
+- In Docker Compose, the backend connects to PostgreSQL through the internal service name `postgres`.
+
+### Web
+
+Example file:
+
+- `web/.env.example`
+
+Important variables include:
+
+- `NEXT_PUBLIC_API_BASE_URL`
+- `API_BASE_URL`
+
+Notes:
+
+- `NEXT_PUBLIC_API_BASE_URL` is used for browser-facing requests.
+- `API_BASE_URL` can be used for server-side requests inside the Docker network.
+
+### Docker Compose overrides
+
+The root `docker-compose.yml` provides sensible local defaults. If needed, you can override values from your shell or from a local root `.env` file before starting Compose.
+
+Common overrides include:
+
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_PORT`
+- `JWT_SECRET`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `NEXT_PUBLIC_API_BASE_URL`
+- `INTERNAL_API_BASE_URL`
+
+## Local development
+
+### Recommended path: Docker Compose
+
+From the repository root, run:
 
 ```bash
-git clone <your-repository-url>
-cd bounswe2026group6
+docker compose up --build
 ```
 
-### 2. Start PostgreSQL
+This starts:
 
-```bash
-cd infra/dcompose
-cp .env.example .env
-docker compose -f docker-compose-dev.yml up -d
-```
+- PostgreSQL on `localhost:5432`
+- backend on `http://localhost:3000`
+- web on `http://localhost:3001`
 
-This starts the local PostgreSQL container and initializes the schema from:
-
-- `infra/docker/postgres/init.sql`
-
-### 3. Start the backend
-
-Open a new terminal:
-
-```bash
-cd backend
-cp .env.example .env
-npm install
-```
-
-Then update `backend/.env`, and after that run `npm run dev`:
-
-- set real or test SMTP credentials for:
-  - `SMTP_HOST`
-  - `SMTP_PORT`
-  - `SMTP_USER`
-  - `SMTP_PASS`
-- add:
-  - `FRONTEND_URL=http://localhost:3001`
-
-Important:
-
-- signup sends a verification email during account creation
-- the placeholder SMTP values from `backend/.env.example` are not usable as-is
-- if you keep the example SMTP values, signup will fail with an internal email-delivery error
-
-Start the backend after updating the file:
-
-```bash
-npm run dev
-```
-
-Backend defaults:
-
-- API base URL: `http://localhost:3000/api`
-- health check: `http://localhost:3000/health`
-
-### 4. Start the web app
-
-Open another terminal:
-
-```bash
-cd web
-printf 'NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api\n' > .env.local
-npm install
-npm run dev -- --port 3001
-```
-
-This keeps the web app on a fixed local port while the backend stays on `3000`.
-
-Local web defaults for this setup:
+Useful URLs:
 
 - web app: `http://localhost:3001`
-- backend API: `http://localhost:3000/api`
+- backend API base: `http://localhost:3000/api`
+- backend health check: `http://localhost:3000/health`
 
-### 5. Verify the local MVP
+Notes:
 
-Once the database, backend, and web app are running, you should be able to:
+- PostgreSQL is initialized from `infra/docker/postgres/init.sql`
+- the backend waits for PostgreSQL to become healthy before starting
+- the web container is configured to talk to the backend in the local Docker setup
 
-- open the web UI at `http://localhost:3001`
-- sign up and verify email, as long as valid SMTP credentials are configured
-- sign in
-- complete a profile
-- create and list help requests
-- use the currently available volunteer / availability flows exposed by the backend
+### Optional non-Docker development
 
-You can also verify backend health directly:
+If you want to run modules directly on your machine instead of Docker Compose, use the module-specific setup inside each folder:
 
-```text
-GET http://localhost:3000/health
-```
+- `backend/`
+- `web/`
+- `android/`
 
-## Local MVP notes
+In that mode, copy the example env files inside `backend/` and `web/`, then run the modules with npm or Android Studio as appropriate.
 
-- The database schema source of truth is `infra/docker/postgres/init.sql`.
-- Keep real credentials out of the repository; use local `.env` files.
-- The backend is the main source of implemented MVP functionality.
-- The web app is the easiest way to exercise the local MVP end to end.
-- The Android project is present in the repository, but mobile setup is separate from the main root quick-start flow.
-- The web app does not proxy `/api` to the backend by default in this repository, so `NEXT_PUBLIC_API_BASE_URL` should be set explicitly for local development.
+## Docker usage
 
-## Useful module READMEs
+The Dockerized setup in this repository is intentionally focused on local development and evaluation.
 
-- `backend/README.md` — backend API scope, setup, tests, and conventions
-- `web/README.md` — web app purpose and local run steps
-- `android/README.md` — Android project purpose and local dev notes
-- `infra/README.md` — Docker Compose and database bootstrap notes
+Included in Docker Compose:
 
-## Default local ports
+- PostgreSQL
+- backend API
+- web application
 
-- backend: `3000`
-- postgres: `5432`
+Not included in Docker Compose:
 
-## Current emphasis
+- Android application
+- deployment infrastructure
+- release workflows
 
-This repository should be read as an **MVP-first project**:
+Relevant files:
 
-- the main goal is to make the included flows runnable locally
-- the backend and database setup are the backbone of the MVP
-- the root quick-start is intended to get a new reader running fast
+- `docker-compose.yml`
+- `backend/Dockerfile`
+- `web/Dockerfile`
+- `infra/docker/postgres/init.sql`
+
+## Mobile note
+
+The Android application lives in `android/`.
+
+- local debug builds are expected to reach the backend through the emulator bridge at `http://10.0.2.2:3000`
+- Android is not part of the root Docker Compose workflow
+- mobile build and release steps are handled separately from the local Docker setup
+
+## Deployment note
+
+This README focuses on local development and evaluation. Deployment- and release-related files may exist elsewhere in the repository, but the top-level guide is intentionally centered on how to build and run the project locally.
+
+## Development notes
+
+- keep documentation and env examples in sync with the actual setup
+- prefer the root Docker flow for quick end-to-end verification
+- keep local configuration out of version control
