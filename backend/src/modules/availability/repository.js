@@ -87,7 +87,7 @@ async function findMatchingRequestForVolunteer(volunteerId) {
       ORDER BY hr.created_at ASC
       LIMIT 1;
     `;
-    params.push(volunteer.need_types);
+    params = [volunteer.user_id, volunteer.need_types];
   } else {
     sql = `
       SELECT hr.*, rl.latitude, rl.longitude
@@ -98,6 +98,7 @@ async function findMatchingRequestForVolunteer(volunteerId) {
       ORDER BY hr.created_at ASC
       LIMIT 1;
     `;
+    params = [volunteer.user_id];
   }
 
   const result = await query(sql, params);
@@ -187,6 +188,15 @@ async function getAssignmentById(assignmentId) {
   return result.rows[0] || null;
 }
 
+async function findAssignmentByRequestId(requestId) {
+  const sql = `
+    SELECT * FROM assignments
+    WHERE request_id = $1 AND is_cancelled = FALSE;
+  `;
+  const result = await query(sql, [requestId]);
+  return result.rows[0] || null;
+}
+
 async function cancelAssignment(assignmentId) {
   const sql = `
     DELETE FROM assignments
@@ -209,5 +219,6 @@ module.exports = {
   updateRequestStatus,
   getAssignmentByVolunteerId,
   getAssignmentById,
+  findAssignmentByRequestId,
   cancelAssignment,
 };

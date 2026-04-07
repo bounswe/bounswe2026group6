@@ -241,10 +241,10 @@ function validateCreateHelpRequest(payload) {
 function validateHelpRequestStatusUpdate(payload) {
   const errors = [];
   const status = typeof payload.status === 'string' ? payload.status.trim().toUpperCase() : '';
-  const allowedStatuses = ['SYNCED', 'RESOLVED'];
+  const allowedStatuses = ['SYNCED', 'RESOLVED', 'CANCELLED'];
 
   if (!allowedStatuses.includes(status)) {
-    errors.push('`status` must be one of: SYNCED, RESOLVED.');
+    errors.push('`status` must be one of: SYNCED, RESOLVED, CANCELLED.');
   }
 
   return {

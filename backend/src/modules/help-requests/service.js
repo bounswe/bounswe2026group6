@@ -10,8 +10,10 @@ const {
   markHelpRequestAsResolved,
   markHelpRequestAsSyncedByRequestId,
   markHelpRequestAsResolvedByRequestId,
+  markHelpRequestAsCancelled,
+  markHelpRequestAsCancelledByRequestId,
 } = require('./repository');
-const { tryToAssignRequest } = require('../availability/service');
+const { tryToAssignRequest, cancelAssignmentByRequestId } = require('../availability/service');
 
 const JWT_SECRET = env.jwt.secret;
 const GUEST_HELP_REQUEST_SCOPE = 'help_request_guest_read';
@@ -125,8 +127,8 @@ function buildInvalidTransitionError(message) {
 
 async function applyStatusTransition(currentRequest, nextStatus, handlers) {
   if (nextStatus === 'SYNCED') {
-    if (currentRequest.internalStatus === 'RESOLVED') {
-      throw buildInvalidTransitionError('A resolved request cannot be moved back to synced.');
+    if (currentRequest.internalStatus === 'RESOLVED' || currentRequest.internalStatus === 'CANCELLED') {
+      throw buildInvalidTransitionError('A resolved or cancelled request cannot be moved back to synced.');
     }
 
     return handlers.sync();
@@ -138,6 +140,18 @@ async function applyStatusTransition(currentRequest, nextStatus, handlers) {
     }
 
     return handlers.resolve();
+  }
+
+  if (nextStatus === 'CANCELLED') {
+    if (currentRequest.internalStatus === 'RESOLVED') {
+      throw buildInvalidTransitionError('A resolved request cannot be cancelled.');
+    }
+
+    if (currentRequest.internalStatus === 'CANCELLED') {
+      return currentRequest;
+    }
+
+    return handlers.cancel();
   }
 
   throw buildInvalidTransitionError('This status update is not supported in the help request module.');
@@ -153,6 +167,10 @@ async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
   return applyStatusTransition(currentRequest, nextStatus, {
     sync: () => markHelpRequestAsSynced(userId, requestId),
     resolve: () => markHelpRequestAsResolved(userId, requestId),
+    cancel: async () => {
+      await cancelAssignmentByRequestId(requestId);
+      return markHelpRequestAsCancelled(userId, requestId);
+    },
   });
 }
 
@@ -166,6 +184,10 @@ async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessTo
   return applyStatusTransition(currentRequest, nextStatus, {
     sync: () => markHelpRequestAsSyncedByRequestId(requestId),
     resolve: () => markHelpRequestAsResolvedByRequestId(requestId),
+    cancel: async () => {
+      await cancelAssignmentByRequestId(requestId);
+      return markHelpRequestAsCancelledByRequestId(requestId);
+    },
   });
 }
 

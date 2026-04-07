@@ -6,6 +6,7 @@ const {
   resolveMyAssignment,
   getAvailabilityStatus,
   tryToAssignRequest,
+  cancelAssignmentByRequestId,
 } = require('../../../../src/modules/availability/service');
 const repository = require('../../../../src/modules/availability/repository');
 
@@ -128,7 +129,7 @@ describe('Availability Service', () => {
   });
 
   describe('cancelMyAssignment', () => {
-    it('should cancel assignment and set request back to pending', async () => {
+    it('should cancel assignment, set request back to pending and set volunteer unavailable', async () => {
       repository.findVolunteerByUserId.mockResolvedValue(volunteer);
       repository.getAssignmentById.mockResolvedValue(assignment);
       repository.findMatchingRequestForVolunteer.mockResolvedValue(null);
@@ -137,19 +138,40 @@ describe('Availability Service', () => {
 
       expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
       expect(repository.updateRequestStatus).toHaveBeenCalledWith('req_123', 'PENDING');
-      expect(result.message).toBe('Assignment cancelled and request put back to pending');
+      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, undefined, undefined);
+      expect(result.message).toContain('Assignment cancelled, you are now unavailable');
     });
 
-    it('should try to find a NEW assignment after cancelling', async () => {
+    it('should try to auto-assign the request to someone else after volunteer cancels', async () => {
       repository.findVolunteerByUserId.mockResolvedValue(volunteer);
       repository.getAssignmentById.mockResolvedValue(assignment);
+      repository.findMatchingVolunteerForRequest.mockResolvedValue({ volunteer_id: 'vol_456' });
+
+      await cancelMyAssignment(userId, { assignmentId: 'asg_123' });
+
+      expect(repository.findMatchingVolunteerForRequest).toHaveBeenCalledWith('req_123');
+      expect(repository.createAssignment).toHaveBeenCalledWith('vol_456', 'req_123');
+    });
+  });
+
+  describe('cancelAssignmentByRequestId', () => {
+    it('should cancel assignment and try to match the volunteer with a new request', async () => {
+      repository.findAssignmentByRequestId.mockResolvedValue(assignment);
       repository.findMatchingRequestForVolunteer.mockResolvedValue({ request_id: 'req_456' });
-      repository.getAssignmentByVolunteerId.mockResolvedValue({ assignment_id: 'asg_456' });
 
-      const result = await cancelMyAssignment(userId, { assignmentId: 'asg_123' });
+      await cancelAssignmentByRequestId('req_123');
 
+      expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
+      expect(repository.findMatchingRequestForVolunteer).toHaveBeenCalledWith('vol_123');
       expect(repository.createAssignment).toHaveBeenCalledWith('vol_123', 'req_456');
-      expect(result.newAssignment).toBeDefined();
+    });
+
+    it('should do nothing if no assignment is found', async () => {
+      repository.findAssignmentByRequestId.mockResolvedValue(null);
+
+      await cancelAssignmentByRequestId('req_123');
+
+      expect(repository.cancelAssignment).not.toHaveBeenCalled();
     });
   });
 

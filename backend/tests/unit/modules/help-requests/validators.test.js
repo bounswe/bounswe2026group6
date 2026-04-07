@@ -213,6 +213,13 @@ describe('help-requests validators', () => {
 			expect(value.status).toBe('RESOLVED');
 		});
 
+		test('accepts CANCELLED', () => {
+			const { errors, value } = validateHelpRequestStatusUpdate({ status: 'CANCELLED' });
+
+			expect(errors).toHaveLength(0);
+			expect(value.status).toBe('CANCELLED');
+		});
+
 		test('normalizes lowercase and trims whitespace', () => {
 			const { errors, value } = validateHelpRequestStatusUpdate({ status: '  resolved  ' });
 
@@ -221,10 +228,10 @@ describe('help-requests validators', () => {
 		});
 
 		test('rejects unsupported status value', () => {
-			const { errors } = validateHelpRequestStatusUpdate({ status: 'CANCELLED' });
+			const { errors } = validateHelpRequestStatusUpdate({ status: 'FOO' });
 
 			expect(errors.length).toBeGreaterThan(0);
-			expect(errors[0]).toContain('SYNCED, RESOLVED');
+			expect(errors[0]).toContain('SYNCED, RESOLVED, CANCELLED');
 		});
 
 		test('rejects missing status', () => {

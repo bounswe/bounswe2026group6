@@ -8,6 +8,7 @@ const {
   updateRequestStatus,
   getAssignmentByVolunteerId,
   getAssignmentById,
+  findAssignmentByRequestId,
   cancelAssignment,
   findMatchingVolunteerForRequest,
 } = require('./repository');
@@ -136,20 +137,31 @@ async function cancelMyAssignment(userId, { assignmentId }) {
   await cancelAssignment(assignmentId);
   await updateRequestStatus(assignment.request_id, 'PENDING'); // Put it back to pending for re-assignment
 
-  // Proactively try to find a NEW assignment for this volunteer since they are still available
-  // (Assuming they want to stay available after cancelling)
-  const newAssignment = await findMatchingRequestForVolunteer(volunteer.volunteer_id);
-  let assignmentResult = null;
-  if (newAssignment) {
-    await createAssignment(volunteer.volunteer_id, newAssignment.request_id);
-    await updateRequestStatus(newAssignment.request_id, 'ASSIGNED');
-    assignmentResult = await getAssignmentByVolunteerId(volunteer.volunteer_id);
-  }
+  // Volunteer becomes unavailable
+  await updateVolunteerAvailability(volunteer.volunteer_id, false, volunteer.last_known_latitude, volunteer.last_known_longitude);
+  await createAvailabilityRecord(volunteer.volunteer_id, false, false);
+
+  // Auto-assign the request to someone else if possible
+  await tryToAssignRequest(assignment.request_id);
 
   return { 
-    message: 'Assignment cancelled and request put back to pending',
-    newAssignment: assignmentResult
+    message: 'Assignment cancelled, you are now unavailable, and request put back to pending for re-assignment',
+    volunteerStatus: 'UNAVAILABLE'
   };
+}
+
+async function cancelAssignmentByRequestId(requestId) {
+  const assignment = await findAssignmentByRequestId(requestId);
+  if (assignment) {
+    await cancelAssignment(assignment.assignment_id);
+    // Volunteer remains available, and they are now free for new assignments
+    // We could try to assign them a new request immediately
+    const newRequest = await findMatchingRequestForVolunteer(assignment.volunteer_id);
+    if (newRequest) {
+      await createAssignment(assignment.volunteer_id, newRequest.request_id);
+      await updateRequestStatus(newRequest.request_id, 'ASSIGNED');
+    }
+  }
 }
 
 async function resolveMyAssignment(userId, { requestId }) {
@@ -223,4 +235,5 @@ module.exports = {
   resolveMyAssignment,
   getAvailabilityStatus,
   tryToAssignRequest,
+  cancelAssignmentByRequestId,
 };
