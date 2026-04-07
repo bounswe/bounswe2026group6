@@ -152,6 +152,7 @@ fun AppNavGraph(
 
         composable(Routes.MyHelpRequests.route) {
             val authenticated = isAuthenticated()
+            val profileBadgeText = resolveProfileBadgeText(authenticated)
             MyHelpRequestsScreen(
                 onNavigateToRoute = ::navigateToDrawerRoute,
                 onOpenSettings = if (authenticated) {
@@ -159,6 +160,14 @@ fun AppNavGraph(
                 } else {
                     null
                 },
+                onProfileClick = {
+                    if (authenticated) {
+                        navigateToDrawerRoute(Routes.Profile.route)
+                    } else {
+                        navigateToLogin()
+                    }
+                },
+                profileBadgeText = profileBadgeText,
                 isAuthenticated = authenticated
             )
         }
@@ -171,11 +180,17 @@ fun AppNavGraph(
                 return@composable
             }
 
+            val profileBadgeText = resolveProfileBadgeText(authenticated = true)
+
             AssignedRequestScreen(
                 onNavigateToRoute = ::navigateToDrawerRoute,
                 onOpenSettings = {
                     navigateToDrawerRoute(Routes.Settings.route)
                 },
+                onProfileClick = {
+                    navigateToDrawerRoute(Routes.Profile.route)
+                },
+                profileBadgeText = profileBadgeText,
                 onNavigateToLogin = {
                     navigateToLogin()
                 }
@@ -190,11 +205,17 @@ fun AppNavGraph(
                 return@composable
             }
 
+            val profileBadgeText = resolveProfileBadgeText(authenticated = true)
+
             ProfileScreen(
                 onNavigateToRoute = ::navigateToDrawerRoute,
                 onOpenSettings = {
                     navigateToDrawerRoute(Routes.Settings.route)
                 },
+                onProfileClick = {
+                    navigateToDrawerRoute(Routes.Profile.route)
+                },
+                profileBadgeText = profileBadgeText,
                 onNavigateToCompleteProfile = {
                     navController.navigate(Routes.CompleteProfile.route) {
                         launchSingleTop = true
@@ -237,20 +258,48 @@ fun AppNavGraph(
         }
 
         composable(Routes.GatheringAreas.route) {
+            val authenticated = isAuthenticated()
+            val profileBadgeText = resolveProfileBadgeText(authenticated)
+
             GatheringAreasScreen(
                 onNavigateToRoute = ::navigateToDrawerRoute,
-                onOpenSettings = {
-                    navigateToDrawerRoute(Routes.Settings.route)
-                }
+                onOpenSettings = if (authenticated) {
+                    { navigateToDrawerRoute(Routes.Settings.route) }
+                } else {
+                    null
+                },
+                onProfileClick = {
+                    if (authenticated) {
+                        navigateToDrawerRoute(Routes.Profile.route)
+                    } else {
+                        navigateToLogin()
+                    }
+                },
+                profileBadgeText = profileBadgeText,
+                isAuthenticated = authenticated
             )
         }
 
         composable(Routes.Notifications.route) {
+            val authenticated = isAuthenticated()
+            val profileBadgeText = resolveProfileBadgeText(authenticated)
+
             NotificationsScreen(
                 onNavigateToRoute = ::navigateToDrawerRoute,
-                onOpenSettings = {
-                    navigateToDrawerRoute(Routes.Settings.route)
-                }
+                onOpenSettings = if (authenticated) {
+                    { navigateToDrawerRoute(Routes.Settings.route) }
+                } else {
+                    null
+                },
+                onProfileClick = {
+                    if (authenticated) {
+                        navigateToDrawerRoute(Routes.Profile.route)
+                    } else {
+                        navigateToLogin()
+                    }
+                },
+                profileBadgeText = profileBadgeText,
+                isAuthenticated = authenticated
             )
         }
 
@@ -262,8 +311,14 @@ fun AppNavGraph(
                 return@composable
             }
 
+            val profileBadgeText = resolveProfileBadgeText(authenticated = true)
+
             SettingsScreen(
                 onNavigateToRoute = ::navigateToDrawerRoute,
+                onProfileClick = {
+                    navigateToDrawerRoute(Routes.Profile.route)
+                },
+                profileBadgeText = profileBadgeText,
                 onNavigateToPrivacySecurity = {
                     navController.navigate(Routes.PrivacySecurity.route)
                 },
@@ -347,6 +402,12 @@ fun AppNavGraph(
                 },
                 onNavigateToForgotPassword = {
                     navController.navigate(Routes.ForgotPassword.route)
+                },
+                onContinueAsGuest = {
+                    navController.navigate(Routes.Home.route) {
+                        popUpTo(Routes.Welcome.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }

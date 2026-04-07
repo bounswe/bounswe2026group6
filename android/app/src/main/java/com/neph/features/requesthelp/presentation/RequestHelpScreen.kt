@@ -24,6 +24,7 @@ import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.PhoneParts
 import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.locationData
+import com.neph.features.profile.data.normalizeBloodType
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
 import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
@@ -135,9 +136,10 @@ private fun parseBackendPhoneNumber(countryCode: String, phone: String): Long? {
 
 private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
     val phoneParts: PhoneParts = normalizePhoneParts(profile.phone)
+    val normalizedBloodType = normalizeBloodType(profile.bloodType).orEmpty()
 
     return RequestHelpFormState(
-        bloodType = profile.bloodType.orEmpty(),
+        bloodType = normalizedBloodType,
         country = profile.country.orEmpty(),
         city = profile.city.orEmpty(),
         district = profile.district.orEmpty(),

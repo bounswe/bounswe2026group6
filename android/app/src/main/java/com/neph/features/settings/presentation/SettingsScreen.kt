@@ -19,6 +19,8 @@ import com.neph.ui.theme.NephTheme
 @Composable
 fun SettingsScreen(
     onNavigateToRoute: (String) -> Unit,
+    onProfileClick: () -> Unit,
+    profileBadgeText: String,
     onNavigateToPrivacySecurity: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -27,7 +29,11 @@ fun SettingsScreen(
     AppDrawerScaffold(
         title = "Settings",
         currentRoute = Routes.Settings.route,
-        onNavigateToRoute = onNavigateToRoute
+        onNavigateToRoute = onNavigateToRoute,
+        drawerItems = Routes.authenticatedDrawerItems,
+        onProfileClick = onProfileClick,
+        profileBadgeText = profileBadgeText,
+        profileLabel = "Profile"
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -67,6 +73,8 @@ private fun SettingsScreenPreview() {
     NephTheme {
         SettingsScreen(
             onNavigateToRoute = {},
+            onProfileClick = {},
+            profileBadgeText = "PP",
             onNavigateToPrivacySecurity = {},
             onLogout = {}
         )

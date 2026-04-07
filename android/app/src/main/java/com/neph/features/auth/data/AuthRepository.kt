@@ -48,6 +48,7 @@ object AuthRepository {
         rememberMe: Boolean
     ): LoginDestination {
         val normalizedEmail = email.trim()
+        val previousProfile = ProfileRepository.getProfile()
         val response = JsonHttpClient.request(
             path = "/auth/login",
             method = "POST",
@@ -67,11 +68,19 @@ object AuthRepository {
 
         val user = response.optJSONObject("user")
         val userEmail = user?.optString("email")?.ifBlank { normalizedEmail } ?: normalizedEmail
+        val canReuseLocalProfileFields = previousProfile.email
+            ?.trim()
+            ?.equals(userEmail, ignoreCase = true)
+            ?: false
 
         AuthSessionStore.saveAccessToken(accessToken, rememberMe)
         ProfileRepository.clearProfile()
         ProfileRepository.saveProfile(
-            ProfileData(email = userEmail)
+            if (canReuseLocalProfileFields) {
+                previousProfile.copy(email = userEmail)
+            } else {
+                ProfileData(email = userEmail)
+            }
         )
 
         return try {

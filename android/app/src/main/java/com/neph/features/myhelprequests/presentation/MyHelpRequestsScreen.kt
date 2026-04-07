@@ -1,6 +1,9 @@
 package com.neph.features.myhelprequests.presentation
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
 import com.neph.core.network.ApiException
@@ -49,6 +53,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 fun MyHelpRequestsScreen(
     onNavigateToRoute: (String) -> Unit,
     onOpenSettings: (() -> Unit)?,
+    onProfileClick: () -> Unit,
+    profileBadgeText: String,
     isAuthenticated: Boolean
 ) {
     val spacing = LocalNephSpacing.current
@@ -72,6 +78,9 @@ fun MyHelpRequestsScreen(
             Routes.guestDrawerItems
         },
         onOpenSettings = onOpenSettings,
+        onProfileClick = onProfileClick,
+        profileBadgeText = profileBadgeText,
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
         contentFillMaxSize = true
     ) {
         LaunchedEffect(isAuthenticated, token, refreshVersion) {
@@ -354,6 +363,13 @@ private fun MyHelpRequestCard(
     resolveLoading: Boolean = false
 ) {
     val spacing = LocalNephSpacing.current
+    val context = LocalContext.current
+
+    fun openDialer(number: String) {
+        val normalized = number.filter { it.isDigit() || it == '+' }
+        if (normalized.isBlank()) return
+        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$normalized")))
+    }
 
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
@@ -398,7 +414,8 @@ private fun MyHelpRequestCard(
                     Text(
                         text = "Phone: $it",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { openDialer(it) }
                     )
                 }
 
@@ -431,7 +448,8 @@ private fun MyHelpRequestCard(
                 Text(
                     text = "Phone: $it",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { openDialer(it) }
                 )
             }
 
@@ -439,7 +457,8 @@ private fun MyHelpRequestCard(
                 Text(
                     text = "Alternative phone: $it",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { openDialer(it) }
                 )
             }
 
@@ -465,6 +484,8 @@ private fun MyHelpRequestsScreenPreview() {
         MyHelpRequestsScreen(
             onNavigateToRoute = {},
             onOpenSettings = {},
+            onProfileClick = {},
+            profileBadgeText = "PP",
             isAuthenticated = true
         )
     }

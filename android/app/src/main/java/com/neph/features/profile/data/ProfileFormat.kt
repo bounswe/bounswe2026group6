@@ -4,6 +4,7 @@ import com.neph.features.auth.util.countryCodeOptions
 import org.json.JSONArray
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
+import java.text.Normalizer
 import java.util.Calendar
 import java.util.Locale
 
@@ -167,6 +168,113 @@ fun findCityKeyByLabel(
 
     val country = locations[countryKey] ?: return ""
     return country.cities.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
+}
+
+fun findDistrictKeyByLabel(
+    countryKey: String,
+    cityKey: String,
+    label: String?,
+    locations: LocationData = locationData
+): String {
+    if (countryKey.isBlank() || cityKey.isBlank() || label.isNullOrBlank()) {
+        return ""
+    }
+
+    val city = locations[countryKey]?.cities?.get(cityKey) ?: return ""
+    return city.districts.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
+}
+
+fun findNeighborhoodValueByLabel(
+    countryKey: String,
+    cityKey: String,
+    districtKey: String,
+    label: String?,
+    locations: LocationData = locationData
+): String {
+    if (countryKey.isBlank() || cityKey.isBlank() || districtKey.isBlank() || label.isNullOrBlank()) {
+        return ""
+    }
+
+    val district = locations[countryKey]
+        ?.cities
+        ?.get(cityKey)
+        ?.districts
+        ?.get(districtKey)
+        ?: return ""
+
+    return district.neighborhoods.firstOrNull { it.label == label }?.value.orEmpty()
+}
+
+fun splitAddressParts(address: String?): Triple<String?, String?, String?> {
+    if (address.isNullOrBlank()) {
+        return Triple(null, null, null)
+    }
+
+    val parts = address
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+
+    if (parts.size == 1) {
+        return Triple(null, null, parts.first())
+    }
+
+    val neighborhoodLabel = parts.firstOrNull()
+    val districtLabel = parts.getOrNull(1)
+    val extraAddress = parts.drop(2).joinToString(", ").ifBlank { null }
+
+    return Triple(districtLabel, neighborhoodLabel, extraAddress)
+}
+
+fun normalizeBloodType(rawBloodType: String?): String? {
+    val normalized = rawBloodType?.trim().orEmpty()
+    if (normalized.isBlank()) {
+        return null
+    }
+
+    val compact = normalized
+        .uppercase()
+        .replace(" ", "")
+        .replace("_", "")
+        .replace("-", "")
+    val aliases = mapOf(
+        "APOSITIVE" to "A+",
+        "A+" to "A+",
+        "APOS" to "A+",
+        "ANEGATIVE" to "A-",
+        "A-" to "A-",
+        "ANEG" to "A-",
+        "BPOSITIVE" to "B+",
+        "B+" to "B+",
+        "BPOS" to "B+",
+        "BNEGATIVE" to "B-",
+        "B-" to "B-",
+        "BNEG" to "B-",
+        "ABPOSITIVE" to "AB+",
+        "AB+" to "AB+",
+        "ABPOS" to "AB+",
+        "ABNEGATIVE" to "AB-",
+        "AB-" to "AB-",
+        "ABNEG" to "AB-",
+        "OPOSITIVE" to "O+",
+        "O+" to "O+",
+        "OPOS" to "O+",
+        "ONEGATIVE" to "O-",
+        "O-" to "O-",
+        "ONEG" to "O-"
+    )
+
+    aliases[compact]?.let { return it }
+
+    return bloodTypeOptions.firstOrNull {
+        it.value.equals(normalized, ignoreCase = true) ||
+            it.label.equals(normalized, ignoreCase = true)
+    }?.value ?: normalized
+}
+
+fun normalizeAddressToken(value: String): String {
+    return Normalizer.normalize(value.trim().lowercase(Locale.getDefault()), Normalizer.Form.NFD)
+        .replace("\\p{Mn}+".toRegex(), "")
 }
 
 fun JSONArray?.toStringList(): List<String> {

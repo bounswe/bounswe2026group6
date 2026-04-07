@@ -45,7 +45,8 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onProfileCompletionRequired: () -> Unit,
     onEmailVerificationRequired: () -> Unit,
-    onNavigateToForgotPassword: () -> Unit
+    onNavigateToForgotPassword: () -> Unit,
+    onContinueAsGuest: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -157,6 +158,11 @@ fun LoginScreen(
                     error = ""
                     showEmailForm = true
                 }
+            )
+
+            TextActionButton(
+                text = "Continue as Guest",
+                onClick = onContinueAsGuest
             )
         } else {
             Column(

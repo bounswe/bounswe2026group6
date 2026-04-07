@@ -1,8 +1,12 @@
 package com.neph.features.assignedrequest.presentation
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -12,7 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.foundation.verticalScroll
 import com.neph.core.network.ApiException
 import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.assignedrequest.data.AssignedRequestUiModel
@@ -33,9 +39,12 @@ import kotlinx.coroutines.CancellationException
 fun AssignedRequestScreen(
     onNavigateToRoute: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onProfileClick: () -> Unit,
+    profileBadgeText: String,
     onNavigateToLogin: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
+    val context = LocalContext.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
 
     var loading by remember { mutableStateOf(true) }
@@ -119,7 +128,11 @@ fun AssignedRequestScreen(
         title = "Assigned Request",
         currentRoute = Routes.AssignedRequest.route,
         onNavigateToRoute = onNavigateToRoute,
-        onOpenSettings = onOpenSettings
+        drawerItems = Routes.authenticatedDrawerItems,
+        onOpenSettings = onOpenSettings,
+        onProfileClick = onProfileClick,
+        profileBadgeText = profileBadgeText,
+        profileLabel = "Profile"
     ) {
         when {
             loading -> {
@@ -171,7 +184,9 @@ fun AssignedRequestScreen(
                 val request = currentRequest!!
 
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg)
                 ) {
                     SectionCard {
@@ -272,11 +287,33 @@ fun AssignedRequestScreen(
                             }
 
                             request.contactPhone?.let {
-                                DetailLine(label = "Phone", value = it)
+                                DetailLine(
+                                    label = "Phone",
+                                    value = it,
+                                    onClick = {
+                                        val normalized = it.filter { char -> char.isDigit() || char == '+' }
+                                        if (normalized.isNotBlank()) {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$normalized"))
+                                            )
+                                        }
+                                    }
+                                )
                             }
 
                             request.contactAlternativePhone?.let {
-                                DetailLine(label = "Alternative phone", value = it)
+                                DetailLine(
+                                    label = "Alternative phone",
+                                    value = it,
+                                    onClick = {
+                                        val normalized = it.filter { char -> char.isDigit() || char == '+' }
+                                        if (normalized.isNotBlank()) {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$normalized"))
+                                            )
+                                        }
+                                    }
+                                )
                             }
 
                             request.requesterEmail?.let {
@@ -323,7 +360,7 @@ fun AssignedRequestScreen(
 }
 
 @Composable
-private fun DetailLine(label: String, value: String) {
+private fun DetailLine(label: String, value: String, onClick: (() -> Unit)? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(LocalNephSpacing.current.xs)) {
         Text(
             text = label,
@@ -333,7 +370,19 @@ private fun DetailLine(label: String, value: String) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (onClick != null) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable { onClick() }
+                    } else {
+                        Modifier
+                    }
+                )
         )
     }
 }
@@ -345,6 +394,8 @@ private fun AssignedRequestScreenPreview() {
         AssignedRequestScreen(
             onNavigateToRoute = {},
             onOpenSettings = {},
+            onProfileClick = {},
+            profileBadgeText = "PP",
             onNavigateToLogin = {}
         )
     }

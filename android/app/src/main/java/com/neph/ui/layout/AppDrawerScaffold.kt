@@ -158,6 +158,39 @@ fun AppDrawerScaffold(
                             )
                         }
                     }
+
+                    if (onOpenSettings != null) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = spacing.xl),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        drawerState.close()
+                                        onOpenSettings()
+                                    }
+                                }
+                                .padding(horizontal = spacing.xl, vertical = spacing.lg),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(spacing.md)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Open settings",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Text(
+                                text = "Settings",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
             }
         }

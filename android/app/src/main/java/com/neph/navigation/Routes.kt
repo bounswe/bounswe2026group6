@@ -32,11 +32,9 @@ sealed class Routes(
             News,
             MyHelpRequests,
             AssignedRequest,
-            Profile,
             EmergencyInfo,
             GatheringAreas,
-            Notifications,
-            Settings
+            Notifications
         )
 
         val guestDrawerItems = listOf(
