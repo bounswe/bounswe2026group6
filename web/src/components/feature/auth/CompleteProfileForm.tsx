@@ -6,11 +6,13 @@ import { TextInput } from "@/components/ui/inputs/TextInput";
 import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
+import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { ProfileInfoRow } from "../../ui/display/ProfileInfoRow";
 import { SaveActionBar } from "../../ui/display/SaveActionBar";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { bloodTypeOptions } from "@/lib/bloodTypes";
 import { countryCodeOptions } from "@/lib/countryCodes";
+import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
 import { getAccessToken, SIGNUP_DRAFT_KEY } from "@/lib/auth";
 import {
     buildAddress,
@@ -37,7 +39,7 @@ type ProfileForm = {
     age: string;
     medicalHistory: string;
     profession: string;
-    expertise: string;
+    expertise: string[];
     country: string;
     city: string;
     district: string;
@@ -115,7 +117,7 @@ const initialForm: ProfileForm = {
     age: "",
     medicalHistory: "",
     profession: "",
-    expertise: "",
+    expertise: [],
     country: "",
     city: "",
     district: "",
@@ -213,7 +215,7 @@ export default function CompleteProfileForm() {
             return;
         }
 
-        const expertiseAreas = parseListField(form.expertise);
+        const expertiseAreas = form.expertise;
         const expertiseValidationError = validateExpertiseAreas(expertiseAreas);
 
         if (expertiseValidationError) {
@@ -424,24 +426,36 @@ export default function CompleteProfileForm() {
             </ProfileInfoRow>
 
             <ProfileInfoRow label="Profession">
-                <TextInput
+                <SelectInput
                     id="profession"
-                    placeholder="Your profession"
+                    options={professionOptions}
                     value={form.profession}
                     onChange={(e) =>
                         setForm({ ...form, profession: e.target.value })
                     }
                 />
 
-                <TextArea
-                    id="expertise"
-                    label="Expertise (optional)"
-                    placeholder="Comma-separated expertise areas"
-                    value={form.expertise}
-                    onChange={(e) =>
-                        setForm({ ...form, expertise: e.target.value })
-                    }
-                />
+                <div className="flex flex-col gap-3">
+                    <p className="text-sm font-medium text-[#2B2B33]">
+                        Expertise (optional)
+                    </p>
+                    {expertiseOptions.map((option) => (
+                        <Checkbox
+                            key={option}
+                            id={`expertise-${option}`}
+                            label={option}
+                            checked={form.expertise.includes(option)}
+                            onCheckedChange={(checked) =>
+                                setForm({
+                                    ...form,
+                                    expertise: checked
+                                        ? [...form.expertise, option]
+                                        : form.expertise.filter((item) => item !== option),
+                                })
+                            }
+                        />
+                    ))}
+                </div>
             </ProfileInfoRow>
 
             <ProfileInfoRow label="Address">

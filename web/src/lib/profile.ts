@@ -51,7 +51,7 @@ export type EditableProfileData = {
     phone: string;
     countryCode: string;
     profession: string;
-    expertise: string;
+    expertise: string[];
     height: string;
     weight: string;
     bloodType: string;
@@ -182,7 +182,7 @@ export function mapBackendProfileToEditableProfile(
         phone: phoneParts.phone,
         countryCode: phoneParts.countryCode,
         profession: expertise?.profession || "",
-        expertise: serializeListField(expertise?.expertiseAreas),
+        expertise: expertise?.expertiseAreas || [],
         height:
             profile.physicalInfo.height !== null && profile.physicalInfo.height !== undefined
                 ? String(profile.physicalInfo.height)

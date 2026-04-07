@@ -9,9 +9,11 @@ import { TextInput } from "@/components/ui/inputs/TextInput";
 import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
+import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { bloodTypeOptions } from "@/lib/bloodTypes";
+import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
 import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import {
@@ -286,7 +288,7 @@ export default function ProfileView() {
             return;
         }
 
-        const expertiseAreas = parseListField(profile.expertise);
+        const expertiseAreas = profile.expertise;
         const expertiseValidationError = validateExpertiseAreas(expertiseAreas);
 
         if (expertiseValidationError) {
@@ -582,23 +584,39 @@ export default function ProfileView() {
                     </p>
 
                     <div className="flex flex-col gap-4">
-                        <TextInput
+                        <SelectInput
                             id="profession"
                             label="Profession"
                             value={profile.profession}
                             onChange={(e) =>
                                 setProfile({ ...profile, profession: e.target.value })
                             }
+                            options={professionOptions}
                         />
 
-                        <TextArea
-                            id="expertise"
-                            label="Expertise (optional — comma-separated)"
-                            value={profile.expertise}
-                            onChange={(e) =>
-                                setProfile({ ...profile, expertise: e.target.value })
-                            }
-                        />
+                        <div className="flex flex-col gap-3">
+                            <p className="text-sm font-medium text-gray-800">
+                                Expertise (optional)
+                            </p>
+                            {expertiseOptions.map((option) => (
+                                <Checkbox
+                                    key={option}
+                                    id={`profile-expertise-${option}`}
+                                    label={option}
+                                    checked={profile.expertise.includes(option)}
+                                    onCheckedChange={(checked) =>
+                                        setProfile({
+                                            ...profile,
+                                            expertise: checked
+                                                ? [...profile.expertise, option]
+                                                : profile.expertise.filter(
+                                                    (item) => item !== option
+                                                ),
+                                        })
+                                    }
+                                />
+                            ))}
+                        </div>
                     </div>
                 </SectionCard>
 
