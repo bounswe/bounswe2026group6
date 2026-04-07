@@ -2,7 +2,10 @@ package com.neph.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.NavType
 import androidx.navigation.NavHostController
+import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.neph.features.assignedrequest.presentation.AssignedRequestScreen
@@ -35,6 +38,8 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: String = Routes.Welcome.route
 ) {
+    val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
+
     fun isAuthenticated(): Boolean = AuthSessionStore.getAccessToken().isNullOrBlank().not()
 
     fun navigateToLogin() {
@@ -431,11 +436,31 @@ fun AppNavGraph(
             )
         }
 
-        composable(Routes.VerifyEmail.route) {
+        composable(
+            route = verifyEmailRouteWithToken,
+            arguments = listOf(
+                navArgument("token") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
+            deepLinks = listOf(
+                navDeepLink {
+                    uriPattern = "neph://verify-email?token={token}"
+                }
+            )
+        ) { backStackEntry ->
             VerifyEmailScreen(
-                onContinueToLogin = {
+                initialToken = backStackEntry.arguments?.getString("token"),
+                onVerificationSuccess = {
                     navController.navigate(Routes.CompleteProfile.route) {
                         popUpTo(Routes.Welcome.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onContinueToLogin = {
+                    navController.navigate(Routes.Login.route) {
                         launchSingleTop = true
                     }
                 },
