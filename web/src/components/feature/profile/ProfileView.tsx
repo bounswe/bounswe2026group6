@@ -18,7 +18,6 @@ import {
     BackendProfileResponse,
     EditableProfileData,
     buildAddress,
-    calculateAgeFromBirthDate,
     fetchMyProfile,
     mapBackendProfileToEditableProfile,
     parseListField,
@@ -214,7 +213,7 @@ export default function ProfileView() {
         React.useState<EmptyStateAction>(null);
 
     const refreshProfileFromBackend = React.useCallback(
-        async (token: string, birthDateOverride?: string) => {
+        async (token: string) => {
             const [user, backendProfile] = await Promise.all([
                 fetchCurrentUser(token),
                 fetchMyProfile(token),
@@ -226,7 +225,6 @@ export default function ProfileView() {
                 return currentProfile
                     ? {
                         ...refreshedProfile,
-                        birthDate: birthDateOverride ?? currentProfile.birthDate,
                         chronicDiseasesFiles: currentProfile.chronicDiseasesFiles,
                         chronicDiseasesVerified:
                             currentProfile.chronicDiseasesVerified,
@@ -319,9 +317,7 @@ export default function ProfileView() {
                     ?.label || profile.neighborhood;
 
             await patchMyPhysical(token, {
-                age: profile.birthDate
-                    ? calculateAgeFromBirthDate(profile.birthDate)
-                    : undefined,
+                age: profile.age ? Number(profile.age) : undefined,
                 gender: profile.gender || null,
                 height: profile.height ? Number(profile.height) : undefined,
                 weight: profile.weight ? Number(profile.weight) : undefined,
@@ -360,12 +356,12 @@ export default function ProfileView() {
                 expertiseAreas,
             });
 
-            await refreshProfileFromBackend(token, profile.birthDate);
+            await refreshProfileFromBackend(token);
 
             setInfo("Profile updated successfully.");
         } catch (err) {
             try {
-                await refreshProfileFromBackend(token, profile.birthDate);
+                await refreshProfileFromBackend(token);
             } catch {
             }
 
@@ -563,18 +559,18 @@ export default function ProfileView() {
                         />
                         <div>
                             <TextInput
-                                id="birthDate"
-                                label="Date of Birth"
-                                type="date"
-                                value={profile.birthDate}
+                                id="age"
+                                label="Age"
+                                type="number"
+                                inputMode="numeric"
+                                value={profile.age}
                                 onChange={(e) =>
-                                    setProfile({ ...profile, birthDate: e.target.value })
+                                    setProfile({
+                                        ...profile,
+                                        age: e.target.value.replace(/\D/g, "").slice(0, 3),
+                                    })
                                 }
                             />
-                            <HelperText>
-                                Date of birth is converted to age for the current backend
-                                contract.
-                            </HelperText>
                         </div>
                     </div>
                 </SectionCard>

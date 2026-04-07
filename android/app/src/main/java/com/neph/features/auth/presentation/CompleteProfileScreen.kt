@@ -5,12 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,10 +22,11 @@ import com.neph.features.auth.util.countryCodeOptions
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.combinePhoneNumber
+import com.neph.features.profile.data.expertiseOptionsFor
 import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizePhoneParts
-import com.neph.features.profile.data.parseBirthDateToMillis
 import com.neph.features.profile.data.parseListField
+import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
@@ -40,6 +37,7 @@ import com.neph.ui.components.display.SaveActionBar
 import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
+import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.theme.LocalNephSpacing
@@ -62,8 +60,8 @@ fun CompleteProfileScreen(
     var gender by rememberSaveable { mutableStateOf(existingProfile.gender.orEmpty()) }
     var height by rememberSaveable { mutableStateOf(existingProfile.height.toEditableString()) }
     var weight by rememberSaveable { mutableStateOf(existingProfile.weight.toEditableString()) }
+    var age by rememberSaveable { mutableStateOf(existingProfile.age?.toString().orEmpty()) }
     var bloodType by rememberSaveable { mutableStateOf(existingProfile.bloodType.orEmpty()) }
-    var birthDate by rememberSaveable { mutableStateOf(existingProfile.birthDate.orEmpty()) }
     var medicalHistory by rememberSaveable { mutableStateOf(existingProfile.medicalHistory.orEmpty()) }
     var chronicDiseases by rememberSaveable { mutableStateOf(existingProfile.chronicDiseases.orEmpty()) }
     var allergies by rememberSaveable { mutableStateOf(existingProfile.allergies.orEmpty()) }
@@ -78,10 +76,6 @@ fun CompleteProfileScreen(
     var loading by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf("") }
     var info by rememberSaveable { mutableStateOf("") }
-
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
-
     fun handleSave() {
         error = ""
         info = ""
@@ -105,27 +99,23 @@ fun CompleteProfileScreen(
             return
         }
 
-        if (height.isBlank() || weight.isBlank() || birthDate.isBlank() ||
+        if (height.isBlank() || weight.isBlank() || age.isBlank() ||
             country.isBlank() || city.isBlank() || district.isBlank() || neighborhood.isBlank()
         ) {
             error = "Please fill in all required fields."
             return
         }
 
-        if (!birthDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-            error = "Invalid date format (YYYY-MM-DD)"
-            return
-        }
-
-        if (parseBirthDateToMillis(birthDate) == null) {
-            error = "Please enter a valid calendar date."
-            return
-        }
-
         val heightFloat = height.toFloatOrNull()
         val weightFloat = weight.toFloatOrNull()
+        val ageInt = age.toIntOrNull()
         if (heightFloat == null || weightFloat == null || heightFloat <= 0f || weightFloat <= 0f) {
-            error = "Height and weight must be valid positive numbers"
+            error = "Height and weight must be valid positive numbers."
+            return
+        }
+
+        if (ageInt == null || ageInt <= 0) {
+            error = "Age must be a valid positive number."
             return
         }
 
@@ -139,8 +129,8 @@ fun CompleteProfileScreen(
                         gender = gender.takeIf(String::isNotBlank),
                         height = heightFloat,
                         weight = weightFloat,
+                        age = ageInt,
                         bloodType = bloodType.takeIf(String::isNotBlank),
-                        birthDate = birthDate,
                         medicalHistory = medicalHistory.takeIf(String::isNotBlank),
                         chronicDiseases = chronicDiseases.takeIf(String::isNotBlank),
                         allergies = allergies.takeIf(String::isNotBlank),
@@ -222,23 +212,13 @@ fun CompleteProfileScreen(
 
             GenderSelector(value = gender, onValueChange = { gender = it })
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
-            ) {
-                AppTextField(
-                    value = birthDate,
-                    onValueChange = { birthDate = it },
-                    label = "Date of Birth",
-                    placeholder = "YYYY-MM-DD",
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = { showDatePicker = true }) {
-                    Text("Pick date")
-                }
-            }
-            HelperText(text = "The backend currently stores your age, so date of birth is kept locally and synced as age.")
+            AppTextField(
+                value = age,
+                onValueChange = { age = it.filter(Char::isDigit).take(3) },
+                label = "Age",
+                placeholder = "Enter your age",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
 
             Text("Medical Information (optional)", style = MaterialTheme.typography.titleMedium)
 
@@ -270,18 +250,35 @@ fun CompleteProfileScreen(
 
             Text("Profession", style = MaterialTheme.typography.titleMedium)
 
-            AppTextField(
+            AppDropdown(
                 value = profession.orEmpty(),
                 onValueChange = { profession = it },
                 label = "Profession",
-                placeholder = "Enter your profession"
+                options = professionOptionsFor(profession),
+                placeholder = "Select your profession"
             )
 
-            AppTextArea(
-                value = expertise.joinToString(", "),
-                onValueChange = { expertise = parseListField(it) },
-                label = "Expertise (optional — comma-separated)"
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                Text(
+                    text = "Expertise (optional)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                expertiseOptionsFor(expertise).forEach { option ->
+                    AppCheckbox(
+                        checked = option in expertise,
+                        onCheckedChange = { checked ->
+                            expertise = if (checked) {
+                                expertise + option
+                            } else {
+                                expertise - option
+                            }
+                        },
+                        label = option
+                    )
+                }
+            }
 
             Text("Location", style = MaterialTheme.typography.titleMedium)
 
@@ -330,35 +327,6 @@ fun CompleteProfileScreen(
             }
 
             SaveActionBar(onSave = ::handleSave, loading = loading)
-        }
-
-        if (showDatePicker) {
-            DatePickerDialog(
-                onDismissRequest = { showDatePicker = false },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val selectedDate = datePickerState.selectedDateMillis
-                            if (selectedDate != null) {
-                                birthDate = android.text.format.DateFormat.format(
-                                    "yyyy-MM-dd",
-                                    selectedDate
-                                ).toString()
-                            }
-                            showDatePicker = false
-                        }
-                    ) {
-                        Text("OK")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDatePicker = false }) {
-                        Text("Cancel")
-                    }
-                }
-            ) {
-                DatePicker(state = datePickerState)
-            }
         }
     }
 }

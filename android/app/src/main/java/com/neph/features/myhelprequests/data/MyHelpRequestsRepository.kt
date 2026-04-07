@@ -22,6 +22,7 @@ data class MyHelpRequestUiModel(
     val helperFirstName: String?,
     val helperLastName: String?,
     val helperPhone: String?,
+    val helperProfession: String?,
     val helperExpertise: String?,
     val helperFullName: String?,
     val createdAt: String?
@@ -101,6 +102,7 @@ object MyHelpRequestsRepository {
         val helperFirstName = helper?.optString("firstName")?.trim()?.takeIf { it.isNotBlank() }
         val helperLastName = helper?.optString("lastName")?.trim()?.takeIf { it.isNotBlank() }
         val helperPhone = helper?.opt("phone")?.toString()?.takeIf { it.isNotBlank() }
+        val helperProfession = helper?.optString("profession")?.trim()?.takeIf { it.isNotBlank() }
         val helperExpertise = helper?.optString("expertise")?.trim()?.takeIf { it.isNotBlank() }
 
         return MyHelpRequestUiModel(
@@ -120,6 +122,7 @@ object MyHelpRequestsRepository {
             helperFirstName = helperFirstName,
             helperLastName = helperLastName,
             helperPhone = helperPhone,
+            helperProfession = helperProfession,
             helperExpertise = helperExpertise,
             helperFullName = listOfNotNull(helperFirstName, helperLastName)
                 .joinToString(" ")

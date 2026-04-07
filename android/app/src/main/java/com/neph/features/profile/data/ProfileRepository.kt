@@ -93,7 +93,7 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    calculateAge(profile.birthDate)?.let { put("age", it) }
+                    profile.age?.let { put("age", it) }
                     putNullable("gender", profile.gender)
                     profile.height?.let { put("height", it.toDouble()) }
                     profile.weight?.let { put("weight", it.toDouble()) }
@@ -162,18 +162,14 @@ object ProfileRepository {
 
             saveProfile(profile)
 
-            val refreshed = fetchAndCacheRemoteProfile().copy(
-                birthDate = profile.birthDate
-            )
+            val refreshed = fetchAndCacheRemoteProfile()
             saveProfile(refreshed)
             refreshed
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (error: Exception) {
             try {
-                val refreshed = fetchAndCacheRemoteProfile().copy(
-                    birthDate = profile.birthDate
-                )
+                val refreshed = fetchAndCacheRemoteProfile()
                 saveProfile(refreshed)
             } catch (_: Exception) {
                 // Keep the last known local state if backend refresh also fails.
@@ -193,7 +189,7 @@ object ProfileRepository {
             putFloatOrRemove("weight", profile.weight)
             putString("bloodType", profile.bloodType)
             putString("gender", profile.gender)
-            putString("birthDate", profile.birthDate)
+            putIntOrRemove("age", profile.age)
             putString("medicalHistory", profile.medicalHistory)
             putString("chronicDiseases", profile.chronicDiseases)
             putString("allergies", profile.allergies)
@@ -228,7 +224,7 @@ object ProfileRepository {
             weight = prefs.getNullableFloat("weight"),
             bloodType = prefs.getString("bloodType", null),
             gender = prefs.getString("gender", null),
-            birthDate = prefs.getString("birthDate", null),
+            age = prefs.getNullableInt("age"),
             medicalHistory = prefs.getString("medicalHistory", null),
             chronicDiseases = prefs.getString("chronicDiseases", null),
             allergies = prefs.getString("allergies", null),
@@ -276,7 +272,7 @@ object ProfileRepository {
             weight = physicalInfo.optNullableFloat("weight"),
             bloodType = normalizeBloodType(healthInfo.optStringOrNull("bloodType")),
             gender = physicalInfo.optStringOrNull("gender"),
-            birthDate = cachedProfileSnapshot.birthDate,
+            age = physicalInfo.optNullableInt("age"),
             medicalHistory = healthInfo.optJSONArray("medicalConditions").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             chronicDiseases = healthInfo.optJSONArray("chronicDiseases").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             allergies = healthInfo.optJSONArray("allergies").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
@@ -362,8 +358,20 @@ object ProfileRepository {
         }
     }
 
+    private fun SharedPreferences.Editor.putIntOrRemove(key: String, value: Int?) {
+        if (value == null) {
+            remove(key)
+        } else {
+            putInt(key, value)
+        }
+    }
+
     private fun SharedPreferences.getNullableFloat(key: String): Float? {
         return if (contains(key)) getFloat(key, 0f) else null
+    }
+
+    private fun SharedPreferences.getNullableInt(key: String): Int? {
+        return if (contains(key)) getInt(key, 0) else null
     }
 
     private fun JSONObject.putNullable(key: String, value: Any?) {
@@ -376,6 +384,10 @@ object ProfileRepository {
 
     private fun JSONObject.optNullableFloat(key: String): Float? {
         return if (has(key) && !isNull(key)) optDouble(key).toFloat() else null
+    }
+
+    private fun JSONObject.optNullableInt(key: String): Int? {
+        return if (has(key) && !isNull(key)) optInt(key) else null
     }
 
     private fun JSONObject.optNullableBoolean(key: String): Boolean? {

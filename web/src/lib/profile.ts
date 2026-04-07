@@ -56,7 +56,7 @@ export type EditableProfileData = {
     weight: string;
     bloodType: string;
     gender: string;
-    birthDate: string;
+    age: string;
     medicalHistory: string;
     chronicDiseases: string;
     allergies: string;
@@ -169,41 +169,6 @@ export function buildAddress(parts: {
         .join(", ");
 }
 
-export function calculateAgeFromBirthDate(birthDate: string) {
-    const normalized = birthDate.trim();
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-        return null;
-    }
-
-    const [year, month, day] = normalized.split("-").map(Number);
-
-    if (!year || !month || !day) {
-        return null;
-    }
-
-    const birthDateValue = new Date(Date.UTC(year, month - 1, day));
-
-    if (
-        birthDateValue.getUTCFullYear() !== year ||
-        birthDateValue.getUTCMonth() !== month - 1 ||
-        birthDateValue.getUTCDate() !== day
-    ) {
-        return null;
-    }
-
-    const today = new Date();
-    let age = today.getUTCFullYear() - year;
-    const monthDiff = today.getUTCMonth() - (month - 1);
-    const dayDiff = today.getUTCDate() - day;
-
-    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-        age -= 1;
-    }
-
-    return age >= 0 ? age : null;
-}
-
 export function mapBackendProfileToEditableProfile(
     profile: BackendProfileResponse,
     email: string
@@ -228,7 +193,10 @@ export function mapBackendProfileToEditableProfile(
                 : "",
         bloodType: profile.healthInfo.bloodType || "",
         gender: profile.physicalInfo.gender || "",
-        birthDate: "",
+        age:
+            profile.physicalInfo.age !== null && profile.physicalInfo.age !== undefined
+                ? String(profile.physicalInfo.age)
+                : "",
         medicalHistory: serializeListField(profile.healthInfo.medicalConditions),
         chronicDiseases: serializeListField(profile.healthInfo.chronicDiseases),
         allergies: serializeListField(profile.healthInfo.allergies),

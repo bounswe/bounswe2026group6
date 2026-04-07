@@ -396,10 +396,15 @@ private fun MyHelpRequestCard(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            if (request.helperFullName != null || request.helperPhone != null || request.helperExpertise != null) {
+            if (
+                request.helperFullName != null ||
+                request.helperPhone != null ||
+                request.helperProfession != null ||
+                request.helperExpertise != null
+            ) {
                 SectionHeader(
-                    title = "Assigned Helper",
-                    subtitle = "Your assigned helper's contact details."
+                    title = "Assigned Helper Details",
+                    subtitle = "Name, phone, profession, and expertise of your assigned helper."
                 )
 
                 request.helperFullName?.let {
@@ -419,6 +424,14 @@ private fun MyHelpRequestCard(
                     )
                 }
 
+                request.helperProfession?.let {
+                    Text(
+                        text = "Profession: $it",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 request.helperExpertise?.let {
                     Text(
                         text = "Expertise: $it",
@@ -433,32 +446,6 @@ private fun MyHelpRequestCard(
                     text = "Help Types: ${request.helpTypes.joinToString(", ")}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            request.contactName?.let {
-                Text(
-                    text = "Contact: $it",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            request.contactPhone?.let {
-                Text(
-                    text = "Phone: $it",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { openDialer(it) }
-                )
-            }
-
-            request.alternativePhone?.let {
-                Text(
-                    text = "Alternative phone: $it",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { openDialer(it) }
                 )
             }
 

@@ -115,6 +115,10 @@ fun ProfileScreen(
                     )
 
                     ProfileField(
+                        label = "Age",
+                        value = profile.age?.toString()
+                    )
+                    ProfileField(
                         label = "Height",
                         value = profile.height?.toEditableString()?.takeIf { it.isNotBlank() }?.let { "$it cm" }
                     )

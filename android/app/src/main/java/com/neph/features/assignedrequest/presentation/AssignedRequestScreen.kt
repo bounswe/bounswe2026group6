@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,8 +18,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.neph.core.network.ApiException
 import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.assignedrequest.data.AssignedRequestUiModel
@@ -45,6 +49,7 @@ fun AssignedRequestScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
 
     var loading by remember { mutableStateOf(true) }
@@ -58,6 +63,19 @@ fun AssignedRequestScreen(
         loading = true
         error = ""
         infoMessage = ""
+    }
+
+    DisposableEffect(lifecycleOwner, token) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && token.isNotBlank()) {
+                refreshVersion += 1
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LaunchedEffect(token, refreshVersion) {
@@ -99,17 +117,23 @@ fun AssignedRequestScreen(
         infoMessage = ""
 
         try {
-            val nextAssignment = AssignedRequestRepository.cancelAssignment(
+            AssignedRequestRepository.cancelAssignment(
                 token = token,
                 assignmentId = assignmentId
             )
-            currentRequest = nextAssignment
+
+            val refreshedAssignment = AssignedRequestRepository.fetchCurrentAssignment(token)
+            currentRequest = refreshedAssignment
             AvailabilityRepository.setAvailabilityStateForUi(
                 AvailabilityRepository.getAvailabilityState().copy(
-                    assignmentId = nextAssignment?.assignmentId
+                    assignmentId = refreshedAssignment?.assignmentId
                 )
             )
-            infoMessage = "Assignment released successfully."
+            infoMessage = if (refreshedAssignment == null) {
+                "Assignment released successfully."
+            } else {
+                "Assignment updated successfully."
+            }
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (errorResponse: ApiException) {

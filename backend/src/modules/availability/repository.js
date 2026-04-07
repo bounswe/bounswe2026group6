@@ -66,7 +66,7 @@ async function findMatchingRequestForVolunteer(volunteerId) {
   // Simple matching: find the first pending request that matches volunteer's skills/need_types
   // For MVP, we can just find the oldest pending request
   // Or if we want to be a bit better, match by need_type if volunteer has any
-  const volunteerSql = `SELECT skills, need_types FROM volunteers WHERE volunteer_id = $1;`;
+  const volunteerSql = `SELECT user_id, skills, need_types FROM volunteers WHERE volunteer_id = $1;`;
   const vResult = await query(volunteerSql, [volunteerId]);
   const volunteer = vResult.rows[0];
 
@@ -74,7 +74,7 @@ async function findMatchingRequestForVolunteer(volunteerId) {
 
   // If volunteer has no specific need_types, they can match any
   let sql;
-  let params = [];
+  let params = [volunteer.user_id];
 
   if (volunteer.need_types && volunteer.need_types.length > 0) {
     sql = `
@@ -82,17 +82,19 @@ async function findMatchingRequestForVolunteer(volunteerId) {
       FROM help_requests hr
       LEFT JOIN request_locations rl ON hr.request_id = rl.request_id
       WHERE hr.status = 'PENDING'
-        AND hr.need_type = ANY($1)
+        AND (hr.user_id IS NULL OR hr.user_id != $1)
+        AND hr.need_type = ANY($2)
       ORDER BY hr.created_at ASC
       LIMIT 1;
     `;
-    params = [volunteer.need_types];
+    params.push(volunteer.need_types);
   } else {
     sql = `
       SELECT hr.*, rl.latitude, rl.longitude
       FROM help_requests hr
       LEFT JOIN request_locations rl ON hr.request_id = rl.request_id
       WHERE hr.status = 'PENDING'
+        AND (hr.user_id IS NULL OR hr.user_id != $1)
       ORDER BY hr.created_at ASC
       LIMIT 1;
     `;
@@ -103,7 +105,7 @@ async function findMatchingRequestForVolunteer(volunteerId) {
 }
 
 async function findMatchingVolunteerForRequest(requestId) {
-  const requestSql = `SELECT need_type FROM help_requests WHERE request_id = $1;`;
+  const requestSql = `SELECT user_id, need_type FROM help_requests WHERE request_id = $1;`;
   const rResult = await query(requestSql, [requestId]);
   const request = rResult.rows[0];
 
@@ -113,6 +115,7 @@ async function findMatchingVolunteerForRequest(requestId) {
     SELECT v.*
     FROM volunteers v
     WHERE v.is_available = TRUE
+      AND (v.user_id != $2 OR $2 IS NULL)
       AND NOT EXISTS (
         SELECT 1 FROM assignments a
         JOIN help_requests hr ON a.request_id = hr.request_id
@@ -124,7 +127,7 @@ async function findMatchingVolunteerForRequest(requestId) {
     ORDER BY v.location_updated_at DESC NULLS LAST
     LIMIT 1;
   `;
-  const result = await query(sql, [request.need_type]);
+  const result = await query(sql, [request.need_type, request.user_id]);
   return result.rows[0] || null;
 }
 

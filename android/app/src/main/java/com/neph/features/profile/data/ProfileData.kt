@@ -11,7 +11,7 @@ data class ProfileData(
     val weight: Float? = null,
     val bloodType: String? = null,
     val gender: String? = null,
-    val birthDate: String? = null,
+    val age: Int? = null,
     
     val medicalHistory: String? = null,
 

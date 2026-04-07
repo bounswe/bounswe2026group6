@@ -14,7 +14,6 @@ import { countryCodeOptions } from "@/lib/countryCodes";
 import { getAccessToken, SIGNUP_DRAFT_KEY } from "@/lib/auth";
 import {
     buildAddress,
-    calculateAgeFromBirthDate,
     parseListField,
     patchMyHealth,
     patchMyLocation,
@@ -35,7 +34,7 @@ type ProfileForm = {
     height: string;
     weight: string;
     bloodType: string;
-    birthDate: string;
+    age: string;
     medicalHistory: string;
     profession: string;
     expertise: string;
@@ -113,7 +112,7 @@ const initialForm: ProfileForm = {
     height: "",
     weight: "",
     bloodType: "",
-    birthDate: "",
+    age: "",
     medicalHistory: "",
     profession: "",
     expertise: "",
@@ -204,8 +203,8 @@ export default function CompleteProfileForm() {
             return;
         }
 
-        if (!form.birthDate) {
-            setError("Please enter your date of birth.");
+        if (!form.age.trim()) {
+            setError("Please enter your age.");
             return;
         }
 
@@ -222,10 +221,9 @@ export default function CompleteProfileForm() {
             return;
         }
 
-        const age = calculateAgeFromBirthDate(form.birthDate);
-
-        if (age === null) {
-            setError("Please enter a valid date of birth.");
+        const age = Number(form.age);
+        if (!Number.isInteger(age) || age <= 0) {
+            setError("Please enter a valid age.");
             return;
         }
 
@@ -391,19 +389,16 @@ export default function CompleteProfileForm() {
                 />
             </ProfileInfoRow>
 
-            <ProfileInfoRow label="Date of Birth">
+            <ProfileInfoRow label="Age">
                 <TextInput
-                    id="birthDate"
-                    type="date"
-                    value={form.birthDate}
+                    id="age"
+                    type="number"
+                    inputMode="numeric"
+                    value={form.age}
                     onChange={(e) =>
-                        setForm({ ...form, birthDate: e.target.value })
+                        setForm({ ...form, age: e.target.value.replace(/\D/g, "").slice(0, 3) })
                     }
                 />
-                <HelperText>
-                    Date of birth is kept in the form for now, but the current backend
-                    profile API only stores age-related physical data.
-                </HelperText>
             </ProfileInfoRow>
 
             <ProfileInfoRow label="Blood Type">
