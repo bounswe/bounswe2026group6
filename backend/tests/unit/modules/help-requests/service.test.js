@@ -11,6 +11,8 @@ jest.mock('../../../../src/modules/help-requests/repository', () => ({
 	markHelpRequestAsSyncedByRequestId: jest.fn(),
 	markHelpRequestAsResolved: jest.fn(),
 	markHelpRequestAsResolvedByRequestId: jest.fn(),
+	markHelpRequestAsCancelled: jest.fn(),
+	markHelpRequestAsCancelledByRequestId: jest.fn(),
 }));
 
 const repository = require('../../../../src/modules/help-requests/repository');
@@ -18,6 +20,7 @@ const availabilityService = require('../../../../src/modules/availability/servic
 
 jest.mock('../../../../src/modules/availability/service', () => ({
 	tryToAssignRequest: jest.fn(),
+	cancelAssignmentByRequestId: jest.fn(),
 }));
 
 const {
@@ -241,6 +244,19 @@ describe('help-requests service', () => {
 			expect(result).toEqual(updated);
 		});
 
+		test('marks as cancelled when current status is not RESOLVED', async () => {
+			const current = { id: 'req_1', internalStatus: 'PENDING' };
+			const updated = { id: 'req_1', internalStatus: 'CANCELLED' };
+			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
+			repository.markHelpRequestAsCancelled.mockResolvedValueOnce(updated);
+
+			const result = await updateMyHelpRequestStatus('u1', 'req_1', 'CANCELLED');
+
+			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_1');
+			expect(repository.markHelpRequestAsCancelled).toHaveBeenCalledWith('u1', 'req_1');
+			expect(result).toEqual(updated);
+		});
+
 		test('returns current request idempotently when already RESOLVED', async () => {
 			const current = { id: 'req_1', internalStatus: 'RESOLVED' };
 			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
@@ -255,7 +271,7 @@ describe('help-requests service', () => {
 			const current = { id: 'req_1', internalStatus: 'PENDING' };
 			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
 
-			await expect(updateMyHelpRequestStatus('u1', 'req_1', 'CANCELLED'))
+			await expect(updateMyHelpRequestStatus('u1', 'req_1', 'FOO'))
 				.rejects
 				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
 		});
@@ -300,6 +316,23 @@ describe('help-requests service', () => {
 			const result = await updateGuestHelpRequestStatus('req_guest_resolve', 'RESOLVED', token);
 
 			expect(repository.markHelpRequestAsResolvedByRequestId).toHaveBeenCalledWith('req_guest_resolve');
+			expect(result).toEqual(updated);
+		});
+
+		test('marks guest request as cancelled', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_cancel');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_cancel',
+				userId: null,
+				internalStatus: 'PENDING',
+			});
+			const updated = { id: 'req_guest_cancel', status: 'CANCELLED' };
+			repository.markHelpRequestAsCancelledByRequestId.mockResolvedValueOnce(updated);
+
+			const result = await updateGuestHelpRequestStatus('req_guest_cancel', 'CANCELLED', token);
+
+			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_guest_cancel');
+			expect(repository.markHelpRequestAsCancelledByRequestId).toHaveBeenCalledWith('req_guest_cancel');
 			expect(result).toEqual(updated);
 		});
 
