@@ -26,7 +26,6 @@ import com.neph.features.auth.util.countryCodeOptions
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.combinePhoneNumber
-import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseBirthDateToMillis
 import com.neph.features.profile.data.parseListField
@@ -35,6 +34,7 @@ import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
 import com.neph.features.profile.presentation.components.GenderSelector
 import com.neph.features.profile.presentation.components.LocationSelector
+import com.neph.features.profile.presentation.components.rememberLocationSelectionState
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SaveActionBar
 import com.neph.ui.components.inputs.AppDropdown
@@ -67,9 +67,11 @@ fun CompleteProfileScreen(
     var medicalHistory by rememberSaveable { mutableStateOf(existingProfile.medicalHistory.orEmpty()) }
     var chronicDiseases by rememberSaveable { mutableStateOf(existingProfile.chronicDiseases.orEmpty()) }
     var allergies by rememberSaveable { mutableStateOf(existingProfile.allergies.orEmpty()) }
-    var country by rememberSaveable { mutableStateOf(existingProfile.country.orEmpty()) }
-    var city by rememberSaveable { mutableStateOf(existingProfile.city.orEmpty()) }
+    var provinceCode by rememberSaveable { mutableStateOf(existingProfile.provinceCode.orEmpty()) }
+    var province by rememberSaveable { mutableStateOf(existingProfile.province.orEmpty()) }
+    var districtId by rememberSaveable { mutableStateOf(existingProfile.districtId.orEmpty()) }
     var district by rememberSaveable { mutableStateOf(existingProfile.district.orEmpty()) }
+    var neighborhoodId by rememberSaveable { mutableStateOf(existingProfile.neighborhoodId.orEmpty()) }
     var neighborhood by rememberSaveable { mutableStateOf(existingProfile.neighborhood.orEmpty()) }
     var extraAddress by rememberSaveable { mutableStateOf(existingProfile.extraAddress.orEmpty()) }
     var shareLocation by rememberSaveable { mutableStateOf(existingProfile.shareLocation ?: false) }
@@ -81,6 +83,10 @@ fun CompleteProfileScreen(
 
     var showDatePicker by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
+    val locationState = rememberLocationSelectionState(
+        provinceCode = provinceCode,
+        districtId = districtId
+    )
 
     fun handleSave() {
         error = ""
@@ -106,7 +112,7 @@ fun CompleteProfileScreen(
         }
 
         if (height.isBlank() || weight.isBlank() || birthDate.isBlank() ||
-            country.isBlank() || city.isBlank() || district.isBlank() || neighborhood.isBlank()
+            provinceCode.isBlank() || districtId.isBlank() || neighborhoodId.isBlank()
         ) {
             error = "Please fill in all required fields."
             return
@@ -144,9 +150,11 @@ fun CompleteProfileScreen(
                         medicalHistory = medicalHistory.takeIf(String::isNotBlank),
                         chronicDiseases = chronicDiseases.takeIf(String::isNotBlank),
                         allergies = allergies.takeIf(String::isNotBlank),
-                        country = country,
-                        city = city,
+                        provinceCode = provinceCode,
+                        province = locationState.provinces.firstOrNull { it.code == provinceCode }?.name ?: province,
+                        districtId = districtId,
                         district = district,
+                        neighborhoodId = neighborhoodId,
                         neighborhood = neighborhood,
                         extraAddress = extraAddress.takeIf(String::isNotBlank),
                         shareLocation = shareLocation,
@@ -286,27 +294,39 @@ fun CompleteProfileScreen(
             Text("Location", style = MaterialTheme.typography.titleMedium)
 
             LocationSelector(
-                country = country,
-                city = city,
-                district = district,
-                neighborhood = neighborhood,
-                onCountryChange = {
-                    country = it
-                    city = ""
+                provinceCode = provinceCode,
+                districtId = districtId,
+                neighborhoodId = neighborhoodId,
+                provinces = locationState.provinces,
+                districts = locationState.districts,
+                neighborhoods = locationState.neighborhoods,
+                loadingProvinces = locationState.loadingProvinces,
+                loadingDistricts = locationState.loadingDistricts,
+                loadingNeighborhoods = locationState.loadingNeighborhoods,
+                provinceErrorMessage = locationState.provinceErrorMessage,
+                districtErrorMessage = locationState.districtErrorMessage,
+                neighborhoodErrorMessage = locationState.neighborhoodErrorMessage,
+                onRetryProvinces = locationState.retryProvinces,
+                onRetryDistricts = locationState.retryDistricts,
+                onRetryNeighborhoods = locationState.retryNeighborhoods,
+                onProvinceChange = {
+                    provinceCode = it
+                    province = locationState.provinces.firstOrNull { option -> option.code == it }?.name.orEmpty()
+                    districtId = ""
                     district = ""
-                    neighborhood = ""
-                },
-                onCityChange = {
-                    city = it
-                    district = ""
+                    neighborhoodId = ""
                     neighborhood = ""
                 },
                 onDistrictChange = {
-                    district = it
+                    districtId = it
+                    district = locationState.districts.firstOrNull { option -> option.id == it }?.name.orEmpty()
+                    neighborhoodId = ""
                     neighborhood = ""
                 },
-                onNeighborhoodChange = { neighborhood = it },
-                locationData = locationData
+                onNeighborhoodChange = {
+                    neighborhoodId = it
+                    neighborhood = locationState.neighborhoods.firstOrNull { option -> option.id == it }?.name.orEmpty()
+                }
             )
 
             AppTextField(

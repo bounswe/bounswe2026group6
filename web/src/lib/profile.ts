@@ -30,8 +30,15 @@ export type BackendProfileResponse = {
     };
     locationProfile: {
         address: string | null;
+        extraAddress: string | null;
         city: string | null;
         country: string | null;
+        provinceCode: string | null;
+        province: string | null;
+        districtId: string | null;
+        district: string | null;
+        neighborhoodId: string | null;
+        neighborhood: string | null;
         latitude: number | null;
         longitude: number | null;
         lastUpdated: string | null;
@@ -60,9 +67,11 @@ export type EditableProfileData = {
     medicalHistory: string;
     chronicDiseases: string;
     allergies: string;
-    country: string;
-    city: string;
+    provinceCode: string;
+    province: string;
+    districtId: string;
     district: string;
+    neighborhoodId: string;
     neighborhood: string;
     extraAddress: string;
     shareLocation: boolean;
@@ -158,17 +167,6 @@ export function serializeListField(values?: string[] | null) {
     return (values || []).join(", ");
 }
 
-export function buildAddress(parts: {
-    district: string;
-    neighborhood: string;
-    extraAddress: string;
-}) {
-    return [parts.neighborhood, parts.district, parts.extraAddress]
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .join(", ");
-}
-
 export function calculateAgeFromBirthDate(birthDate: string) {
     const normalized = birthDate.trim();
 
@@ -232,11 +230,14 @@ export function mapBackendProfileToEditableProfile(
         medicalHistory: serializeListField(profile.healthInfo.medicalConditions),
         chronicDiseases: serializeListField(profile.healthInfo.chronicDiseases),
         allergies: serializeListField(profile.healthInfo.allergies),
-        country: profile.locationProfile.country || "",
-        city: profile.locationProfile.city || "",
-        district: "",
-        neighborhood: "",
-        extraAddress: profile.locationProfile.address || "",
+        provinceCode: profile.locationProfile.provinceCode || "",
+        province: profile.locationProfile.province || "",
+        districtId: profile.locationProfile.districtId || "",
+        district: profile.locationProfile.district || "",
+        neighborhoodId: profile.locationProfile.neighborhoodId || "",
+        neighborhood: profile.locationProfile.neighborhood || "",
+        extraAddress:
+            profile.locationProfile.extraAddress || profile.locationProfile.address || "",
         shareLocation: profile.privacySettings.locationSharingEnabled,
     };
 }
@@ -292,7 +293,12 @@ export async function patchMyHealth(
 
 export async function patchMyLocation(
     token: string,
-    payload: { address?: string | null; city?: string | null; country?: string | null }
+    payload: {
+        extraAddress?: string | null;
+        provinceCode?: string | null;
+        districtId?: string | null;
+        neighborhoodId?: string | null;
+    }
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/location", {
         method: "PATCH",

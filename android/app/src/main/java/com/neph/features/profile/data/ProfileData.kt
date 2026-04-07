@@ -18,9 +18,11 @@ data class ProfileData(
     val chronicDiseases: String? = null,
     val allergies: String? = null,
 
-    val country: String? = null,
-    val city: String? = null,
+    val provinceCode: String? = null,
+    val province: String? = null,
+    val districtId: String? = null,
     val district: String? = null,
+    val neighborhoodId: String? = null,
     val neighborhood: String? = null,
     val extraAddress: String? = null,
 

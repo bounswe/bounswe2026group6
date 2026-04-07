@@ -8,10 +8,9 @@ import org.json.JSONObject
 import java.net.URLEncoder
 
 data class RequestHelpLocationSubmission(
-    val country: String,
-    val city: String,
-    val district: String,
-    val neighborhood: String,
+    val provinceCode: String,
+    val districtId: String,
+    val neighborhoodId: String,
     val extraAddress: String
 )
 
@@ -93,10 +92,9 @@ object RequestHelpRepository {
                 put(
                     "location",
                     JSONObject().apply {
-                        put("country", submission.location.country)
-                        put("city", submission.location.city)
-                        put("district", submission.location.district)
-                        put("neighborhood", submission.location.neighborhood)
+                        put("provinceCode", submission.location.provinceCode)
+                        put("districtId", submission.location.districtId)
+                        put("neighborhoodId", submission.location.neighborhoodId)
                         put("extraAddress", submission.location.extraAddress)
                     }
                 )

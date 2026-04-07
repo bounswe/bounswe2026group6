@@ -29,7 +29,6 @@ import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.combinePhoneNumber
-import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseBirthDateToMillis
 import com.neph.features.profile.data.parseListField
@@ -38,6 +37,7 @@ import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
 import com.neph.features.profile.presentation.components.GenderSelector
 import com.neph.features.profile.presentation.components.LocationSelector
+import com.neph.features.profile.presentation.components.rememberLocationSelectionState
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
@@ -68,6 +68,10 @@ fun EditProfileScreen(
     var phone by rememberSaveable { mutableStateOf(initialPhoneParts.phone) }
     var heightText by rememberSaveable { mutableStateOf(profile.height.toEditableString()) }
     var weightText by rememberSaveable { mutableStateOf(profile.weight.toEditableString()) }
+    val locationState = rememberLocationSelectionState(
+        provinceCode = profile.provinceCode.orEmpty(),
+        districtId = profile.districtId.orEmpty()
+    )
 
     val scope = rememberCoroutineScope()
     val spacing = LocalNephSpacing.current
@@ -132,7 +136,7 @@ fun EditProfileScreen(
             return
         }
 
-        if (profile.country.isNullOrBlank() || profile.city.isNullOrBlank() || profile.district.isNullOrBlank() || profile.neighborhood.isNullOrBlank()) {
+        if (profile.provinceCode.isNullOrBlank() || profile.districtId.isNullOrBlank() || profile.neighborhoodId.isNullOrBlank()) {
             error = "Please complete your location fields."
             return
         }
@@ -315,23 +319,45 @@ fun EditProfileScreen(
                     SectionHeader(title = "Location")
 
                     LocationSelector(
-                        country = profile.country.orEmpty(),
-                        city = profile.city.orEmpty(),
-                        district = profile.district.orEmpty(),
-                        neighborhood = profile.neighborhood.orEmpty(),
-                        onCountryChange = {
-                            profile = profile.copy(country = it, city = "", district = "", neighborhood = "")
-                        },
-                        onCityChange = {
-                            profile = profile.copy(city = it, district = "", neighborhood = "")
+                        provinceCode = profile.provinceCode.orEmpty(),
+                        districtId = profile.districtId.orEmpty(),
+                        neighborhoodId = profile.neighborhoodId.orEmpty(),
+                        provinces = locationState.provinces,
+                        districts = locationState.districts,
+                        neighborhoods = locationState.neighborhoods,
+                        loadingProvinces = locationState.loadingProvinces,
+                        loadingDistricts = locationState.loadingDistricts,
+                        loadingNeighborhoods = locationState.loadingNeighborhoods,
+                        provinceErrorMessage = locationState.provinceErrorMessage,
+                        districtErrorMessage = locationState.districtErrorMessage,
+                        neighborhoodErrorMessage = locationState.neighborhoodErrorMessage,
+                        onRetryProvinces = locationState.retryProvinces,
+                        onRetryDistricts = locationState.retryDistricts,
+                        onRetryNeighborhoods = locationState.retryNeighborhoods,
+                        onProvinceChange = {
+                            profile = profile.copy(
+                                provinceCode = it,
+                                province = locationState.provinces.firstOrNull { option -> option.code == it }?.name,
+                                districtId = null,
+                                district = null,
+                                neighborhoodId = null,
+                                neighborhood = null
+                            )
                         },
                         onDistrictChange = {
-                            profile = profile.copy(district = it, neighborhood = "")
+                            profile = profile.copy(
+                                districtId = it,
+                                district = locationState.districts.firstOrNull { option -> option.id == it }?.name,
+                                neighborhoodId = null,
+                                neighborhood = null
+                            )
                         },
                         onNeighborhoodChange = {
-                            profile = profile.copy(neighborhood = it)
-                        },
-                        locationData = locationData
+                            profile = profile.copy(
+                                neighborhoodId = it,
+                                neighborhood = locationState.neighborhoods.firstOrNull { option -> option.id == it }?.name
+                            )
+                        }
                     )
 
                     AppTextField(

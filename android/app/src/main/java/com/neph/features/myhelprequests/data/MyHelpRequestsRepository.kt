@@ -159,7 +159,7 @@ object MyHelpRequestsRepository {
 
         val parts = listOf(
             location.optString("country").trim(),
-            location.optString("city").trim(),
+            location.optString("province").trim(),
             location.optString("district").trim(),
             location.optString("neighborhood").trim(),
             location.optString("extraAddress").trim()

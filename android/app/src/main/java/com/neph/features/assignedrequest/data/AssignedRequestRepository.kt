@@ -124,7 +124,7 @@ object AssignedRequestRepository {
     private fun buildLocationLabel(assignment: JSONObject): String {
         val locationParts = listOf(
             assignment.optString("request_country").trim(),
-            assignment.optString("request_city").trim(),
+            assignment.optString("request_province").trim().ifBlank { assignment.optString("request_city").trim() },
             assignment.optString("request_district").trim(),
             assignment.optString("request_neighborhood").trim(),
             assignment.optString("request_extra_address").trim()

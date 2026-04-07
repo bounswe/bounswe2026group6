@@ -114,18 +114,6 @@ fun combinePhoneNumber(countryCode: String, phone: String): String {
     }
 }
 
-fun buildAddress(
-    district: String?,
-    neighborhood: String?,
-    extraAddress: String?
-): String? {
-    val address = listOf(neighborhood, district, extraAddress)
-        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
-        .joinToString(", ")
-
-    return address.takeIf { it.isNotBlank() }
-}
-
 fun calculateAge(birthDate: String?): Int? {
     val millis = parseBirthDateToMillis(birthDate) ?: return null
     val birthCalendar = Calendar.getInstance().apply { timeInMillis = millis }
@@ -146,27 +134,6 @@ fun calculateAge(birthDate: String?): Int? {
     }
 
     return age.takeIf { it >= 0 }
-}
-
-fun findCountryKeyByLabel(label: String?, locations: LocationData = locationData): String {
-    if (label.isNullOrBlank()) {
-        return ""
-    }
-
-    return locations.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
-}
-
-fun findCityKeyByLabel(
-    countryKey: String,
-    label: String?,
-    locations: LocationData = locationData
-): String {
-    if (countryKey.isBlank() || label.isNullOrBlank()) {
-        return ""
-    }
-
-    val country = locations[countryKey] ?: return ""
-    return country.cities.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
 }
 
 fun JSONArray?.toStringList(): List<String> {
