@@ -62,6 +62,10 @@ async function createHelpRequest(request, response) {
       return sendError(response, 400, 'INVALID_USER', 'The provided user does not exist in the database yet.');
     }
 
+    if (error.code === 'OUTDATED_HELP_REQUESTS_SCHEMA') {
+      return sendError(response, 500, 'OUTDATED_HELP_REQUESTS_SCHEMA', error.message);
+    }
+
     console.error('helpRequests.createHelpRequest failed', error);
     return sendError(response, 500, 'INTERNAL_ERROR', 'Unexpected server error');
   }

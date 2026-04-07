@@ -7,6 +7,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.net.UnknownHostException
 
@@ -86,9 +87,32 @@ object JsonHttpClient {
     }
 
     private fun buildUrl(path: String): String {
-        val normalizedBase = BuildConfig.API_BASE_URL.removeSuffix("/")
+        val normalizedBase = normalizeBaseUrl(BuildConfig.API_BASE_URL)
         val normalizedPath = if (path.startsWith("/")) path else "/$path"
         return "$normalizedBase$normalizedPath"
+    }
+
+    private fun normalizeBaseUrl(rawBaseUrl: String): String {
+        val trimmedBase = rawBaseUrl.trim().removeSuffix("/")
+        if (trimmedBase.isBlank()) {
+            return trimmedBase
+        }
+
+        val parsed = runCatching { URI(trimmedBase) }.getOrNull() ?: return trimmedBase
+        val currentPath = (parsed.path ?: "").removeSuffix("/")
+        val normalizedPath = when {
+            currentPath.isBlank() -> "/api"
+            currentPath == "/api" || currentPath.endsWith("/api") -> currentPath
+            else -> "$currentPath/api"
+        }
+
+        return URI(
+            parsed.scheme,
+            parsed.authority,
+            normalizedPath,
+            parsed.query,
+            parsed.fragment
+        ).toString().removeSuffix("/")
     }
 
     private fun readText(stream: java.io.InputStream?): String {

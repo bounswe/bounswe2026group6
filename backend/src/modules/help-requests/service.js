@@ -36,6 +36,14 @@ async function createMyHelpRequest(userId, input) {
       throw wrappedError;
     }
 
+    if (error.code === '23502' && error.column === 'user_id') {
+      const wrappedError = new Error(
+        'The database schema is out of date: `help_requests.user_id` must allow NULL for guest submissions.',
+      );
+      wrappedError.code = 'OUTDATED_HELP_REQUESTS_SCHEMA';
+      throw wrappedError;
+    }
+
     throw error;
   }
 }
