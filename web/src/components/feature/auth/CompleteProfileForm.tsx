@@ -16,6 +16,7 @@ import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
 import { getAccessToken, SIGNUP_DRAFT_KEY } from "@/lib/auth";
 import {
     buildAddress,
+    parseListField,
     patchMyHealth,
     patchMyLocation,
     patchMyPhysical,
