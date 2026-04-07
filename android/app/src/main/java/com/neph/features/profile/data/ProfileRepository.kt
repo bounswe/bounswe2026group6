@@ -163,10 +163,7 @@ object ProfileRepository {
             saveProfile(profile)
 
             val refreshed = fetchAndCacheRemoteProfile().copy(
-                birthDate = profile.birthDate,
-                district = profile.district,
-                neighborhood = profile.neighborhood,
-                extraAddress = profile.extraAddress
+                birthDate = profile.birthDate
             )
             saveProfile(refreshed)
             refreshed
@@ -175,10 +172,7 @@ object ProfileRepository {
         } catch (error: Exception) {
             try {
                 val refreshed = fetchAndCacheRemoteProfile().copy(
-                    birthDate = profile.birthDate,
-                    district = profile.district,
-                    neighborhood = profile.neighborhood,
-                    extraAddress = profile.extraAddress
+                    birthDate = profile.birthDate
                 )
                 saveProfile(refreshed)
             } catch (_: Exception) {
@@ -263,6 +257,11 @@ object ProfileRepository {
         val cityLabel = locationProfile.optStringOrNull("city")
         val countryKey = findCountryKeyByLabel(locationProfile.optStringOrNull("country"))
         val cityKey = findCityKeyByLabel(countryKey, cityLabel)
+        val address = locationProfile.optStringOrNull("address")
+        val parsedAddress = parseLocationAddress(countryKey, cityKey, address)
+        val districtKey = parsedAddress.first
+        val neighborhoodValue = parsedAddress.second
+        val extraAddressFromBackend = parsedAddress.third
 
         return ProfileData(
             fullName = listOf(
@@ -275,7 +274,7 @@ object ProfileRepository {
             expertise = expertise?.optJSONArray("expertiseAreas").toStringList(),
             height = physicalInfo.optNullableFloat("height"),
             weight = physicalInfo.optNullableFloat("weight"),
-            bloodType = healthInfo.optStringOrNull("bloodType"),
+            bloodType = normalizeBloodType(healthInfo.optStringOrNull("bloodType")),
             gender = physicalInfo.optStringOrNull("gender"),
             birthDate = cachedProfileSnapshot.birthDate,
             medicalHistory = healthInfo.optJSONArray("medicalConditions").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
@@ -283,11 +282,76 @@ object ProfileRepository {
             allergies = healthInfo.optJSONArray("allergies").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             country = countryKey.ifBlank { countryLabel.orEmpty() }.takeIf { it.isNotBlank() },
             city = cityKey.ifBlank { cityLabel.orEmpty() }.takeIf { it.isNotBlank() },
-            district = cachedProfileSnapshot.district,
-            neighborhood = cachedProfileSnapshot.neighborhood,
-            extraAddress = cachedProfileSnapshot.extraAddress ?: locationProfile.optStringOrNull("address"),
+            district = districtKey
+                .ifBlank { cachedProfileSnapshot.district.orEmpty() }
+                .takeIf { it.isNotBlank() },
+            neighborhood = neighborhoodValue
+                .ifBlank { cachedProfileSnapshot.neighborhood.orEmpty() }
+                .takeIf { it.isNotBlank() },
+            extraAddress = extraAddressFromBackend
+                ?: cachedProfileSnapshot.extraAddress,
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled")
         )
+    }
+
+    private fun parseLocationAddress(
+        countryKey: String,
+        cityKey: String,
+        address: String?
+    ): Triple<String, String, String?> {
+        val rawAddress = address?.trim().orEmpty()
+        if (countryKey.isBlank() || cityKey.isBlank() || rawAddress.isBlank()) {
+            val (districtLabel, neighborhoodLabel, extraAddress) = splitAddressParts(address)
+            return Triple(
+                findDistrictKeyByLabel(countryKey, cityKey, districtLabel),
+                findNeighborhoodValueByLabel(
+                    countryKey,
+                    cityKey,
+                    findDistrictKeyByLabel(countryKey, cityKey, districtLabel),
+                    neighborhoodLabel
+                ),
+                extraAddress
+            )
+        }
+
+        val city = locationData[countryKey]?.cities?.get(cityKey)
+            ?: return Triple("", "", rawAddress)
+
+        val tokens = rawAddress
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toMutableList()
+
+        val normalizedTokens = tokens.associateBy { normalizeAddressToken(it) }.toMutableMap()
+
+        var matchedDistrictKey = ""
+        city.districts.forEach { (districtKey, districtValue) ->
+            if (matchedDistrictKey.isNotBlank()) return@forEach
+            val districtCandidates = listOf(districtKey, districtValue.label)
+                .map { normalizeAddressToken(it) }
+            if (districtCandidates.any { normalizedTokens.containsKey(it) }) {
+                matchedDistrictKey = districtKey
+                districtCandidates.forEach { normalizedTokens.remove(it) }
+            }
+        }
+
+        var matchedNeighborhoodValue = ""
+        if (matchedDistrictKey.isNotBlank()) {
+            val district = city.districts[matchedDistrictKey]
+            district?.neighborhoods?.forEach { neighborhood ->
+                if (matchedNeighborhoodValue.isNotBlank()) return@forEach
+                val neighborhoodCandidates = listOf(neighborhood.value, neighborhood.label)
+                    .map { normalizeAddressToken(it) }
+                if (neighborhoodCandidates.any { normalizedTokens.containsKey(it) }) {
+                    matchedNeighborhoodValue = neighborhood.value
+                    neighborhoodCandidates.forEach { normalizedTokens.remove(it) }
+                }
+            }
+        }
+
+        val extraAddress = normalizedTokens.values.joinToString(", ").ifBlank { null }
+        return Triple(matchedDistrictKey, matchedNeighborhoodValue, extraAddress)
     }
 
     private fun SharedPreferences.Editor.putFloatOrRemove(key: String, value: Float?) {

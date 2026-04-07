@@ -3,6 +3,8 @@ package com.neph.features.profile.presentation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +32,8 @@ import kotlinx.coroutines.CancellationException
 fun ProfileScreen(
     onNavigateToRoute: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onProfileClick: () -> Unit,
+    profileBadgeText: String,
     onNavigateToCompleteProfile: () -> Unit,
     onNavigateToEditProfile: () -> Unit,
     onLogout: () -> Unit
@@ -66,13 +70,19 @@ fun ProfileScreen(
         title = "Profile",
         currentRoute = Routes.Profile.route,
         onNavigateToRoute = onNavigateToRoute,
-        onOpenSettings = onOpenSettings
+        drawerItems = Routes.authenticatedDrawerItems,
+        onOpenSettings = onOpenSettings,
+        onProfileClick = onProfileClick,
+        profileBadgeText = profileBadgeText,
+        profileLabel = "Profile"
     ) {
         if (loading) {
             HelperText(text = "Loading your profile...")
         } else {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(spacing.lg)
             ) {
                 val countryLabel = profile.country?.let { locationData[it]?.label ?: it }
@@ -101,8 +111,7 @@ fun ProfileScreen(
 
                 SectionCard {
                     SectionHeader(
-                        title = "Physical Information",
-                        subtitle = "Emergency-related physical details"
+                        title = "Physical Information"
                     )
 
                     ProfileField(
@@ -119,8 +128,7 @@ fun ProfileScreen(
 
                 SectionCard {
                     SectionHeader(
-                        title = "Medical Information",
-                        subtitle = "Health details shared with the backend"
+                        title = "Medical Information"
                     )
 
                     ProfileField(label = "Medical History", value = profile.medicalHistory)
@@ -130,8 +138,7 @@ fun ProfileScreen(
 
                 SectionCard {
                     SectionHeader(
-                        title = "Location",
-                        subtitle = "Your current saved location details"
+                        title = "Location"
                     )
 
                     ProfileField(label = "Country", value = countryLabel)

@@ -16,7 +16,10 @@ import com.neph.ui.theme.NephTheme
 @Composable
 fun NotificationsScreen(
     onNavigateToRoute: (String) -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: (() -> Unit)?,
+    onProfileClick: () -> Unit,
+    profileBadgeText: String,
+    isAuthenticated: Boolean
 ) {
     val spacing = LocalNephSpacing.current
 
@@ -24,7 +27,15 @@ fun NotificationsScreen(
         title = "Notifications",
         currentRoute = Routes.Notifications.route,
         onNavigateToRoute = onNavigateToRoute,
-        onOpenSettings = onOpenSettings
+        drawerItems = if (isAuthenticated) {
+            Routes.authenticatedDrawerItems
+        } else {
+            Routes.guestDrawerItems
+        },
+        onOpenSettings = onOpenSettings,
+        onProfileClick = onProfileClick,
+        profileBadgeText = profileBadgeText,
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
             SectionCard {
@@ -49,7 +60,10 @@ private fun NotificationsScreenPreview() {
     NephTheme {
         NotificationsScreen(
             onNavigateToRoute = {},
-            onOpenSettings = {}
+            onOpenSettings = {},
+            onProfileClick = {},
+            profileBadgeText = "PP",
+            isAuthenticated = true
         )
     }
 }
