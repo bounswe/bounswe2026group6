@@ -32,9 +32,10 @@ jobs:
 
             cd "${{ secrets.SERVER_PATH }}"
 
-            git fetch origin
+            git fetch origin main
             git checkout main
-            git pull --ff-only origin main
+            git reset --hard origin/main
+            git clean -fd -e backend/.env -e web/.env.production -e web/.env.local
 
             cd backend
             if [ -f package-lock.json ]; then
