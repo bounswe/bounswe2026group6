@@ -22,6 +22,7 @@ import {
     buildAddress,
     fetchMyProfile,
     mapBackendProfileToEditableProfile,
+    parseListField,
     patchMyHealth,
     patchMyLocation,
     patchMyPhysical,
