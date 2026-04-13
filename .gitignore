@@ -61,6 +61,3 @@ test-results/
 *.pid
 *.seed
 
-# Agent files
-.sisyphus
-mvp354/
