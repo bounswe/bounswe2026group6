@@ -53,8 +53,17 @@ From this folder:
 ```bash
 cp .env.example .env
 npm install
+npm run migrate
 npm run dev
 ```
+
+Migration files are read from:
+
+- `migrations/`
+
+Team migration rules:
+
+- `migrations/README.md`
 
 ### 3. Verify backend health
 

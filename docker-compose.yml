@@ -25,6 +25,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    command: ["sh", "-c", "npm run start:with-migrations"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,6 +46,8 @@ services:
       SMTP_PASS: ${SMTP_PASS:-your_gmail_app_password}
       APP_URL: ${APP_URL:-http://localhost:3000}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+    volumes:
+      - ./backend/migrations:/app/migrations:ro
     ports:
       - "3000:3000"
     healthcheck:
