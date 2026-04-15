@@ -165,6 +165,7 @@ Useful URLs:
 Notes:
 
 - PostgreSQL is initialized from `infra/docker/postgres/init.sql`
+- backend automatically applies SQL migrations from `backend/migrations/` on container start
 - the backend waits for PostgreSQL to become healthy before starting
 - the web container is configured to talk to the backend in the local Docker setup
 
