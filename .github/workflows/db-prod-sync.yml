@@ -1,0 +1,120 @@
+name: Sync Production DB Schema
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/docker/postgres/init.sql'
+      - 'backend/migrations/**'
+      - '.github/workflows/db-prod-sync.yml'
+
+concurrency:
+  group: prod-db-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-db:
+    name: Apply DB Changes on Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed files
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BEFORE_SHA="${{ github.event.before }}"
+          AFTER_SHA="${{ github.sha }}"
+
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="${AFTER_SHA}~1"
+          fi
+
+          CHANGED_FILES="$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" || true)"
+
+          echo "Changed files:" 
+          echo "$CHANGED_FILES"
+
+          INIT_SQL_CHANGED=false
+          MIGRATION_CHANGED=false
+
+          if echo "$CHANGED_FILES" | grep -q '^infra/docker/postgres/init.sql$'; then
+            INIT_SQL_CHANGED=true
+          fi
+
+          if echo "$CHANGED_FILES" | grep -Eq '^backend/migrations/'; then
+            MIGRATION_CHANGED=true
+          fi
+
+          echo "init_sql_changed=$INIT_SQL_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "migration_changed=$MIGRATION_CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Install PostgreSQL client
+        if: steps.changes.outputs.init_sql_changed == 'true' || steps.changes.outputs.migration_changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Apply production DB updates
+        if: steps.changes.outputs.init_sql_changed == 'true' || steps.changes.outputs.migration_changed == 'true'
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          ALLOW_PROD_SCHEMA_RESET: ${{ secrets.ALLOW_PROD_SCHEMA_RESET }}
+          INIT_SQL_CHANGED: ${{ steps.changes.outputs.init_sql_changed }}
+          MIGRATION_CHANGED: ${{ steps.changes.outputs.migration_changed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PROD_DATABASE_URL:-}" ]; then
+            echo "PROD_DATABASE_URL secret is required."
+            exit 1
+          fi
+
+          if [ "${INIT_SQL_CHANGED}" = "true" ]; then
+            if [ "${ALLOW_PROD_SCHEMA_RESET:-false}" != "true" ]; then
+              echo "init.sql changed, but ALLOW_PROD_SCHEMA_RESET is not true. Refusing to run destructive reset on production."
+              exit 1
+            fi
+
+            echo "Applying infra/docker/postgres/init.sql to production DB..."
+            psql "$PROD_DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/docker/postgres/init.sql
+          fi
+
+          if [ "${MIGRATION_CHANGED}" = "true" ]; then
+            echo "Applying SQL migrations with schema_migrations tracking..."
+
+            psql "$PROD_DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS schema_migrations (file_name TEXT PRIMARY KEY, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);"
+
+            apply_migration_dir() {
+              local migration_dir="$1"
+
+              if [ ! -d "$migration_dir" ]; then
+                return 0
+              fi
+
+              find "$migration_dir" -type f -name '*.sql' | sort | while IFS= read -r file; do
+                if [ -z "$file" ]; then
+                  continue
+                fi
+
+                if psql "$PROD_DATABASE_URL" -Atqc "SELECT 1 FROM schema_migrations WHERE file_name = '$file'" | grep -q '^1$'; then
+                  echo "Skipping already applied migration: $file"
+                  continue
+                fi
+
+                echo "Applying migration: $file"
+                psql "$PROD_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
+                psql "$PROD_DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (file_name) VALUES ('$file')"
+              done
+            }
+
+            apply_migration_dir "backend/migrations"
+          fi

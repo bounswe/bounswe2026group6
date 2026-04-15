@@ -34,6 +34,12 @@ def releaseApiBaseUrl = (
     ?: "https://api.neph.app/api"
 ).trim()
 
+def debugApiBaseUrl = (
+    configValue("NEPH_DEBUG_API_BASE_URL")
+        ?: (project.findProperty("NEPH_DEBUG_API_BASE_URL")?.toString())
+    ?: "http://10.0.2.2:3000/api"
+).trim()
+
 def isReleaseTask = gradle.startParameter.taskNames.any { taskName ->
     taskName.toLowerCase().contains("release")
 }
@@ -105,7 +111,7 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField 'String', 'API_BASE_URL', '"http://10.0.2.2:3000/api"'
+            buildConfigField 'String', 'API_BASE_URL', "\"${debugApiBaseUrl}\""
         }
 
         release {

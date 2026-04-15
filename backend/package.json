@@ -6,6 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
+    "migrate": "node scripts/apply-migrations.js",
+    "start:with-migrations": "npm run migrate && npm start",
     "start": "node src/server.js",
     "test": "jest --runInBand",
     "test:unit": "jest --selectProjects unit",
