@@ -2,6 +2,8 @@ package com.neph.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.NavHostController
 import androidx.navigation.navArgument
@@ -39,8 +41,9 @@ fun AppNavGraph(
     startDestination: String = Routes.Welcome.route
 ) {
     val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
+    val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
 
-    fun isAuthenticated(): Boolean = AuthSessionStore.getAccessToken().isNullOrBlank().not()
+    fun isAuthenticated(): Boolean = accessToken.isNullOrBlank().not()
 
     fun navigateToLogin() {
         navController.navigate(Routes.Login.route) {

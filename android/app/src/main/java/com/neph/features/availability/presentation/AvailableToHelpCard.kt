@@ -15,6 +15,7 @@ fun AvailableToHelpCard(
     loading: Boolean,
     errorMessage: String,
     infoMessage: String,
+    syncMessage: String = "",
     onAvailabilityChange: (Boolean) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -48,6 +49,10 @@ fun AvailableToHelpCard(
 
             if (infoMessage.isNotBlank()) {
                 HelperText(text = infoMessage)
+            }
+
+            if (syncMessage.isNotBlank()) {
+                HelperText(text = syncMessage)
             }
         }
     }

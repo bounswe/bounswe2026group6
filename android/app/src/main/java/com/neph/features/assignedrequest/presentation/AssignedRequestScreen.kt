@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,12 +24,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.neph.core.network.ApiException
+import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.assignedrequest.data.AssignedRequestUiModel
-import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
-import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
@@ -37,7 +36,6 @@ import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
-import kotlinx.coroutines.CancellationException
 
 @Composable
 fun AssignedRequestScreen(
@@ -52,18 +50,13 @@ fun AssignedRequestScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
 
+    val currentRequest by AssignedRequestRepository.observeCurrentAssignment()
+        .collectAsState(initial = null)
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
-    var currentRequest by remember { mutableStateOf<AssignedRequestUiModel?>(null) }
     var refreshVersion by remember { mutableStateOf(0) }
     var cancelling by remember { mutableStateOf(false) }
-
-    fun startLoading() {
-        loading = true
-        error = ""
-        infoMessage = ""
-    }
 
     DisposableEffect(lifecycleOwner, token) {
         val observer = LifecycleEventObserver { _, event ->
@@ -85,31 +78,10 @@ fun AssignedRequestScreen(
             return@LaunchedEffect
         }
 
-        startLoading()
-
-        try {
-            currentRequest = AssignedRequestRepository.fetchCurrentAssignment(token)
-            AvailabilityRepository.refreshAssignmentState(token)
-        } catch (cancellationException: CancellationException) {
-            throw cancellationException
-        } catch (errorResponse: ApiException) {
-            when (errorResponse.status) {
-                401 -> {
-                    AuthRepository.logout()
-                    onNavigateToLogin()
-                    return@LaunchedEffect
-                }
-                else -> {
-                    error = errorResponse.message.ifBlank {
-                        "Could not load your assigned request."
-                    }
-                }
-            }
-        } catch (_: Exception) {
-            error = "Something went wrong while loading your assigned request."
-        } finally {
-            loading = false
-        }
+        error = ""
+        infoMessage = ""
+        OfflineSyncScheduler.enqueueSync(context, reason = "assigned-request-open", replaceExisting = true)
+        loading = false
     }
 
     suspend fun runCancelAction(assignmentId: String) {
@@ -121,30 +93,9 @@ fun AssignedRequestScreen(
                 token = token,
                 assignmentId = assignmentId
             )
-
-            val refreshedAssignment = AssignedRequestRepository.fetchCurrentAssignment(token)
-            currentRequest = refreshedAssignment
-            AvailabilityRepository.setAvailabilityStateForUi(
-                AvailabilityRepository.getAvailabilityState().copy(
-                    assignmentId = refreshedAssignment?.assignmentId
-                )
-            )
-            infoMessage = if (refreshedAssignment == null) {
-                "Assignment released successfully."
-            } else {
-                "Assignment updated successfully."
-            }
-        } catch (cancellationException: CancellationException) {
-            throw cancellationException
-        } catch (errorResponse: ApiException) {
-            if (errorResponse.status == 401) {
-                AuthRepository.logout()
-                onNavigateToLogin()
-            } else {
-                error = errorResponse.message.ifBlank { "Could not update this assignment." }
-            }
+            infoMessage = "Assignment release saved locally and queued for sync."
         } catch (_: Exception) {
-            error = "Something went wrong while updating this assignment."
+            error = "Could not save the assignment update locally."
         }
     }
 
@@ -228,6 +179,14 @@ fun AssignedRequestScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
+
+                            if (request.isPendingSync) {
+                                HelperText(text = "Saved locally. Assignment changes will sync when connected.")
+                            }
+
+                            if (request.isFailedSync) {
+                                HelperText(text = request.pendingError ?: "Sync failed. Retry when connected.")
+                            }
 
                             request.assignedAt?.let {
                                 Text(
