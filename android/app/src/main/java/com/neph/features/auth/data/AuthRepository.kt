@@ -1,6 +1,8 @@
 package com.neph.features.auth.data
 
+import com.neph.core.NephAppContext
 import com.neph.core.network.ApiException
+import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.core.network.JsonHttpClient
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
@@ -86,6 +88,7 @@ object AuthRepository {
         return try {
             ProfileRepository.fetchAndCacheRemoteProfile()
             AuthSessionStore.clearPendingVerificationEmail()
+            NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login") }
             LoginDestination.PROFILE
         } catch (cancellationException: CancellationException) {
             throw cancellationException
@@ -93,6 +96,7 @@ object AuthRepository {
             when (error.status) {
                 404 -> {
                     AuthSessionStore.clearPendingVerificationEmail()
+                    NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login-without-profile") }
                     LoginDestination.COMPLETE_PROFILE
                 }
                 401 -> {
@@ -120,6 +124,7 @@ object AuthRepository {
         val accessToken = response.optString("accessToken")
         if (accessToken.isNotBlank()) {
             AuthSessionStore.saveAccessToken(accessToken, rememberMe = true)
+            NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
 
         AuthSessionStore.clearPendingVerificationEmail()
