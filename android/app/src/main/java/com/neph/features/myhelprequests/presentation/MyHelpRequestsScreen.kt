@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,8 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
-import com.neph.core.network.ApiException
-import com.neph.features.auth.data.AuthRepository
+import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
@@ -45,7 +45,6 @@ import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
@@ -60,11 +59,10 @@ fun MyHelpRequestsScreen(
     val spacing = LocalNephSpacing.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf("") }
-    var requests by remember { mutableStateOf<List<MyHelpRequestUiModel>>(emptyList()) }
-    var refreshVersion by remember { mutableStateOf(0) }
+    val requests by MyHelpRequestsRepository.observeHelpRequests(isAuthenticated)
+        .collectAsState(initial = emptyList())
     var actionInProgressRequestId by remember { mutableStateOf<String?>(null) }
     var actionMessage by remember { mutableStateOf("") }
 
@@ -83,56 +81,11 @@ fun MyHelpRequestsScreen(
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
         contentFillMaxSize = true
     ) {
-        LaunchedEffect(isAuthenticated, token, refreshVersion) {
-            loading = true
-            error = ""
-
-            try {
-                requests = if (!isAuthenticated || token.isBlank()) {
-                    MyHelpRequestsRepository.fetchGuestHelpRequests()
-                } else {
-                    MyHelpRequestsRepository.fetchMyHelpRequests(token)
-                }
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (errorResponse: ApiException) {
-                if (errorResponse.status == 401 && isAuthenticated) {
-                    AuthRepository.logout()
-                    requests = emptyList()
-                    error = "Your session expired. Please log in again to view your help requests."
-                } else {
-                    error = errorResponse.message.ifBlank { "Could not load your help requests." }
-                }
-            } catch (_: Exception) {
-                error = "Something went wrong while loading your help requests."
-            } finally {
-                loading = false
-            }
+        LaunchedEffect(isAuthenticated, token) {
+            OfflineSyncScheduler.enqueueSync(context, reason = "my-help-requests-open", replaceExisting = true)
         }
 
         when {
-            loading -> {
-                LoadingStateView()
-            }
-
-            error.isNotBlank() -> {
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
-                    SectionCard {
-                        SectionHeader(
-                            title = "My Help Requests",
-                            subtitle = "We could not load your request history."
-                        )
-
-                        HelperText(text = error)
-
-                        SecondaryButton(
-                            text = "Retry",
-                            onClick = { refreshVersion += 1 }
-                        )
-                    }
-                }
-            }
-
             requests.isEmpty() -> {
                 EmptyStateView(
                     onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) }
@@ -182,33 +135,13 @@ fun MyHelpRequestsScreen(
                                         actionInProgressRequestId = activeRequest.id
                                         scope.launch {
                                             try {
-                                                val updatedRequest = MyHelpRequestsRepository.markRequestAsResolved(
+                                                MyHelpRequestsRepository.markRequestAsResolved(
                                                     token = token,
                                                     requestId = activeRequest.id
                                                 )
-                                                requests = buildList {
-                                                    for (request in requests) {
-                                                        if (request.id == activeRequest.id && updatedRequest != null) {
-                                                            add(updatedRequest)
-                                                        } else {
-                                                            add(request)
-                                                        }
-                                                    }
-                                                }
-                                                actionMessage = "Your help request was marked as resolved."
-                                            } catch (cancellationException: CancellationException) {
-                                                throw cancellationException
-                                            } catch (errorResponse: ApiException) {
-                                                if (errorResponse.status == 401) {
-                                                    AuthRepository.logout()
-                                                    error = "Your session expired. Please log in again to manage your request."
-                                                } else {
-                                                    actionMessage = errorResponse.message.ifBlank {
-                                                        "Could not update your help request."
-                                                    }
-                                                }
+                                                actionMessage = "Request marked resolved locally and queued for sync."
                                             } catch (_: Exception) {
-                                                actionMessage = "Something went wrong while updating your help request."
+                                                actionMessage = "Could not save the status change locally."
                                             } finally {
                                                 actionInProgressRequestId = null
                                             }
@@ -220,28 +153,13 @@ fun MyHelpRequestsScreen(
                                         actionInProgressRequestId = activeRequest.id
                                         scope.launch {
                                             try {
-                                                val updatedRequest = MyHelpRequestsRepository.markGuestRequestAsResolved(
+                                                MyHelpRequestsRepository.markGuestRequestAsResolved(
                                                     requestId = activeRequest.id,
                                                     guestAccessToken = activeRequest.guestAccessToken
                                                 )
-                                                requests = buildList {
-                                                    for (request in requests) {
-                                                        if (request.id == activeRequest.id && updatedRequest != null) {
-                                                            add(updatedRequest)
-                                                        } else {
-                                                            add(request)
-                                                        }
-                                                    }
-                                                }
-                                                actionMessage = "Your help request was marked as resolved."
-                                            } catch (cancellationException: CancellationException) {
-                                                throw cancellationException
-                                            } catch (errorResponse: ApiException) {
-                                                actionMessage = errorResponse.message.ifBlank {
-                                                    "Could not update your help request."
-                                                }
+                                                actionMessage = "Request marked resolved locally and queued for sync."
                                             } catch (_: Exception) {
-                                                actionMessage = "Something went wrong while updating your help request."
+                                                actionMessage = "Could not save the status change locally."
                                             } finally {
                                                 actionInProgressRequestId = null
                                             }
@@ -395,6 +313,28 @@ private fun MyHelpRequestCard(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
+
+            if (request.isPendingSync) {
+                HelperText(text = "Saved locally. NEPH will sync this change when the network is available.")
+            }
+
+            if (request.isFailedSync) {
+                HelperText(text = request.pendingError ?: "Sync failed. Retry when connected.")
+                SecondaryButton(
+                    text = "Retry Sync",
+                    onClick = {
+                        OfflineSyncScheduler.enqueueSync(context, reason = "manual-help-request-retry", replaceExisting = true)
+                    }
+                )
+            }
+
+            request.lastSyncedAt?.let {
+                Text(
+                    text = "Last synced: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             if (
                 request.helperFullName != null ||

@@ -307,40 +307,27 @@ fun RequestHelpScreen(
             return@LaunchedEffect
         }
 
-        try {
-            val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
-            if (hasActiveRequest) {
-                onNavigateToMyHelpRequests()
-                return@LaunchedEffect
-            }
-        } catch (cancellationException: CancellationException) {
-            throw cancellationException
-        } catch (error: ApiException) {
-            if (error.status == 401) {
-                AuthRepository.logout()
-                errorMessage = "Your session expired. Please log in again before sending a help request."
-            } else {
-                errorMessage = "We could not verify your current help request status. Please try again."
-            }
-            return@LaunchedEffect
-        } catch (_: Exception) {
-            errorMessage = "We could not verify your current help request status. Please try again."
+        val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+        if (hasActiveRequest) {
+            onNavigateToMyHelpRequests()
             return@LaunchedEffect
         }
 
         try {
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
             formState = buildPrefilledForm(profile)
+            infoMessage = ""
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (error: ApiException) {
             if (error.status == 401) {
                 AuthRepository.logout()
                 errorMessage = "Your session expired. Please log in again before sending a help request."
-            } else {
-                formState = buildPrefilledForm(ProfileRepository.getProfile())
-                infoMessage = "Could not refresh profile details. Using saved information where available."
+                onNavigateToLogin()
+                return@LaunchedEffect
             }
+            formState = buildPrefilledForm(ProfileRepository.getProfile())
+            infoMessage = "Could not refresh profile details. Using saved information where available."
         } catch (_: Exception) {
             formState = buildPrefilledForm(ProfileRepository.getProfile())
             infoMessage = "Could not refresh profile details. Using saved information where available."
@@ -374,21 +361,10 @@ fun RequestHelpScreen(
                     token = sessionToken,
                     submission = buildSubmission(formState)
                 )
-                infoMessage = "Help request sent successfully."
-                onNavigateBack()
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (error: ApiException) {
-                if (error.status == 401) {
-                    AuthRepository.logout()
-                    errorMessage = "Your session expired. Please log in again to send your request."
-                    onNavigateToLogin()
-                    return@launch
-                } else {
-                    errorMessage = error.message.ifBlank { "Could not send your help request." }
-                }
+                infoMessage = "Help request saved on this device and queued for sync."
+                onNavigateToMyHelpRequests()
             } catch (_: Exception) {
-                errorMessage = "Something went wrong while sending your help request."
+                errorMessage = "Could not save your help request locally. Please try again."
             } finally {
                 loading = false
             }
