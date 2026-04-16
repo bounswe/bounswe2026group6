@@ -37,6 +37,22 @@ Recommended approach:
 - `build.gradle` — project-level Gradle config
 - `gradlew` / `gradlew.bat` — Gradle wrapper
 
+
+## Offline-first mobile data layer
+
+The Android app now includes a Room + WorkManager offline-first layer for the emergency-critical mobile flows: help requests, helper availability, assigned requests, and the durable sync queue. Compose screens read these flows from local Room state first; writes are recorded locally and synchronized later by WorkManager when network constraints allow.
+
+Details, entities, conflict policy, and test commands are documented in:
+
+- `../docs/android-offline-first.md`
+
+Migration/config notes:
+
+- Room database name: `neph-offline.db`, schema version `1`
+- Existing availability SharedPreferences are migrated into Room on first app start
+- No prior Room schema existed, so no migration class is required for this milestone
+- Required dependencies are declared in `app/build.gradle` (`room-*`, `work-runtime-ktx`, KSP)
+
 ## Notes
 
 - The root quick-start focuses on the database, backend, and web MVP flow first.
