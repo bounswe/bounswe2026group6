@@ -2,6 +2,8 @@ package com.neph.features.auth.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 object AuthSessionStore {
     private const val PrefsName = "neph_auth"
@@ -9,14 +11,18 @@ object AuthSessionStore {
     private const val PendingVerificationEmailKey = "pending_verification_email"
 
     private lateinit var prefs: SharedPreferences
+    private val accessTokenState = MutableStateFlow<String?>(null)
     private var sessionToken: String? = null
 
     fun initialize(context: Context) {
         if (!::prefs.isInitialized) {
             prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
             sessionToken = prefs.getString(AccessTokenKey, null)
+            accessTokenState.value = sessionToken
         }
     }
+
+    val accessTokenFlow: StateFlow<String?> = accessTokenState
 
     fun getAccessToken(): String? {
         ensureInitialized()
@@ -26,6 +32,7 @@ object AuthSessionStore {
     fun saveAccessToken(token: String, rememberMe: Boolean) {
         ensureInitialized()
         sessionToken = token
+        accessTokenState.value = token
         prefs.edit().apply {
             if (rememberMe) {
                 putString(AccessTokenKey, token)
@@ -38,6 +45,7 @@ object AuthSessionStore {
     fun clearAccessToken() {
         ensureInitialized()
         sessionToken = null
+        accessTokenState.value = null
         prefs.edit().remove(AccessTokenKey).apply()
     }
 

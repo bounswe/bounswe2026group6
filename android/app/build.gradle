@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id 'com.android.application' version '9.1.0'
     id 'org.jetbrains.kotlin.plugin.compose' version '2.3.20'
+    id 'com.google.devtools.ksp' version '2.3.6'
 }
 
 def keystoreProperties = new Properties()
@@ -155,6 +156,13 @@ dependencies {
     implementation 'androidx.compose.material:material-icons-extended'
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.navigation:navigation-compose:2.9.7'
+    implementation 'androidx.room:room-runtime:2.8.4'
+    implementation 'androidx.room:room-ktx:2.8.4'
+    implementation 'androidx.work:work-runtime-ktx:2.11.2'
+    ksp 'androidx.room:room-compiler:2.8.4'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
