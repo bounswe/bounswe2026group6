@@ -1,7 +1,18 @@
 package com.neph.features.assignedrequest.data
 
+import com.neph.core.NephAppContext
+import com.neph.core.database.AssignedRequestEntity
+import com.neph.core.database.NephDatabaseProvider
+import com.neph.core.database.SyncOperationEntity
 import com.neph.core.network.ApiException
 import com.neph.core.network.JsonHttpClient
+import com.neph.core.sync.OfflineSyncScheduler
+import com.neph.core.sync.SyncEntityType
+import com.neph.core.sync.SyncOperationType
+import com.neph.core.sync.SyncStatus
+import com.neph.features.requesthelp.data.jsonArrayToStringList
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,25 +37,47 @@ data class AssignedRequestUiModel(
     val contactFullName: String?,
     val contactPhone: String?,
     val contactAlternativePhone: String?,
-    val assignedAt: String?
-)
+    val assignedAt: String?,
+    val syncStatus: String = SyncStatus.SYNCED,
+    val pendingError: String? = null
+) {
+    val isPendingSync: Boolean
+        get() = syncStatus == SyncStatus.PENDING_UPDATE || syncStatus == SyncStatus.PENDING_DELETE
+
+    val isFailedSync: Boolean
+        get() = syncStatus == SyncStatus.FAILED || syncStatus == SyncStatus.CONFLICTED
+}
 
 object AssignedRequestRepository {
+    private val database get() = NephDatabaseProvider.requireInstance()
+
+    fun observeCurrentAssignment(): Flow<AssignedRequestUiModel?> {
+        return database.assignedRequestDao().observeCurrent().map { it?.toUiModel() }
+    }
+
     suspend fun fetchAssignedRequests(token: String): List<AssignedRequestUiModel> {
         return fetchCurrentAssignment(token)?.let(::listOf) ?: emptyList()
     }
 
     suspend fun fetchCurrentAssignment(token: String): AssignedRequestUiModel? {
-        try {
+        return try {
             val response = JsonHttpClient.request(
                 path = "/availability/my-assignment",
                 token = token
             )
 
-            val assignment = response.optJSONObject("assignment") ?: return null
-            return mapAssignment(assignment)
+            val assignment = response.optJSONObject("assignment")
+            if (assignment == null) {
+                database.assignedRequestDao().clearSyncedAssignments()
+                return null
+            }
+            val entity = mapAssignmentEntity(assignment, syncStatus = SyncStatus.SYNCED)
+            database.assignedRequestDao().clearSyncedAssignments()
+            database.assignedRequestDao().upsert(entity)
+            entity.toUiModel()
         } catch (error: ApiException) {
             if (error.status == 404) {
+                database.assignedRequestDao().clearSyncedAssignments()
                 return null
             }
             throw error
@@ -52,16 +85,55 @@ object AssignedRequestRepository {
     }
 
     suspend fun cancelAssignment(token: String, assignmentId: String): AssignedRequestUiModel? {
-        val response = JsonHttpClient.request(
+        val current = database.assignedRequestDao().getByAssignmentId(assignmentId)
+            ?: return null
+        val now = System.currentTimeMillis()
+        val pending = current.copy(
+            syncStatus = SyncStatus.PENDING_DELETE,
+            pendingError = null,
+            locallyCancelled = false,
+            fetchedAtEpochMillis = now
+        )
+        database.assignedRequestDao().upsert(pending)
+        database.syncOperationDao().upsert(
+            SyncOperationEntity(
+                entityType = SyncEntityType.ASSIGNED_REQUEST,
+                entityId = assignmentId,
+                operationType = SyncOperationType.CANCEL_ASSIGNMENT,
+                payloadJson = JSONObject().put("assignmentId", assignmentId).toString(),
+                createdAtEpochMillis = now
+            )
+        )
+        OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "assignment-cancelled")
+        return pending.toUiModel()
+    }
+
+    internal suspend fun pushCancelOperation(operation: SyncOperationEntity, token: String?) {
+        if (token.isNullOrBlank()) return
+        val assignmentId = JSONObject(operation.payloadJson).optString("assignmentId")
+            .ifBlank { operation.entityId }
+        JsonHttpClient.request(
             path = "/availability/assignments/$assignmentId/cancel",
             method = "POST",
             token = token
         )
-
-        return response.optJSONObject("newAssignment")?.let(::mapAssignment)
+        database.syncOperationDao().delete(operation.operationId)
+        database.assignedRequestDao().clearAll()
+        fetchCurrentAssignment(token)
     }
 
-    private fun mapAssignment(assignment: JSONObject): AssignedRequestUiModel {
+    internal suspend fun markCancelFailed(assignmentId: String, message: String?) {
+        val current = database.assignedRequestDao().getByAssignmentId(assignmentId) ?: return
+        database.assignedRequestDao().upsert(
+            current.copy(
+                syncStatus = SyncStatus.FAILED,
+                pendingError = message,
+                fetchedAtEpochMillis = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun mapAssignmentEntity(assignment: JSONObject, syncStatus: String): AssignedRequestEntity {
         val description = assignment.optString("description").trim()
         val firstName = assignment.optString("requester_first_name").trim()
         val lastName = assignment.optString("requester_last_name").trim()
@@ -69,32 +141,71 @@ object AssignedRequestRepository {
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .takeIf { it.isNotBlank() }
-        val helpTypes = assignment.optJSONArray("help_types").toStringList().map(::formatValue)
+        val helpTypes = assignment.optJSONArray("help_types").toStringList()
         val status = assignment.optString("request_status").ifBlank { "ASSIGNED" }
+        val now = System.currentTimeMillis()
 
-        return AssignedRequestUiModel(
+        return AssignedRequestEntity(
             assignmentId = assignment.optString("assignment_id"),
             requestId = assignment.optString("request_id"),
             helpType = formatValue(assignment.optString("need_type")),
-            helpTypes = helpTypes,
-            helpTypeSummary = buildHelpTypeSummary(helpTypes, assignment.optString("need_type")),
+            helpTypesJson = JSONArray(helpTypes).toString(),
             otherHelpText = assignment.optString("other_help_text").trim().takeIf { it.isNotBlank() },
             description = description,
-            shortDescription = buildShortDescription(description),
             affectedPeopleCount = assignment.opt("affected_people_count")?.toString()?.toIntOrNull(),
-            riskFlags = assignment.optJSONArray("risk_flags").toStringList().map(::formatValue),
-            vulnerableGroups = assignment.optJSONArray("vulnerable_groups").toStringList().map(::formatValue),
+            riskFlagsJson = JSONArray(assignment.optJSONArray("risk_flags").toStringList()).toString(),
+            vulnerableGroupsJson = JSONArray(assignment.optJSONArray("vulnerable_groups").toStringList()).toString(),
             bloodType = assignment.optString("blood_type").trim().takeIf { it.isNotBlank() },
             locationLabel = buildLocationLabel(assignment),
             status = status,
-            statusLabel = formatStatus(status),
             requesterName = requesterName,
             requesterEmail = assignment.optString("requester_email").takeIf { it.isNotBlank() },
             contactFullName = assignment.optString("contact_full_name").trim().takeIf { it.isNotBlank() },
             contactPhone = assignment.opt("contact_phone")?.toString()?.takeIf { it.isNotBlank() },
             contactAlternativePhone = assignment.opt("contact_alternative_phone")?.toString()
                 ?.takeIf { it.isNotBlank() },
-            assignedAt = assignment.optString("assigned_at").takeIf { it.isNotBlank() }?.let(::formatTimestamp)
+            assignedAt = assignment.optString("assigned_at").takeIf { it.isNotBlank() }?.let(::formatTimestamp),
+            syncStatus = syncStatus,
+            pendingError = null,
+            fetchedAtEpochMillis = now,
+            lastSyncedAtEpochMillis = now,
+            locallyCancelled = false
+        )
+    }
+
+    private fun AssignedRequestEntity.toUiModel(): AssignedRequestUiModel {
+        val formattedHelpTypes = helpTypesJson.jsonArrayToStringList().map(::formatValue)
+        val statusLabel = when (syncStatus) {
+            SyncStatus.PENDING_DELETE -> "Release waiting to sync"
+            SyncStatus.FAILED -> "Sync failed"
+            SyncStatus.CONFLICTED -> "Needs review"
+            else -> formatStatus(status)
+        }
+
+        return AssignedRequestUiModel(
+            assignmentId = assignmentId,
+            requestId = requestId,
+            helpType = helpType,
+            helpTypes = formattedHelpTypes,
+            helpTypeSummary = buildHelpTypeSummary(formattedHelpTypes, helpType),
+            otherHelpText = otherHelpText,
+            description = description,
+            shortDescription = buildShortDescription(description),
+            affectedPeopleCount = affectedPeopleCount,
+            riskFlags = riskFlagsJson.jsonArrayToStringList().map(::formatValue),
+            vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList().map(::formatValue),
+            bloodType = bloodType,
+            locationLabel = locationLabel,
+            status = status,
+            statusLabel = statusLabel,
+            requesterName = requesterName,
+            requesterEmail = requesterEmail,
+            contactFullName = contactFullName,
+            contactPhone = contactPhone,
+            contactAlternativePhone = contactAlternativePhone,
+            assignedAt = assignedAt,
+            syncStatus = syncStatus,
+            pendingError = pendingError
         )
     }
 
