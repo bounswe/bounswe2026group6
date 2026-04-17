@@ -9,8 +9,8 @@ const apiRouter = express.Router();
 
 apiRouter.get('/', (_request, response) => {
   response.status(200).json({
-    name: 'Neighborhood Emergency Preparedness Hub API',
-    modules: ['auth', 'profiles', 'help-requests', 'availability'],
+    service: 'api',
+    status: 'ok',
   });
 });
 

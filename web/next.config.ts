@@ -11,6 +11,20 @@ const backendApiBaseUrl = configuredApiBaseUrl.startsWith("http")
 
 const nextConfig: NextConfig = {
     reactStrictMode: true,
+    async redirects() {
+        return [
+            {
+                source: "/about-project",
+                destination: "/home",
+                permanent: true,
+            },
+            {
+                source: "/who-we-are",
+                destination: "/home",
+                permanent: true,
+            },
+        ];
+    },
     async rewrites() {
         return [
             {

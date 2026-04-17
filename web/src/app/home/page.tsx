@@ -27,11 +27,11 @@ const heroSlides: HeroSlide[] = [
     {
         title: "We care for you and every community around you",
         description:
-            "NEPH is a social responsibility initiative focused on preparedness, solidarity, and faster local coordination before and during emergencies.",
-        primaryCtaLabel: "Who We Are",
-        primaryCtaHref: "/who-we-are",
-        secondaryCtaLabel: "About Us",
-        secondaryCtaHref: "/about-project",
+            "NEPH helps people prepare, stay informed, and coordinate faster support before and during emergencies.",
+        primaryCtaLabel: "Browse News",
+        primaryCtaHref: "/news",
+        secondaryCtaLabel: "Emergency Numbers",
+        secondaryCtaHref: "/emergency-numbers",
         isMainSlide: true,
     },
     {
