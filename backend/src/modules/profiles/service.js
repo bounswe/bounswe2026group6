@@ -43,10 +43,30 @@ function mapProfileRow(row) {
     },
     locationProfile: {
       address: row.address,
+      displayAddress: row.address,
       city: row.city,
       country: row.country,
       latitude: row.latitude,
       longitude: row.longitude,
+      administrative: {
+        countryCode: null,
+        country: row.country,
+        city: row.city,
+        district: null,
+        neighborhood: null,
+        extraAddress: row.address,
+        postalCode: null,
+      },
+      coordinate: row.latitude === null || row.longitude === null
+        ? null
+        : {
+            latitude: row.latitude,
+            longitude: row.longitude,
+            accuracyMeters: null,
+            source: null,
+            capturedAt: row.last_updated,
+          },
+      placeId: null,
       lastUpdated: row.last_updated,
     },
   };

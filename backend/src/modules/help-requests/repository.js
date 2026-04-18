@@ -27,13 +27,27 @@ function mapLocation(row) {
     return null;
   }
 
-  return {
+  const location = {
     country: row.country,
     city: row.city,
     district: row.district,
     neighborhood: row.neighborhood,
     extraAddress: row.extra_address || '',
   };
+
+  if (row.latitude != null && row.longitude != null) {
+    location.latitude = row.latitude;
+    location.longitude = row.longitude;
+    location.coordinate = {
+      latitude: row.latitude,
+      longitude: row.longitude,
+      accuracyMeters: null,
+      source: row.is_gps_location ? 'GPS' : null,
+      capturedAt: row.captured_at,
+    };
+  }
+
+  return location;
 }
 
 function mapContact(row) {
@@ -209,6 +223,15 @@ async function createHelpRequest(input) {
     let locationRow = null;
 
     if (input.location) {
+      const coordinate = input.location.coordinate || null;
+      const latitude = input.location.latitude ?? coordinate?.latitude ?? null;
+      const longitude = input.location.longitude ?? coordinate?.longitude ?? null;
+      const isGpsLocation = Boolean(
+        coordinate
+        && typeof coordinate.source === 'string'
+        && coordinate.source.toUpperCase().includes('GPS'),
+      );
+
       const locationResult = await client.query(
         `
           INSERT INTO request_locations (
@@ -245,10 +268,10 @@ async function createHelpRequest(input) {
           input.location.city,
           input.location.district,
           input.location.neighborhood,
-          input.location.extraAddress || null,
-          null,
-          null,
-          false,
+          input.location.displayAddress || input.location.extraAddress || null,
+          latitude,
+          longitude,
+          isGpsLocation,
           false,
         ],
       );

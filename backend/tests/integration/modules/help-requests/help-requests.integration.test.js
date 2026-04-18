@@ -166,6 +166,9 @@ describe('help-requests integration', () => {
 		expect(response.body.request.vulnerableGroups).toEqual(payload.vulnerableGroups);
 		expect(response.body.request.bloodType).toBe(payload.bloodType);
 		expect(response.body.request.location).toEqual(payload.location);
+		expect(response.body.request.location).not.toHaveProperty('coordinate');
+		expect(response.body.request.location).not.toHaveProperty('latitude');
+		expect(response.body.request.location).not.toHaveProperty('longitude');
 		expect(response.body.request.contact).toEqual(payload.contact);
 		expect(response.body.request.consentGiven).toBe(true);
 		expect(response.body.request.needType).toBe('first_aid');
@@ -208,6 +211,50 @@ describe('help-requests integration', () => {
 		expect(response.body.request.location.extraAddress).toBe('Need entry from the back');
 		expect(response.body.request.contact.phone).toBe(5052318546);
 		expect(response.body.request.contact.alternativePhone).toBe(5321234567);
+	});
+
+	test('POST /api/help-requests accepts hybrid location payload with coordinate object', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_hybrid_1';
+		await seedActiveUser(userId, 'hrhybrid1@example.com');
+		const token = buildAuthToken(userId);
+
+		const payload = buildCreatePayload({
+			location: {
+				country: 'turkiye',
+				city: 'istanbul',
+				district: 'besiktas',
+				neighborhood: 'levazim',
+				extraAddress: 'Bina B',
+				displayAddress: 'Levazim, Besiktas, Bina B',
+				coordinate: {
+					latitude: 41.043,
+					longitude: 29.009,
+					source: 'MANUAL_MAP_PIN',
+					capturedAt: '2026-04-18T11:20:00.000Z',
+				},
+			},
+		});
+
+		const response = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(payload);
+
+		expect(response.status).toBe(201);
+		expect(response.body.request.location.country).toBe('turkiye');
+		expect(response.body.request.location.city).toBe('istanbul');
+		expect(response.body.request.location.latitude).toBeCloseTo(41.043, 6);
+		expect(response.body.request.location.longitude).toBeCloseTo(29.009, 6);
+		expect(response.body.request.location.coordinate).toBeTruthy();
+		expect(response.body.request.location).toHaveProperty('coordinate');
+		expect(response.body.request.location).toHaveProperty('latitude');
+		expect(response.body.request.location).toHaveProperty('longitude');
+		expect(response.body.request.location.coordinate.latitude).toBeCloseTo(41.043, 6);
+		expect(response.body.request.location.coordinate.longitude).toBeCloseTo(29.009, 6);
+		expect(response.body.request.location.coordinate.source).toBeNull();
+		expect(response.body.request.location.coordinate.capturedAt).toEqual(expect.any(String));
+		expect(response.body.request.location.extraAddress).toBe('Levazim, Besiktas, Bina B');
 	});
 
 	test('POST /api/help-requests returns 400 for invalid payload', async () => {

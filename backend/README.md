@@ -81,6 +81,39 @@ The backend exposes these top-level paths:
 - `GET /api/profiles`
 - `GET /api/help-requests`
 - `GET /api/availability`
+- `GET /api/location`
+
+Location module endpoints:
+
+- `GET /api/location/tree?countryCode=TR`
+- `GET /api/location/search?q=<text>&countryCode=TR&limit=10`
+- `GET /api/location/reverse?lat=<number>&lon=<number>`
+
+Location payload compatibility:
+
+- Existing payloads for `PATCH /api/profiles/me/location` and `POST /api/help-requests` remain valid.
+- Hybrid payloads are also supported (administrative + coordinate fields together).
+
+Hybrid location payload example:
+
+```json
+{
+  "location": {
+    "country": "turkiye",
+    "city": "istanbul",
+    "district": "besiktas",
+    "neighborhood": "levazim",
+    "extraAddress": "Bina B",
+    "displayAddress": "Levazim, Besiktas, Bina B",
+    "coordinate": {
+      "latitude": 41.043,
+      "longitude": 29.009,
+      "source": "MANUAL_MAP_PIN",
+      "capturedAt": "2026-04-18T11:20:00.000Z"
+    }
+  }
+}
+```
 
 ## Environment notes
 
@@ -94,6 +127,13 @@ Important notes:
 
 - when backend runs on host and Postgres runs via Docker on the host machine, use `POSTGRES_HOST=localhost`
 - if backend later runs in the same Docker network as Postgres, use `POSTGRES_HOST=postgres`
+
+Location provider and cache env vars:
+
+- `NOMINATIM_BASE_URL` (default: `https://nominatim.openstreetmap.org`)
+- `LOCATION_HTTP_TIMEOUT_MS` (default: `4500`)
+- `LOCATION_CACHE_TTL_MS` (default: `300000`)
+- `LOCATION_CACHE_MAX_ENTRIES` (default: `500`)
 
 ## Shared API conventions
 

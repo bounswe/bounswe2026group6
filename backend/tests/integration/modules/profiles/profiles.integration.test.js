@@ -171,6 +171,45 @@ describe('profiles integration', () => {
 		expect(response.body.locationProfile.city).toBe('Istanbul');
 	});
 
+	test('PATCH /api/profiles/me/location accepts hybrid payload with administrative and coordinate', async () => {
+		const app = createApp();
+		const userId = 'user_loc_hybrid_1';
+		await seedActiveUser(userId, 'lochybrid1@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const response = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				displayAddress: 'Levazim, Besiktas, Istanbul',
+				administrative: {
+					countryCode: 'TR',
+					country: 'Turkey',
+					city: 'Istanbul',
+					district: 'Besiktas',
+					neighborhood: 'Levazim',
+					extraAddress: 'Bina B',
+					postalCode: '34340',
+				},
+				coordinate: {
+					latitude: 41.043,
+					longitude: 29.009,
+					source: 'MANUAL_MAP_PIN',
+					capturedAt: '2026-04-18T11:20:00.000Z',
+				},
+			});
+
+		expect(response.status).toBe(200);
+		expect(response.body.locationProfile.country).toBe('Turkey');
+		expect(response.body.locationProfile.city).toBe('Istanbul');
+		expect(response.body.locationProfile.latitude).toBeCloseTo(41.043, 6);
+		expect(response.body.locationProfile.longitude).toBeCloseTo(29.009, 6);
+		expect(response.body.locationProfile.coordinate).toBeTruthy();
+		expect(response.body.locationProfile.administrative).toBeTruthy();
+		expect(response.body.locationProfile.displayAddress).toBe('Levazim, Besiktas, Istanbul');
+	});
+
 	test('PATCH /api/profiles/me/privacy returns 200 with valid payload', async () => {
 		const app = createApp();
 		const userId = 'user_priv_1';
