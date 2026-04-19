@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.neph.core.network.ApiException
+import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
@@ -108,6 +110,14 @@ fun HomeScreen(
                     onOpenMyHelpRequests()
                 } else {
                     onRequestHelp()
+                }
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    requestHelpError = "Your session expired. Please log in again before requesting help."
+                    onNavigateToLogin()
+                } else {
+                    requestHelpError = "We could not verify your current help request status. Please try again."
                 }
             } catch (_: Exception) {
                 requestHelpError = "We could not verify your current help request status. Please try again."

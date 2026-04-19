@@ -32,7 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
+import com.neph.core.network.ApiException
 import com.neph.core.sync.OfflineSyncScheduler
+import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
@@ -45,6 +47,7 @@ import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
@@ -65,6 +68,7 @@ fun MyHelpRequestsScreen(
         .collectAsState(initial = emptyList())
     var actionInProgressRequestId by remember { mutableStateOf<String?>(null) }
     var actionMessage by remember { mutableStateOf("") }
+    var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
 
     AppDrawerScaffold(
         title = "My Help Requests",
@@ -82,10 +86,33 @@ fun MyHelpRequestsScreen(
         contentFillMaxSize = true
     ) {
         LaunchedEffect(isAuthenticated, token) {
+            initialRefreshInProgress = true
             OfflineSyncScheduler.enqueueSync(context, reason = "my-help-requests-open", replaceExisting = true)
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.fetchMyHelpRequests(token)
+                } else {
+                    MyHelpRequestsRepository.fetchGuestHelpRequests()
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (error: ApiException) {
+                if (error.status == 401 && isAuthenticated) {
+                    AuthRepository.logout()
+                    onNavigateToRoute(Routes.Login.route)
+                }
+            } catch (_: Exception) {
+                // Keep showing the best local snapshot if the initial refresh fails.
+            } finally {
+                initialRefreshInProgress = false
+            }
         }
 
         when {
+            initialRefreshInProgress && requests.isEmpty() -> {
+                LoadingStateView()
+            }
+
             requests.isEmpty() -> {
                 EmptyStateView(
                     onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) }

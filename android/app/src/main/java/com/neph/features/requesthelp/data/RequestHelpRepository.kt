@@ -64,6 +64,8 @@ object RequestHelpRepository {
     private const val PrefsName = "neph_guest_help_requests"
     private const val GuestRequestsKey = "guest_requests"
     private const val GuestHasLocalRequestsKey = "guest_has_local_requests"
+    internal const val DeferredStatusSyncMessage =
+        "Waiting for the help request creation to sync before sending the status update."
 
     private lateinit var prefs: SharedPreferences
 
@@ -80,6 +82,19 @@ object RequestHelpRepository {
 
     suspend fun hasActiveHelpRequest(token: String): Boolean {
         ensureInitialized()
+
+        if (token.isNotBlank()) {
+            try {
+                refreshAuthenticatedHelpRequests(token)
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    throw error
+                }
+            } catch (_: Exception) {
+                // Fall back to the last local snapshot when the network is unavailable.
+            }
+        }
+
         return database.helpRequestDao().countActiveByOwner(ownerTypeForToken(token)) > 0
     }
 
@@ -204,9 +219,15 @@ object RequestHelpRepository {
             database.syncOperationDao().delete(operation.operationId)
             return
         }
-        val remoteId = entity.remoteId ?: entity.localId.takeUnless { it.startsWith("local_") }
+        val remoteId = resolveRemoteRequestIdForSync(entity)
         if (remoteId.isNullOrBlank()) {
-            // Creation has not reached the server yet. Leave the status operation queued behind it.
+            database.syncOperationDao().updateStatus(
+                operationId = operation.operationId,
+                status = SyncOperationStatus.PENDING,
+                attemptCount = operation.attemptCount,
+                lastAttemptAtEpochMillis = operation.lastAttemptAtEpochMillis,
+                error = DeferredStatusSyncMessage
+            )
             return
         }
 
@@ -302,6 +323,10 @@ object RequestHelpRepository {
 
     internal fun ownerTypeForToken(token: String?): String {
         return if (token.isNullOrBlank()) LocalOwnerType.GUEST else LocalOwnerType.AUTHENTICATED
+    }
+
+    internal fun resolveRemoteRequestIdForSync(entity: HelpRequestEntity): String? {
+        return entity.remoteId ?: entity.localId.takeUnless { it.startsWith("local_") }
     }
 
     private fun saveGuestTrackedRequest(trackedRequest: GuestTrackedHelpRequest) {

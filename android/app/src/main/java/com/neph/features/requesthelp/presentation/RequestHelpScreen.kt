@@ -307,13 +307,13 @@ fun RequestHelpScreen(
             return@LaunchedEffect
         }
 
-        val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
-        if (hasActiveRequest) {
-            onNavigateToMyHelpRequests()
-            return@LaunchedEffect
-        }
-
         try {
+            val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+            if (hasActiveRequest) {
+                onNavigateToMyHelpRequests()
+                return@LaunchedEffect
+            }
+
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
             formState = buildPrefilledForm(profile)
             infoMessage = ""
@@ -363,6 +363,14 @@ fun RequestHelpScreen(
                 )
                 infoMessage = "Help request saved on this device and queued for sync."
                 onNavigateToMyHelpRequests()
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    errorMessage = "Your session expired. Please log in again before sending a help request."
+                    onNavigateToLogin()
+                } else {
+                    errorMessage = "Could not save your help request locally. Please try again."
+                }
             } catch (_: Exception) {
                 errorMessage = "Could not save your help request locally. Please try again."
             } finally {
