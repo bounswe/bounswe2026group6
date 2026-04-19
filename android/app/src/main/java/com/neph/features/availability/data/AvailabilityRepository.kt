@@ -2,6 +2,7 @@ package com.neph.features.availability.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neph.BuildConfig
 import com.neph.core.NephAppContext
 import com.neph.core.database.AvailabilityEntity
 import com.neph.core.database.NephDatabaseProvider
@@ -97,9 +98,17 @@ object AvailabilityRepository {
     }
 
     fun resetForTesting() {
+        requireDebugBuildForTestingReset()
+
         cachedState = AvailabilityState()
         if (::prefs.isInitialized) {
             prefs.edit().clear().commit()
+        }
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "AvailabilityRepository.resetForTesting() is only available in debug/e2e test builds."
         }
     }
 

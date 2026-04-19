@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.neph.BuildConfig
 
 @Database(
     entities = [
@@ -49,10 +50,18 @@ object NephDatabaseProvider {
     }
 
     fun resetForTesting(context: Context) {
+        requireDebugBuildForTestingReset()
+
         synchronized(this) {
             instance?.close()
             instance = null
             context.applicationContext.deleteDatabase(DatabaseName)
+        }
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "NephDatabaseProvider.resetForTesting() is only available in debug/e2e test builds."
         }
     }
 }

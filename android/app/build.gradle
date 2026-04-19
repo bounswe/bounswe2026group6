@@ -67,6 +67,10 @@ if (isReleaseTask) {
 android {
     namespace 'com.neph'
     compileSdk 36
+
+    // E2E androidTests need the app variant whose BuildConfig.API_BASE_URL targets
+    // the on-device fake backend. This also makes local unit tests run as
+    // :app:testE2eUnitTest; keep docs/automation in sync with that task name.
     testBuildType "e2e"
 
     defaultConfig {

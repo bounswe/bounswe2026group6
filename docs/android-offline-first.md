@@ -47,7 +47,9 @@ New unit tests cover:
 Run from `android/`:
 
 ```bash
-./gradlew :app:testDebugUnitTest
+# Unit tests use the e2e build type because androidTest is pinned to the
+# fake-backend E2E variant in `android/app/build.gradle`.
+./gradlew :app:testE2eUnitTest
 ./gradlew :app:compileDebugKotlin
 ```
 
