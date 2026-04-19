@@ -378,6 +378,7 @@ fun AppNavGraph(
                     navController.navigate(Routes.Signup.route)
                 },
                 onContinueAsGuest = {
+                    AuthSessionStore.setGuestMode(true)
                     navController.navigate(Routes.Home.route) {
                         popUpTo(Routes.Welcome.route) { inclusive = true }
                         launchSingleTop = true
@@ -412,6 +413,7 @@ fun AppNavGraph(
                     navController.navigate(Routes.ForgotPassword.route)
                 },
                 onContinueAsGuest = {
+                    AuthSessionStore.setGuestMode(true)
                     navController.navigate(Routes.Home.route) {
                         popUpTo(Routes.Welcome.route) { inclusive = true }
                         launchSingleTop = true

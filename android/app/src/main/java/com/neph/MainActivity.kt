@@ -40,10 +40,13 @@ fun NephApp() {
         val navController = rememberNavController()
         AppNavGraph(
             navController = navController,
-            startDestination = if (AuthSessionStore.getAccessToken().isNullOrBlank()) {
-                Routes.Welcome.route
-            } else {
-                Routes.Home.route
+            startDestination = when {
+                !AuthSessionStore.getAccessToken().isNullOrBlank() -> Routes.Home.route
+                AuthSessionStore.isGuestMode() && RequestHelpRepository.shouldOpenGuestRequestsOnStart() -> {
+                    Routes.MyHelpRequests.route
+                }
+                AuthSessionStore.isGuestMode() -> Routes.Home.route
+                else -> Routes.Welcome.route
             }
         )
     }

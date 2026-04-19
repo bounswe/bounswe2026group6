@@ -64,3 +64,4 @@ test-results/
 # Agent files
 .sisyphus
 mvp354/
+.omx/

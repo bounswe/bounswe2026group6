@@ -95,7 +95,7 @@ interface SyncOperationDao {
     @Query(
         """
         SELECT * FROM sync_operations
-        WHERE status IN ('PENDING', 'FAILED', 'IN_PROGRESS')
+        WHERE status IN ('PENDING', 'FAILED')
         ORDER BY createdAtEpochMillis ASC
         """
     )

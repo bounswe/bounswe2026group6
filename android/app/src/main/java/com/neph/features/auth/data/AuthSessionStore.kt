@@ -9,6 +9,7 @@ object AuthSessionStore {
     private const val PrefsName = "neph_auth"
     private const val AccessTokenKey = "access_token"
     private const val PendingVerificationEmailKey = "pending_verification_email"
+    private const val GuestModeKey = "guest_mode"
 
     private lateinit var prefs: SharedPreferences
     private val accessTokenState = MutableStateFlow<String?>(null)
@@ -34,6 +35,7 @@ object AuthSessionStore {
         sessionToken = token
         accessTokenState.value = token
         prefs.edit().apply {
+            putBoolean(GuestModeKey, false)
             if (rememberMe) {
                 putString(AccessTokenKey, token)
             } else {
@@ -47,6 +49,16 @@ object AuthSessionStore {
         sessionToken = null
         accessTokenState.value = null
         prefs.edit().remove(AccessTokenKey).apply()
+    }
+
+    fun setGuestMode(enabled: Boolean) {
+        ensureInitialized()
+        prefs.edit().putBoolean(GuestModeKey, enabled).apply()
+    }
+
+    fun isGuestMode(): Boolean {
+        ensureInitialized()
+        return prefs.getBoolean(GuestModeKey, false)
     }
 
     fun setPendingVerificationEmail(email: String?) {

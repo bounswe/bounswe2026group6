@@ -63,6 +63,7 @@ data class GuestTrackedHelpRequest(
 object RequestHelpRepository {
     private const val PrefsName = "neph_guest_help_requests"
     private const val GuestRequestsKey = "guest_requests"
+    private const val GuestHasLocalRequestsKey = "guest_has_local_requests"
 
     private lateinit var prefs: SharedPreferences
 
@@ -107,6 +108,9 @@ object RequestHelpRepository {
                 createdAtEpochMillis = now
             )
         )
+        if (ownerType == LocalOwnerType.GUEST) {
+            prefs.edit().putBoolean(GuestHasLocalRequestsKey, true).apply()
+        }
         OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "help-request-created")
 
         return CreateHelpRequestResult(requestId = localId, recordedLocally = true)
@@ -133,6 +137,11 @@ object RequestHelpRepository {
                 }
             }
         }
+    }
+
+    fun shouldOpenGuestRequestsOnStart(): Boolean {
+        ensureInitialized()
+        return prefs.getBoolean(GuestHasLocalRequestsKey, false) || getGuestTrackedRequests().isNotEmpty()
     }
 
     suspend fun fetchGuestHelpRequest(
