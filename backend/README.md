@@ -12,6 +12,8 @@ Main feature areas:
 - `src/modules/profiles` — user profile, privacy, health, and location data
 - `src/modules/help-requests` — request creation, tracking, and status updates
 - `src/modules/availability` — volunteer availability, matching, and assignment-related flows
+- `src/modules/location` — country tree, geocoding search, and reverse geocoding support
+- `src/modules/gathering-areas` — nearby disaster assembly and shelter points via Overpass
 
 ## Structure
 
@@ -73,7 +75,7 @@ GET http://localhost:3000/health
 
 ## Important endpoints
 
-The backend exposes these top-level paths:
+The backend exposes these top-level module paths (concrete endpoints are listed below):
 
 - `GET /health`
 - `GET /api`
@@ -82,12 +84,60 @@ The backend exposes these top-level paths:
 - `GET /api/help-requests`
 - `GET /api/availability`
 - `GET /api/location`
+- `GET /api/gathering-areas`
 
 Location module endpoints:
 
 - `GET /api/location/tree?countryCode=TR`
 - `GET /api/location/search?q=<text>&countryCode=TR&limit=10`
 - `GET /api/location/reverse?lat=<number>&lon=<number>`
+
+Gathering areas module endpoints:
+
+- `GET /api/gathering-areas/nearby?lat=<number>&lon=<number>&radius=<int>&limit=<int>`
+- returns GeoJSON `FeatureCollection` under `collection.features`
+- default `radius=2000` (meters), max `10000`
+- default `limit=20`, max `50`
+- maps provider failures to standard error response:
+  - `503 OVERPASS_UNAVAILABLE`
+  - `504 OVERPASS_TIMEOUT`
+
+Sample nearby response:
+
+```json
+{
+  "center": { "lat": 41.01, "lon": 29.01 },
+  "radius": 1500,
+  "source": "overpass",
+  "meta": {
+    "requestedLimit": 10,
+    "returnedCount": 2
+  },
+  "collection": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [29.011, 41.011]
+        },
+        "properties": {
+          "id": "123456",
+          "osmType": "node",
+          "name": "Sample Assembly Area",
+          "category": "assembly_point",
+          "distanceMeters": 145,
+          "rawTags": {
+            "name": "Sample Assembly Area",
+            "emergency": "assembly_point"
+          }
+        }
+      }
+    ]
+  }
+}
+```
 
 Location payload compatibility:
 
