@@ -26,6 +26,49 @@ function serializeExpertiseAreas(expertiseAreas) {
   return JSON.stringify(expertiseAreas || []);
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOwn(object, key) {
+  return isPlainObject(object) && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function buildAddressFromAdministrative(administrative) {
+  if (!isPlainObject(administrative)) {
+    return null;
+  }
+
+  const parts = [administrative.neighborhood, administrative.district, administrative.extraAddress]
+    .filter((item) => typeof item === 'string' && item.trim() !== '')
+    .map((item) => item.trim());
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return parts.join(', ');
+}
+
+function normalizeLocationInput(data) {
+  const administrative = isPlainObject(data.administrative) ? data.administrative : null;
+  const coordinate = isPlainObject(data.coordinate) ? data.coordinate : null;
+
+  const address = data.displayAddress ?? data.address ?? buildAddressFromAdministrative(administrative);
+  const city = data.city ?? administrative?.city ?? null;
+  const country = data.country ?? administrative?.country ?? null;
+  const latitude = data.latitude ?? coordinate?.latitude ?? null;
+  const longitude = data.longitude ?? coordinate?.longitude ?? null;
+
+  return {
+    address,
+    city,
+    country,
+    latitude,
+    longitude,
+  };
+}
+
 async function findActiveUserById(userId) {
   const sql = `
     SELECT user_id
@@ -232,11 +275,19 @@ async function upsertHealthInfo(profileId, data, providedFields = []) {
 
 async function upsertLocationProfile(profileId, data, providedFields = []) {
   const provided = new Set(providedFields);
-  const hasAddress = provided.has('address');
-  const hasCity = provided.has('city');
-  const hasCountry = provided.has('country');
-  const hasLatitude = provided.has('latitude');
-  const hasLongitude = provided.has('longitude');
+  const administrative = isPlainObject(data.administrative) ? data.administrative : null;
+  const coordinate = isPlainObject(data.coordinate) ? data.coordinate : null;
+  const hasAddress =
+    provided.has('address')
+    || provided.has('displayAddress')
+    || hasOwn(administrative, 'neighborhood')
+    || hasOwn(administrative, 'district')
+    || hasOwn(administrative, 'extraAddress');
+  const hasCity = provided.has('city') || hasOwn(administrative, 'city');
+  const hasCountry = provided.has('country') || hasOwn(administrative, 'country');
+  const hasLatitude = provided.has('latitude') || hasOwn(coordinate, 'latitude');
+  const hasLongitude = provided.has('longitude') || hasOwn(coordinate, 'longitude');
+  const normalizedLocation = normalizeLocationInput(data);
 
   const sql = `
     INSERT INTO location_profiles (
@@ -263,11 +314,11 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
   const values = [
     makeId('loc'),
     profileId,
-    data.address ?? null,
-    data.city ?? null,
-    data.country ?? null,
-    data.latitude ?? null,
-    data.longitude ?? null,
+    normalizedLocation.address,
+    normalizedLocation.city,
+    normalizedLocation.country,
+    normalizedLocation.latitude,
+    normalizedLocation.longitude,
     hasAddress,
     hasCity,
     hasCountry,

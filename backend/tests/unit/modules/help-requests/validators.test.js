@@ -170,6 +170,49 @@ describe('help-requests validators', () => {
 			expect(errors).toContain('`location.city` is required.');
 		});
 
+		test('accepts hybrid location coordinate object', () => {
+			const payload = buildPayload();
+			payload.location.coordinate = {
+				latitude: 41.043,
+				longitude: 29.009,
+				source: 'MANUAL_MAP_PIN',
+				capturedAt: '2026-04-18T11:20:00.000Z',
+			};
+
+			const { errors, value } = validateCreateHelpRequest(payload);
+
+			expect(errors).toHaveLength(0);
+			expect(value.location.coordinate).toBeTruthy();
+			expect(value.location.coordinate.latitude).toBeCloseTo(41.043, 6);
+			expect(value.location.coordinate.longitude).toBeCloseTo(29.009, 6);
+		});
+
+		test('rejects hybrid location coordinate when longitude is missing', () => {
+			const payload = buildPayload();
+			payload.location.coordinate = {
+				latitude: 41.043,
+			};
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`location.coordinate.latitude` and `location.coordinate.longitude` must be provided together.');
+		});
+
+		test('rejects conflicting flat and nested coordinate values', () => {
+			const payload = buildPayload();
+			payload.location.latitude = 41.043;
+			payload.location.longitude = 29.009;
+			payload.location.coordinate = {
+				latitude: 41.111,
+				longitude: 29.009,
+				source: 'MANUAL_MAP_PIN',
+			};
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`location.latitude` conflicts with `location.coordinate.latitude`.');
+		});
+
 		test('rejects invalid contact fields', () => {
 			const payload = buildPayload();
 			payload.contact.phone = 4052318546;

@@ -136,6 +136,55 @@ function validateOptionalPhoneNumber(fieldName, value, errors) {
   return value;
 }
 
+function validateCoordinateObject(fieldName, value, errors) {
+  if (value == null) {
+    return null;
+  }
+
+  if (!isPlainObject(value)) {
+    errors.push(`\`${fieldName}\` must be an object.`);
+    return null;
+  }
+
+  const latitudeProvided = Object.prototype.hasOwnProperty.call(value, 'latitude');
+  const longitudeProvided = Object.prototype.hasOwnProperty.call(value, 'longitude');
+
+  if (latitudeProvided !== longitudeProvided) {
+    errors.push(`\`${fieldName}.latitude\` and \`${fieldName}.longitude\` must be provided together.`);
+  }
+
+  const latitude = value.latitude;
+  const longitude = value.longitude;
+
+  if (latitudeProvided && latitude !== null && (typeof latitude !== 'number' || latitude < -90 || latitude > 90)) {
+    errors.push(`\`${fieldName}.latitude\` must be a number between -90 and 90.`);
+  }
+
+  if (longitudeProvided && longitude !== null && (typeof longitude !== 'number' || longitude < -180 || longitude > 180)) {
+    errors.push(`\`${fieldName}.longitude\` must be a number between -180 and 180.`);
+  }
+
+  let accuracyMeters = null;
+  if (Object.prototype.hasOwnProperty.call(value, 'accuracyMeters')) {
+    if (value.accuracyMeters !== null && (typeof value.accuracyMeters !== 'number' || value.accuracyMeters < 0)) {
+      errors.push(`\`${fieldName}.accuracyMeters\` must be a number greater than or equal to 0.`);
+    } else {
+      accuracyMeters = value.accuracyMeters;
+    }
+  }
+
+  const source = validateOptionalString(`${fieldName}.source`, value.source, errors, { maxLength: 40 });
+  const capturedAt = validateOptionalString(`${fieldName}.capturedAt`, value.capturedAt, errors, { maxLength: 80 });
+
+  return {
+    latitude: latitudeProvided ? latitude : null,
+    longitude: longitudeProvided ? longitude : null,
+    accuracyMeters,
+    source,
+    capturedAt,
+  };
+}
+
 function validateCreateHelpRequest(payload) {
   const errors = [];
   const warnings = [];
@@ -182,6 +231,59 @@ function validateCreateHelpRequest(payload) {
   if (!isPlainObject(payload.location)) {
     errors.push('`location` is required and must be an object.');
   } else {
+    const coordinate = validateCoordinateObject('location.coordinate', payload.location.coordinate, errors);
+
+    let latitude = null;
+    let longitude = null;
+
+    if (Object.prototype.hasOwnProperty.call(payload.location, 'latitude')) {
+      if (
+        payload.location.latitude !== null
+        && (typeof payload.location.latitude !== 'number' || payload.location.latitude < -90 || payload.location.latitude > 90)
+      ) {
+        errors.push('`location.latitude` must be a number between -90 and 90.');
+      } else {
+        latitude = payload.location.latitude;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload.location, 'longitude')) {
+      if (
+        payload.location.longitude !== null
+        && (typeof payload.location.longitude !== 'number' || payload.location.longitude < -180 || payload.location.longitude > 180)
+      ) {
+        errors.push('`location.longitude` must be a number between -180 and 180.');
+      } else {
+        longitude = payload.location.longitude;
+      }
+    }
+
+    if ((latitude === null) !== (longitude === null)) {
+      errors.push('`location.latitude` and `location.longitude` must be provided together.');
+    }
+
+    if (
+      coordinate
+      && Object.prototype.hasOwnProperty.call(payload.location, 'latitude')
+      && Object.prototype.hasOwnProperty.call(payload.location.coordinate, 'latitude')
+      && payload.location.latitude !== null
+      && payload.location.coordinate.latitude !== null
+      && payload.location.latitude !== payload.location.coordinate.latitude
+    ) {
+      errors.push('`location.latitude` conflicts with `location.coordinate.latitude`.');
+    }
+
+    if (
+      coordinate
+      && Object.prototype.hasOwnProperty.call(payload.location, 'longitude')
+      && Object.prototype.hasOwnProperty.call(payload.location.coordinate, 'longitude')
+      && payload.location.longitude !== null
+      && payload.location.coordinate.longitude !== null
+      && payload.location.longitude !== payload.location.coordinate.longitude
+    ) {
+      errors.push('`location.longitude` conflicts with `location.coordinate.longitude`.');
+    }
+
     location = {
       country: validateRequiredString('location.country', payload.location.country, errors, {
         maxLength: 100,
@@ -198,6 +300,15 @@ function validateCreateHelpRequest(payload) {
       extraAddress: validateOptionalString('location.extraAddress', payload.location.extraAddress, errors, {
         maxLength: 500,
       }),
+      displayAddress: validateOptionalString('location.displayAddress', payload.location.displayAddress, errors, {
+        maxLength: 500,
+      }),
+      placeId: validateOptionalString('location.placeId', payload.location.placeId, errors, {
+        maxLength: 100,
+      }),
+      latitude,
+      longitude,
+      coordinate,
     };
   }
 

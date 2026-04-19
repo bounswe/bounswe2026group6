@@ -78,6 +78,57 @@ describe('profiles validators', () => {
 			expect(result.ok).toBe(true);
 			expect(result.data).toEqual({ latitude: 41.0082, longitude: 28.9784 });
 		});
+
+		test('accepts hybrid payload with administrative and coordinate objects', () => {
+			const result = validateLocationPatch({
+				displayAddress: 'Levazim, Besiktas, Istanbul',
+				administrative: {
+					countryCode: 'TR',
+					country: 'Turkey',
+					city: 'Istanbul',
+					district: 'Besiktas',
+					neighborhood: 'Levazim',
+					extraAddress: 'Bina B',
+					postalCode: '34340',
+				},
+				coordinate: {
+					latitude: 41.043,
+					longitude: 29.009,
+					accuracyMeters: 12.5,
+					source: 'MANUAL_MAP_PIN',
+					capturedAt: '2026-04-18T11:20:00.000Z',
+				},
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data.administrative.city).toBe('Istanbul');
+			expect(result.data.coordinate.latitude).toBeCloseTo(41.043, 6);
+		});
+
+		test('rejects coordinate object when latitude/longitude are not paired', () => {
+			const result = validateLocationPatch({
+				coordinate: {
+					latitude: 41.043,
+				},
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('coordinate.latitude and coordinate.longitude must be provided together');
+		});
+
+		test('rejects conflicting flat and nested latitude values', () => {
+			const result = validateLocationPatch({
+				latitude: 41.1,
+				longitude: 29.0,
+				coordinate: {
+					latitude: 41.2,
+					longitude: 29.0,
+				},
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('latitude conflicts with coordinate.latitude');
+		});
 	});
 
 	describe('validatePrivacyPatch', () => {
