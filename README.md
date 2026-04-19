@@ -218,4 +218,25 @@ This README focuses on local development and evaluation. Deployment- and release
 
 - keep documentation and env examples in sync with the actual setup
 - prefer the root Docker flow for quick end-to-end verification
+
+## End-to-end tests
+
+The repository now includes browser-based end-to-end coverage for the main web + backend user journeys:
+
+- guest navigation and protected-route redirects
+- signup, email verification, and profile completion
+- profile/privacy updates after login
+- forgot-password and reset-password flows
+
+Run them from `web/`:
+
+```bash
+npm run test:e2e
+```
+
+Notes:
+
+- Playwright global setup starts the backend and web app automatically for the test run.
+- The suite expects a PostgreSQL server reachable through `TEST_POSTGRES_*` variables. In CI this is provided by a service container; locally you can use your own PostgreSQL instance or Docker.
+- The backend runs in `NODE_ENV=test` during E2E, so auth emails are stubbed instead of being sent to a real SMTP provider.
 - keep local configuration out of version control

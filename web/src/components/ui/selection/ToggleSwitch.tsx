@@ -7,17 +7,20 @@ type ToggleSwitchProps = {
     checked: boolean;
     onCheckedChange: (checked: boolean) => void;
     disabled?: boolean;
+    "aria-label"?: string;
 };
 
 export function ToggleSwitch({
     checked,
     onCheckedChange,
     disabled = false,
+    "aria-label": ariaLabel,
 }: ToggleSwitchProps) {
     return (
         <button
             type="button"
             aria-pressed={checked}
+            aria-label={ariaLabel}
             disabled={disabled}
             onClick={() => onCheckedChange(!checked)}
             className={cn(

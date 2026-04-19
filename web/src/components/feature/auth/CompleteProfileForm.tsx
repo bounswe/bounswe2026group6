@@ -537,6 +537,7 @@ export default function CompleteProfileForm() {
                 <span className="text-sm">Share Current Location</span>
 
                 <ToggleSwitch
+                    aria-label="Share Current Location"
                     checked={form.shareLocation}
                     onCheckedChange={(value) =>
                         setForm({ ...form, shareLocation: value })
