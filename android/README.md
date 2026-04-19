@@ -57,3 +57,22 @@ Migration/config notes:
 
 - The root quick-start focuses on the database, backend, and web MVP flow first.
 - Android setup is available separately for local mobile development.
+
+## Android instrumentation E2E tests
+
+The Android app now includes instrumentation coverage for key mobile journeys:
+
+- continue as guest to the home screen
+- forgot-password flow through the reset-password entry screen
+- authenticated session navigation to profile and privacy/security flows
+
+Run them with an emulator connected:
+
+```bash
+./gradlew :app:connectedE2eAndroidTest
+```
+
+Notes:
+
+- The instrumentation suite runs the app against a test-only MockWebServer endpoint (`http://127.0.0.1:13006/api`) so production networking code still performs real HTTP requests while tests stay deterministic.
+- The `e2e` build type is used only for instrumentation tests; release builds keep their production API base URL and do not include the fake backend.

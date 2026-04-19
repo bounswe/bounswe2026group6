@@ -2,6 +2,7 @@ package com.neph.features.auth.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neph.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -80,6 +81,23 @@ object AuthSessionStore {
     fun clearPendingVerificationEmail() {
         ensureInitialized()
         prefs.edit().remove(PendingVerificationEmailKey).apply()
+    }
+
+    fun resetForTesting() {
+        requireDebugBuildForTestingReset()
+
+        if (::prefs.isInitialized) {
+            prefs.edit().clear().commit()
+        }
+
+        sessionToken = null
+        accessTokenState.value = null
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "AuthSessionStore.resetForTesting() is only available in debug/e2e test builds."
+        }
     }
 
     private fun ensureInitialized() {

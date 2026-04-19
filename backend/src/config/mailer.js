@@ -1,15 +1,20 @@
 const nodemailer = require('nodemailer');
 const { env } = require('./env');
 
-const transporter = nodemailer.createTransport({
-  host: env.smtp.host,
-  port: env.smtp.port,
-  secure: false,
-  auth: {
-    user: env.smtp.user,
-    pass: env.smtp.pass,
-  },
-});
+const transporter =
+  env.nodeEnv === 'test'
+    ? nodemailer.createTransport({
+        jsonTransport: true,
+      })
+    : nodemailer.createTransport({
+        host: env.smtp.host,
+        port: env.smtp.port,
+        secure: false,
+        auth: {
+          user: env.smtp.user,
+          pass: env.smtp.pass,
+        },
+      });
 
 async function sendVerificationEmail(toEmail, token) {
   const encodedToken = encodeURIComponent(token);

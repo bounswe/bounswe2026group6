@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.neph.BuildConfig
 
 @Database(
     entities = [
@@ -26,6 +27,7 @@ abstract class NephDatabase : RoomDatabase() {
 
 object NephDatabaseProvider {
     @Volatile private var instance: NephDatabase? = null
+    private const val DatabaseName = "neph-offline.db"
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -36,7 +38,7 @@ object NephDatabaseProvider {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 NephDatabase::class.java,
-                "neph-offline.db"
+                DatabaseName
             ).build().also { instance = it }
         }
     }
@@ -44,6 +46,22 @@ object NephDatabaseProvider {
     fun requireInstance(): NephDatabase {
         return checkNotNull(instance) {
             "NephDatabaseProvider must be initialized before use."
+        }
+    }
+
+    fun resetForTesting(context: Context) {
+        requireDebugBuildForTestingReset()
+
+        synchronized(this) {
+            instance?.close()
+            instance = null
+            context.applicationContext.deleteDatabase(DatabaseName)
+        }
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "NephDatabaseProvider.resetForTesting() is only available in debug/e2e test builds."
         }
     }
 }

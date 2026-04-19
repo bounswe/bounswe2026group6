@@ -441,13 +441,16 @@ fun AppNavGraph(
             )
         }
 
+        composable(Routes.VerifyEmail.route) {
+            OpenVerifyEmailScreen(navController = navController, initialToken = null)
+        }
+
         composable(
             route = verifyEmailRouteWithToken,
             arguments = listOf(
                 navArgument("token") {
                     type = NavType.StringType
                     nullable = true
-                    defaultValue = null
                 }
             ),
             deepLinks = listOf(
@@ -456,22 +459,9 @@ fun AppNavGraph(
                 }
             )
         ) { backStackEntry ->
-            VerifyEmailScreen(
-                initialToken = backStackEntry.arguments?.getString("token"),
-                onVerificationSuccess = {
-                    navController.navigate(Routes.CompleteProfile.route) {
-                        popUpTo(Routes.Welcome.route) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-                onContinueToLogin = {
-                    navController.navigate(Routes.Login.route) {
-                        launchSingleTop = true
-                    }
-                },
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
+            OpenVerifyEmailScreen(
+                navController = navController,
+                initialToken = backStackEntry.arguments?.getString("token")
             )
         }
 
@@ -546,4 +536,28 @@ fun AppNavGraph(
             )
         }
     }
+}
+
+@Composable
+private fun OpenVerifyEmailScreen(
+    navController: NavHostController,
+    initialToken: String?
+) {
+    VerifyEmailScreen(
+        initialToken = initialToken,
+        onVerificationSuccess = {
+            navController.navigate(Routes.CompleteProfile.route) {
+                popUpTo(Routes.Welcome.route) { inclusive = false }
+                launchSingleTop = true
+            }
+        },
+        onContinueToLogin = {
+            navController.navigate(Routes.Login.route) {
+                launchSingleTop = true
+            }
+        },
+        onNavigateBack = {
+            navController.popBackStack()
+        }
+    )
 }

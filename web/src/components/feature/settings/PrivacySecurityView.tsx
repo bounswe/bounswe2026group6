@@ -121,6 +121,7 @@ export default function PrivacySecurityView() {
                     </div>
 
                     <ToggleSwitch
+                        aria-label="Share Current Location"
                         checked={shareLocation}
                         onCheckedChange={setShareLocation}
                     />

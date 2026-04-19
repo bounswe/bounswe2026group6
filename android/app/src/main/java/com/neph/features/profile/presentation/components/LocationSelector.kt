@@ -32,6 +32,8 @@ fun LocationSelector(
         onValueChange = { onCountryChange(it); onCityChange(""); onDistrictChange(""); onNeighborhoodChange("") },
         label = "Country",
         options = listOf(DropdownOption("Select Country", "")) + locationData.map { DropdownOption(it.value.label, it.key) },
+        testTag = "complete_profile_country",
+        optionTestTagPrefix = "complete_profile_country_option",
         selectedTextMapper = { it.label },
         error = countryError
     )
@@ -42,6 +44,8 @@ fun LocationSelector(
         label = "City",
         options = listOf(DropdownOption("Select City", "")) + cityOptions,
         enabled = country.isNotEmpty(),
+        testTag = "complete_profile_city",
+        optionTestTagPrefix = "complete_profile_city_option",
         selectedTextMapper = { it.label },
         error = cityError
     )
@@ -52,6 +56,8 @@ fun LocationSelector(
         label = "District",
         options = listOf(DropdownOption("Select District", "")) + districtOptions,
         enabled = city.isNotEmpty(),
+        testTag = "complete_profile_district",
+        optionTestTagPrefix = "complete_profile_district_option",
         selectedTextMapper = { it.label },
         error = districtError
     )
@@ -62,6 +68,8 @@ fun LocationSelector(
         label = "Neighborhood",
         options = listOf(DropdownOption("Select Neighborhood", "")) + neighborhoodOptions.map { DropdownOption(it.label, it.value) },
         enabled = district.isNotEmpty(),
+        testTag = "complete_profile_neighborhood",
+        optionTestTagPrefix = "complete_profile_neighborhood_option",
         selectedTextMapper = { it.label },
         error = neighborhoodError
     )

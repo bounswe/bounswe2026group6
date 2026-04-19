@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
@@ -173,6 +174,7 @@ fun LoginScreen(
                     onValueChange = { email = it },
                     label = "Email",
                     placeholder = "Enter your email",
+                    testTag = "login_email",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
                 )
 
@@ -180,7 +182,8 @@ fun LoginScreen(
                     value = password,
                     onValueChange = { password = it },
                     label = "Password",
-                    placeholder = "Enter your password"
+                    placeholder = "Enter your password",
+                    testTag = "login_password"
                 )
 
                 Row(
@@ -195,6 +198,7 @@ fun LoginScreen(
                         Checkbox(
                             checked = rememberMe,
                             onCheckedChange = { rememberMe = it },
+                            modifier = Modifier.testTag("login_remember_me"),
                             colors = CheckboxDefaults.colors(
                                 checkedColor = MaterialTheme.colorScheme.primary,
                                 uncheckedColor = MaterialTheme.colorScheme.outline,

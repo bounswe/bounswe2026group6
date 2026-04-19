@@ -2,6 +2,7 @@ package com.neph.features.requesthelp.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neph.BuildConfig
 import com.neph.core.NephAppContext
 import com.neph.core.database.HelpRequestEntity
 import com.neph.core.database.NephDatabaseProvider
@@ -157,6 +158,20 @@ object RequestHelpRepository {
     fun shouldOpenGuestRequestsOnStart(): Boolean {
         ensureInitialized()
         return prefs.getBoolean(GuestHasLocalRequestsKey, false) || getGuestTrackedRequests().isNotEmpty()
+    }
+
+    fun resetForTesting() {
+        requireDebugBuildForTestingReset()
+
+        if (::prefs.isInitialized) {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "RequestHelpRepository.resetForTesting() is only available in debug/e2e test builds."
+        }
     }
 
     suspend fun fetchGuestHelpRequest(

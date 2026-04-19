@@ -91,6 +91,7 @@ fun ForgotPasswordScreen(
                 onValueChange = { email = it },
                 label = "Email",
                 placeholder = "Enter your email",
+                testTag = "forgot_password_email",
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Email
                 )

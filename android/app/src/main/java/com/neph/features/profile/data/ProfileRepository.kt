@@ -2,6 +2,7 @@ package com.neph.features.profile.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neph.BuildConfig
 import com.neph.core.network.JsonHttpClient
 import com.neph.features.auth.data.AuthSessionStore
 import org.json.JSONArray
@@ -36,6 +37,21 @@ object ProfileRepository {
     fun getProfile(): ProfileData {
         ensureInitialized()
         return cachedProfile
+    }
+
+    fun resetForTesting() {
+        requireDebugBuildForTestingReset()
+
+        cachedProfile = ProfileData()
+        if (::prefs.isInitialized) {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "ProfileRepository.resetForTesting() is only available in debug/e2e test builds."
+        }
     }
 
     suspend fun fetchAndCacheRemoteProfile(): ProfileData {

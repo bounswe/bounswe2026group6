@@ -876,6 +876,7 @@ export default function ProfileView() {
                     <div className="mt-4 flex items-center justify-between">
                         <span className="text-sm">Share Current Location</span>
                         <ToggleSwitch
+                            aria-label="Share Current Location"
                             checked={profile.shareLocation}
                             onCheckedChange={(value) =>
                                 setProfile({ ...profile, shareLocation: value })

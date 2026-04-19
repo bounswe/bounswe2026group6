@@ -112,6 +112,7 @@ fun ResetPasswordScreen(
                 onValueChange = { tokenOrLink = it },
                 label = "Reset Link or Token",
                 placeholder = "Paste the link or token from your email",
+                testTag = "reset_password_token",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
             )
 
@@ -119,14 +120,16 @@ fun ResetPasswordScreen(
                 value = newPassword,
                 onValueChange = { newPassword = it },
                 label = "New Password",
-                placeholder = "Enter your new password"
+                placeholder = "Enter your new password",
+                testTag = "reset_password_new"
             )
 
             PasswordField(
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it },
                 label = "Confirm Password",
-                placeholder = "Confirm your new password"
+                placeholder = "Confirm your new password",
+                testTag = "reset_password_confirm"
             )
 
             if (error.isNotBlank()) {

@@ -16,6 +16,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
@@ -167,6 +168,7 @@ fun CompleteProfileScreen(
                 value = fullName,
                 onValueChange = { fullName = it },
                 label = "Full Name",
+                testTag = "complete_profile_full_name",
                 placeholder = "Enter your full name"
             )
 
@@ -177,6 +179,8 @@ fun CompleteProfileScreen(
                     label = "Code",
                     options = countryCodeOptions,
                     modifier = Modifier.weight(0.42f),
+                    testTag = "complete_profile_country_code",
+                    optionTestTagPrefix = "complete_profile_country_code_option",
                     selectedTextMapper = { it.value }
                 )
 
@@ -185,6 +189,7 @@ fun CompleteProfileScreen(
                     onValueChange = { phone = it.filter(Char::isDigit) },
                     label = "Phone Number",
                     placeholder = "Enter your phone number",
+                    testTag = "complete_profile_phone",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.weight(0.58f)
                 )
@@ -197,6 +202,7 @@ fun CompleteProfileScreen(
                     value = height,
                     onValueChange = { height = sanitizeDecimalInput(it, maxLen = 3) },
                     label = "Height (cm)",
+                    testTag = "complete_profile_height",
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
@@ -205,6 +211,7 @@ fun CompleteProfileScreen(
                     value = weight,
                     onValueChange = { weight = sanitizeDecimalInput(it, maxLen = 3) },
                     label = "Weight (kg)",
+                    testTag = "complete_profile_weight",
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
@@ -216,6 +223,7 @@ fun CompleteProfileScreen(
                 value = age,
                 onValueChange = { age = it.filter(Char::isDigit).take(3) },
                 label = "Age",
+                testTag = "complete_profile_age",
                 placeholder = "Enter your age",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
@@ -309,7 +317,8 @@ fun CompleteProfileScreen(
             AppTextField(
                 value = extraAddress,
                 onValueChange = { extraAddress = it },
-                label = "Extra Address"
+                label = "Extra Address",
+                testTag = "complete_profile_extra_address"
             )
 
             AppToggleSwitch(

@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.neph.ui.theme.LocalNephSpacing
 
@@ -39,6 +40,8 @@ fun AppDropdown(
     placeholder: String = "Select an option",
     enabled: Boolean = true,
     error: String? = null,
+    testTag: String? = null,
+    optionTestTagPrefix: String? = null,
     selectedTextMapper: (DropdownOption) -> String = { it.label }
 ) {
     val spacing = LocalNephSpacing.current
@@ -67,6 +70,13 @@ fun AppDropdown(
                 onValueChange = {},
                 modifier = Modifier
                     .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    .then(
+                        if (testTag.isNullOrBlank()) {
+                            Modifier
+                        } else {
+                            Modifier.testTag(testTag)
+                        }
+                    )
                     .fillMaxWidth(),
                 readOnly = true,
                 enabled = enabled,
@@ -115,6 +125,11 @@ fun AppDropdown(
                                 text = option.label,
                                 style = MaterialTheme.typography.bodyLarge
                             )
+                        },
+                        modifier = if (optionTestTagPrefix.isNullOrBlank()) {
+                            Modifier
+                        } else {
+                            Modifier.testTag("${optionTestTagPrefix}_${option.value}")
                         },
                         onClick = {
                             onValueChange(option.value)

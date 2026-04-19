@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.neph.ui.theme.LocalNephSpacing
 
@@ -25,6 +26,7 @@ fun AppTextField(
     readOnly: Boolean = false,
     singleLine: Boolean = true,
     error: String? = null,
+    testTag: String? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default
 ) {
     val spacing = LocalNephSpacing.current
@@ -44,6 +46,13 @@ fun AppTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
+                .then(
+                    if (testTag.isNullOrBlank()) {
+                        Modifier
+                    } else {
+                        Modifier.testTag(testTag)
+                    }
+                )
                 .fillMaxWidth()
                 .heightIn(min = 56.dp),
             enabled = enabled,
