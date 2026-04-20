@@ -282,9 +282,17 @@ class FakeNephBackend {
     private fun handlePatchLocation(token: String?, body: JSONObject?): JSONObject {
         val user = requireAuthorizedUser(token)
         val profile = ensureProfile(user)
+        val administrative = body?.optJSONObject("administrative")
         profile.country = body.optStringOrNull("country")
+            ?: administrative.optStringOrNull("country")
+            ?: profile.country
         profile.city = body.optStringOrNull("city")
-        profile.address = body.optStringOrNull("address")
+            ?: administrative.optStringOrNull("city")
+            ?: profile.city
+        profile.address = body.optStringOrNull("displayAddress")
+            ?: body.optStringOrNull("address")
+            ?: buildAdministrativeAddress(administrative)
+            ?: profile.address
         return profileResponseJson(user, profile)
     }
 
@@ -379,8 +387,18 @@ class FakeNephBackend {
                 "locationProfile",
                 JSONObject()
                     .put("address", profile.address)
+                    .put("displayAddress", profile.address)
                     .put("city", profile.city)
                     .put("country", profile.country)
+                    .put(
+                        "administrative",
+                        JSONObject()
+                            .put("country", profile.country)
+                            .put("city", profile.city)
+                            .put("district", JSONObject.NULL)
+                            .put("neighborhood", JSONObject.NULL)
+                            .put("extraAddress", profile.address)
+                    )
                     .put("latitude", JSONObject.NULL)
                     .put("longitude", JSONObject.NULL)
                     .put("lastUpdated", "2026-04-19T00:00:00Z")
@@ -499,6 +517,21 @@ private fun JSONObject?.optDoubleOrNull(key: String): Double? {
     }
 
     return optDouble(key)
+}
+
+private fun buildAdministrativeAddress(administrative: JSONObject?): String? {
+    if (administrative == null) {
+        return null
+    }
+
+    return listOf(
+        administrative.optStringOrNull("neighborhood"),
+        administrative.optStringOrNull("district"),
+        administrative.optStringOrNull("extraAddress")
+    )
+        .mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }
+        .joinToString(", ")
+        .ifBlank { null }
 }
 
 private fun JSONObject.putNullable(key: String, value: String?): JSONObject {

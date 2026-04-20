@@ -183,6 +183,7 @@ describe('profiles integration', () => {
 			.set('Authorization', `Bearer ${token}`)
 			.send({
 				displayAddress: 'Levazim, Besiktas, Istanbul',
+				placeId: 'osm:node:12345',
 				administrative: {
 					countryCode: 'TR',
 					country: 'Turkey',
@@ -208,6 +209,22 @@ describe('profiles integration', () => {
 		expect(response.body.locationProfile.coordinate).toBeTruthy();
 		expect(response.body.locationProfile.administrative).toBeTruthy();
 		expect(response.body.locationProfile.displayAddress).toBe('Levazim, Besiktas, Istanbul');
+		expect(response.body.locationProfile.placeId).toBe('osm:node:12345');
+		expect(response.body.locationProfile.administrative.countryCode).toBe('TR');
+		expect(response.body.locationProfile.administrative.district).toBe('Besiktas');
+		expect(response.body.locationProfile.administrative.neighborhood).toBe('Levazim');
+		expect(response.body.locationProfile.administrative.extraAddress).toBe('Bina B');
+
+		const getResponse = await request(app)
+			.get('/api/profiles/me')
+			.set('Authorization', `Bearer ${token}`);
+
+		expect(getResponse.status).toBe(200);
+		expect(getResponse.body.locationProfile.displayAddress).toBe('Levazim, Besiktas, Istanbul');
+		expect(getResponse.body.locationProfile.placeId).toBe('osm:node:12345');
+		expect(getResponse.body.locationProfile.administrative.countryCode).toBe('TR');
+		expect(getResponse.body.locationProfile.administrative.district).toBe('Besiktas');
+		expect(getResponse.body.locationProfile.administrative.neighborhood).toBe('Levazim');
 	});
 
 	test('PATCH /api/profiles/me/privacy returns 200 with valid payload', async () => {

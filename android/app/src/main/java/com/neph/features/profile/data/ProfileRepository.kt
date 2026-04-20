@@ -133,18 +133,35 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    putNullable("country", profile.country?.takeIf(String::isNotBlank)?.let { locationData[it]?.label ?: it })
-                    putNullable(
-                        "city",
-                        profile.city?.takeIf(String::isNotBlank)?.let {
-                            profile.country?.let { countryKey ->
-                                locationData[countryKey]?.cities?.get(it)?.label
-                            } ?: it
-                        }
+                    val countryCode = profile.country?.trim()?.takeIf(String::isNotBlank)
+                    val backendCountryCode = countryCode?.uppercase()
+                    val countryLabel = resolveCountryLabel(countryCode)
+                    val cityLabel = resolveCityLabel(countryCode, profile.city)
+                    val districtLabel = resolveDistrictLabel(countryCode, profile.city, profile.district)
+                    val neighborhoodLabel = resolveNeighborhoodLabel(
+                        countryCode,
+                        profile.city,
+                        profile.district,
+                        profile.neighborhood
                     )
-                    putNullable(
-                        "address",
-                        buildAddress(profile.district, profile.neighborhood, profile.extraAddress)
+                    val normalizedExtraAddress = profile.extraAddress?.trim()?.takeIf(String::isNotBlank)
+                    val displayAddress = buildAddress(districtLabel, neighborhoodLabel, normalizedExtraAddress)
+
+                    putNullable("country", countryLabel)
+                    putNullable("city", cityLabel)
+                    putNullable("address", displayAddress)
+                    putNullable("displayAddress", displayAddress)
+
+                    put(
+                        "administrative",
+                        JSONObject().apply {
+                            putNullable("countryCode", backendCountryCode)
+                            putNullable("country", countryLabel)
+                            putNullable("city", cityLabel)
+                            putNullable("district", districtLabel)
+                            putNullable("neighborhood", neighborhoodLabel)
+                            putNullable("extraAddress", normalizedExtraAddress)
+                        }
                     )
                 }
             )
@@ -264,16 +281,36 @@ object ProfileRepository {
         val locationProfile = profileJson.optJSONObject("locationProfile") ?: JSONObject()
         val privacySettings = profileJson.optJSONObject("privacySettings") ?: JSONObject()
         val expertise = profileJson.optJSONArray("expertise")?.optJSONObject(0)
+        val administrative = locationProfile.optJSONObject("administrative") ?: JSONObject()
 
-        val countryLabel = locationProfile.optStringOrNull("country")
-        val cityLabel = locationProfile.optStringOrNull("city")
-        val countryKey = findCountryKeyByLabel(locationProfile.optStringOrNull("country"))
+        val countryLabel = administrative.optStringOrNull("country")
+            ?: locationProfile.optStringOrNull("country")
+        val cityLabel = administrative.optStringOrNull("city")
+            ?: locationProfile.optStringOrNull("city")
+        val countryCode = administrative.optStringOrNull("countryCode")
+        val countryKey = countryCode
+            ?.lowercase()
+            ?.takeIf { locationData.containsKey(it) }
+            ?: findCountryKeyByLabel(countryLabel)
         val cityKey = findCityKeyByLabel(countryKey, cityLabel)
-        val address = locationProfile.optStringOrNull("address")
+        val address = locationProfile.optStringOrNull("displayAddress")
+            ?: locationProfile.optStringOrNull("address")
         val parsedAddress = parseLocationAddress(countryKey, cityKey, address)
-        val districtKey = parsedAddress.first
-        val neighborhoodValue = parsedAddress.second
-        val extraAddressFromBackend = parsedAddress.third
+        val districtFromAdministrative = findDistrictKeyByLabel(
+            countryKey,
+            cityKey,
+            administrative.optStringOrNull("district")
+        )
+        val districtKey = districtFromAdministrative.ifBlank { parsedAddress.first }
+        val neighborhoodFromAdministrative = findNeighborhoodValueByLabel(
+            countryKey,
+            cityKey,
+            districtKey,
+            administrative.optStringOrNull("neighborhood")
+        )
+        val neighborhoodValue = neighborhoodFromAdministrative.ifBlank { parsedAddress.second }
+        val extraAddressFromBackend = administrative.optStringOrNull("extraAddress")
+            ?: parsedAddress.third
 
         return ProfileData(
             fullName = listOf(

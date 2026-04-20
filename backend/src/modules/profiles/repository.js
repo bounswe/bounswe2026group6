@@ -50,20 +50,48 @@ function buildAddressFromAdministrative(administrative) {
   return parts.join(', ');
 }
 
+function normalizeOptionalString(value, { uppercase = false } = {}) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return null;
+  }
+
+  return uppercase ? trimmed.toUpperCase() : trimmed;
+}
+
 function normalizeLocationInput(data) {
   const administrative = isPlainObject(data.administrative) ? data.administrative : null;
   const coordinate = isPlainObject(data.coordinate) ? data.coordinate : null;
+  const fallbackAddress = buildAddressFromAdministrative(administrative);
 
-  const address = data.displayAddress ?? data.address ?? buildAddressFromAdministrative(administrative);
-  const city = data.city ?? administrative?.city ?? null;
-  const country = data.country ?? administrative?.country ?? null;
+  const displayAddress = normalizeOptionalString(data.displayAddress ?? data.address ?? fallbackAddress);
+  const address = normalizeOptionalString(data.address ?? data.displayAddress ?? fallbackAddress);
+  const city = normalizeOptionalString(data.city ?? administrative?.city);
+  const country = normalizeOptionalString(data.country ?? administrative?.country);
+  const countryCode = normalizeOptionalString(administrative?.countryCode, { uppercase: true });
+  const district = normalizeOptionalString(administrative?.district);
+  const neighborhood = normalizeOptionalString(administrative?.neighborhood);
+  const extraAddress = normalizeOptionalString(administrative?.extraAddress);
+  const postalCode = normalizeOptionalString(administrative?.postalCode);
+  const placeId = normalizeOptionalString(data.placeId);
   const latitude = data.latitude ?? coordinate?.latitude ?? null;
   const longitude = data.longitude ?? coordinate?.longitude ?? null;
 
   return {
     address,
+    displayAddress,
     city,
     country,
+    countryCode,
+    district,
+    neighborhood,
+    extraAddress,
+    postalCode,
+    placeId,
     latitude,
     longitude,
   };
@@ -283,8 +311,15 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
     || hasOwn(administrative, 'neighborhood')
     || hasOwn(administrative, 'district')
     || hasOwn(administrative, 'extraAddress');
+  const hasDisplayAddress = hasAddress || provided.has('displayAddress');
   const hasCity = provided.has('city') || hasOwn(administrative, 'city');
   const hasCountry = provided.has('country') || hasOwn(administrative, 'country');
+  const hasCountryCode = hasOwn(administrative, 'countryCode');
+  const hasDistrict = hasOwn(administrative, 'district');
+  const hasNeighborhood = hasOwn(administrative, 'neighborhood');
+  const hasExtraAddress = hasOwn(administrative, 'extraAddress');
+  const hasPostalCode = hasOwn(administrative, 'postalCode');
+  const hasPlaceId = provided.has('placeId');
   const hasLatitude = provided.has('latitude') || hasOwn(coordinate, 'latitude');
   const hasLongitude = provided.has('longitude') || hasOwn(coordinate, 'longitude');
   const normalizedLocation = normalizeLocationInput(data);
@@ -294,19 +329,33 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
       location_profile_id,
       profile_id,
       address,
+      display_address,
       city,
       country,
+      country_code,
+      district,
+      neighborhood,
+      extra_address,
+      postal_code,
+      place_id,
       latitude,
       longitude
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     ON CONFLICT (profile_id)
     DO UPDATE SET
-      address = CASE WHEN $8 THEN EXCLUDED.address ELSE location_profiles.address END,
-      city = CASE WHEN $9 THEN EXCLUDED.city ELSE location_profiles.city END,
-      country = CASE WHEN $10 THEN EXCLUDED.country ELSE location_profiles.country END,
-      latitude = CASE WHEN $11 THEN EXCLUDED.latitude ELSE location_profiles.latitude END,
-      longitude = CASE WHEN $12 THEN EXCLUDED.longitude ELSE location_profiles.longitude END,
+      address = CASE WHEN $15 THEN EXCLUDED.address ELSE location_profiles.address END,
+      display_address = CASE WHEN $16 THEN EXCLUDED.display_address ELSE location_profiles.display_address END,
+      city = CASE WHEN $17 THEN EXCLUDED.city ELSE location_profiles.city END,
+      country = CASE WHEN $18 THEN EXCLUDED.country ELSE location_profiles.country END,
+      country_code = CASE WHEN $19 THEN EXCLUDED.country_code ELSE location_profiles.country_code END,
+      district = CASE WHEN $20 THEN EXCLUDED.district ELSE location_profiles.district END,
+      neighborhood = CASE WHEN $21 THEN EXCLUDED.neighborhood ELSE location_profiles.neighborhood END,
+      extra_address = CASE WHEN $22 THEN EXCLUDED.extra_address ELSE location_profiles.extra_address END,
+      postal_code = CASE WHEN $23 THEN EXCLUDED.postal_code ELSE location_profiles.postal_code END,
+      place_id = CASE WHEN $24 THEN EXCLUDED.place_id ELSE location_profiles.place_id END,
+      latitude = CASE WHEN $25 THEN EXCLUDED.latitude ELSE location_profiles.latitude END,
+      longitude = CASE WHEN $26 THEN EXCLUDED.longitude ELSE location_profiles.longitude END,
       last_updated = CURRENT_TIMESTAMP
     RETURNING profile_id;
   `;
@@ -315,13 +364,27 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
     makeId('loc'),
     profileId,
     normalizedLocation.address,
+    normalizedLocation.displayAddress,
     normalizedLocation.city,
     normalizedLocation.country,
+    normalizedLocation.countryCode,
+    normalizedLocation.district,
+    normalizedLocation.neighborhood,
+    normalizedLocation.extraAddress,
+    normalizedLocation.postalCode,
+    normalizedLocation.placeId,
     normalizedLocation.latitude,
     normalizedLocation.longitude,
     hasAddress,
+    hasDisplayAddress,
     hasCity,
     hasCountry,
+    hasCountryCode,
+    hasDistrict,
+    hasNeighborhood,
+    hasExtraAddress,
+    hasPostalCode,
+    hasPlaceId,
     hasLatitude,
     hasLongitude,
   ];
@@ -499,8 +562,15 @@ async function findProfileBundleByUserId(userId) {
       pi.height,
       pi.weight,
       lp.address,
+      lp.display_address,
       lp.city,
       lp.country,
+      lp.country_code,
+      lp.district,
+      lp.neighborhood,
+      lp.extra_address,
+      lp.postal_code,
+      lp.place_id,
       lp.latitude,
       lp.longitude,
       lp.last_updated
