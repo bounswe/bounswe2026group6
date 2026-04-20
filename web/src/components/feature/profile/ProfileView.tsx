@@ -166,23 +166,15 @@ export default function ProfileView() {
             }
 
             try {
-                const [user, backendProfile, treeResponse] = await Promise.all([
+                const [user, backendProfile] = await Promise.all([
                     fetchCurrentUser(token),
                     fetchMyProfile(token),
-                    fetchLocationTree("TR"),
                 ]);
-
-                const activeLocationTree = {
-                    [treeResponse.countryCode.toLowerCase()]: treeResponse.tree,
-                };
-
-                setLocationTree(activeLocationTree);
-                setLocationTreeError("");
 
                 const mappedProfile = toProfileData(
                     backendProfile,
                     user.email,
-                    activeLocationTree
+                    {}
                 );
 
                 setProfile(mappedProfile);
@@ -212,6 +204,23 @@ export default function ProfileView() {
                 }
 
                 setEmptyStateAction(null);
+
+                void (async () => {
+                    try {
+                        const treeResponse = await fetchLocationTree("TR");
+                        setLocationTree({
+                            [treeResponse.countryCode.toLowerCase()]: treeResponse.tree,
+                        });
+                        setLocationTreeError("");
+                    } catch (treeError) {
+                        setLocationTree({});
+                        setLocationTreeError(
+                            treeError instanceof Error
+                                ? treeError.message
+                                : "Could not load location tree."
+                        );
+                    }
+                })();
             } catch (err) {
                 if (err instanceof ApiError && err.status === 401) {
                     clearAccessToken();
@@ -222,9 +231,6 @@ export default function ProfileView() {
                     setError("");
                     setEmptyStateAction("complete-profile");
                 } else {
-                    setLocationTreeError(
-                        err instanceof Error ? err.message : "Could not load location tree."
-                    );
                     setError(
                         err instanceof Error
                             ? err.message
@@ -312,13 +318,26 @@ export default function ProfileView() {
             setError("");
             setInfo("");
 
-            const countryData = profile.country ? locationTree[profile.country] : undefined;
+            const saveCountryKey = findCountryKeyByLabel(locationTree, profile.country);
+            const saveCityKey = findCityKeyByLabel(
+                locationTree,
+                saveCountryKey,
+                profile.city
+            );
+            const saveDistrictKey = findDistrictKeyByLabel(
+                locationTree,
+                saveCountryKey,
+                saveCityKey,
+                profile.district
+            );
+
+            const countryData = saveCountryKey ? locationTree[saveCountryKey] : undefined;
             const districtLabel =
-                countryData?.cities[profile.city]?.districts[profile.district]?.label ||
+                countryData?.cities[saveCityKey]?.districts[saveDistrictKey]?.label ||
                 locationPickerValue?.administrative.district ||
                 profile.district;
             const neighborhoodLabel =
-                countryData?.cities[profile.city]?.districts[profile.district]?.neighborhoods.find(
+                countryData?.cities[saveCityKey]?.districts[saveDistrictKey]?.neighborhoods.find(
                     (item) => item.value === profile.neighborhood
                 )?.label ||
                 locationPickerValue?.administrative.neighborhood ||
@@ -345,7 +364,7 @@ export default function ProfileView() {
                     profile.country ||
                     null,
                 city:
-                    countryData?.cities[profile.city]?.label ||
+                    countryData?.cities[saveCityKey]?.label ||
                     locationPickerValue?.administrative.city ||
                     profile.city ||
                     null,
@@ -472,7 +491,20 @@ export default function ProfileView() {
         );
     }
 
-    const countryData = profile.country ? locationTree[profile.country] : undefined;
+    const resolvedCountryKey = findCountryKeyByLabel(locationTree, profile.country);
+    const resolvedCityKey = findCityKeyByLabel(
+        locationTree,
+        resolvedCountryKey,
+        profile.city
+    );
+    const resolvedDistrictKey = findDistrictKeyByLabel(
+        locationTree,
+        resolvedCountryKey,
+        resolvedCityKey,
+        profile.district
+    );
+
+    const countryData = resolvedCountryKey ? locationTree[resolvedCountryKey] : undefined;
 
     const countryOptions = Object.entries(locationTree).map(([key, value]) => ({
         label: value.label,
@@ -487,8 +519,8 @@ export default function ProfileView() {
         : [];
 
     const districtOptions =
-        profile.city && countryData?.cities[profile.city]
-            ? Object.entries(countryData.cities[profile.city].districts).map(
+        resolvedCityKey && countryData?.cities[resolvedCityKey]
+            ? Object.entries(countryData.cities[resolvedCityKey].districts).map(
                 ([key, value]) => ({
                     label: value.label,
                     value: key,
@@ -497,11 +529,16 @@ export default function ProfileView() {
             : [];
 
     const neighborhoodOptions =
-        profile.city &&
-            profile.district &&
-            countryData?.cities[profile.city]?.districts[profile.district]
-            ? countryData.cities[profile.city].districts[profile.district].neighborhoods
+        resolvedCityKey &&
+            resolvedDistrictKey &&
+            countryData?.cities[resolvedCityKey]?.districts[resolvedDistrictKey]
+            ? countryData.cities[resolvedCityKey].districts[resolvedDistrictKey].neighborhoods
             : [];
+
+    const resolvedNeighborhoodValue = findNeighborhoodValueByLabel(
+        neighborhoodOptions,
+        profile.neighborhood
+    );
 
     return (
         <div className="flex gap-10">
@@ -812,7 +849,7 @@ export default function ProfileView() {
                         <SelectInput
                             id="country"
                             label="Country"
-                            value={profile.country}
+                            value={resolvedCountryKey}
                             options={[{ label: "Select Country", value: "" }, ...countryOptions]}
                             onChange={(e) =>
                                 setProfile({
@@ -828,8 +865,8 @@ export default function ProfileView() {
                         <SelectInput
                             id="city"
                             label="City"
-                            value={profile.city}
-                            disabled={!profile.country}
+                            value={resolvedCityKey}
+                            disabled={!resolvedCountryKey}
                             options={[{ label: "Select City", value: "" }, ...cityOptions]}
                             onChange={(e) =>
                                 setProfile({
@@ -844,8 +881,8 @@ export default function ProfileView() {
                         <SelectInput
                             id="district"
                             label="District"
-                            value={profile.district}
-                            disabled={!profile.city}
+                            value={resolvedDistrictKey}
+                            disabled={!resolvedCityKey}
                             options={[
                                 { label: "Select District", value: "" },
                                 ...districtOptions,
@@ -862,8 +899,8 @@ export default function ProfileView() {
                         <SelectInput
                             id="neighborhood"
                             label="Neighborhood"
-                            value={profile.neighborhood}
-                            disabled={!profile.district}
+                            value={resolvedNeighborhoodValue}
+                            disabled={!resolvedDistrictKey}
                             options={[
                                 { label: "Select Neighborhood", value: "" },
                                 ...neighborhoodOptions,

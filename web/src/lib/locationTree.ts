@@ -10,6 +10,10 @@ function normalize(value: string) {
         .trim();
 }
 
+function normalizeIfPresent(value: string | undefined | null) {
+    return normalize(value || "");
+}
+
 export function findCountryKeyByLabel(
     locationTree: LocationTreeByCountry,
     label: string
@@ -18,8 +22,15 @@ export function findCountryKeyByLabel(
         return "";
     }
 
+    const normalizedLabel = normalize(label);
+
     return (
-        Object.entries(locationTree).find(([, country]) => country.label === label)?.[0] ||
+        Object.entries(locationTree).find(([key, country]) => {
+            return (
+                normalizeIfPresent(key) === normalizedLabel ||
+                normalizeIfPresent(country.label) === normalizedLabel
+            );
+        })?.[0] ||
         ""
     );
 }
@@ -38,8 +49,15 @@ export function findCityKeyByLabel(
         return "";
     }
 
+    const normalizedLabel = normalize(label);
+
     return (
-        Object.entries(country.cities).find(([, city]) => city.label === label)?.[0] ||
+        Object.entries(country.cities).find(([key, city]) => {
+            return (
+                normalizeIfPresent(key) === normalizedLabel ||
+                normalizeIfPresent(city.label) === normalizedLabel
+            );
+        })?.[0] ||
         ""
     );
 }
@@ -59,8 +77,15 @@ export function findDistrictKeyByLabel(
         return "";
     }
 
+    const normalizedLabel = normalize(label);
+
     return (
-        Object.entries(districts).find(([, district]) => district.label === label)?.[0] ||
+        Object.entries(districts).find(([key, district]) => {
+            return (
+                normalizeIfPresent(key) === normalizedLabel ||
+                normalizeIfPresent(district.label) === normalizedLabel
+            );
+        })?.[0] ||
         ""
     );
 }
@@ -73,8 +98,15 @@ export function findNeighborhoodValueByLabel(
         return "";
     }
 
+    const normalizedLabel = normalize(label);
+
     return (
-        neighborhoods.find((item) => item.label === label || item.value === label)?.value ||
+        neighborhoods.find((item) => {
+            return (
+                normalizeIfPresent(item.label) === normalizedLabel ||
+                normalizeIfPresent(item.value) === normalizedLabel
+            );
+        })?.value ||
         ""
     );
 }
