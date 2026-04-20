@@ -15,6 +15,11 @@ object LocationTreeRepository {
     @Volatile
     private var lastSyncedAtMs: Long = 0L
 
+    internal fun resetCacheMetadataForTesting() {
+        lastSyncedCountryCode = null
+        lastSyncedAtMs = 0L
+    }
+
     suspend fun ensureLocationData(
         countryCode: String = DefaultCountryCode,
         forceRefresh: Boolean = false

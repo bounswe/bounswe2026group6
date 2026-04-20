@@ -129,6 +129,28 @@ describe('profiles validators', () => {
 			expect(result.ok).toBe(false);
 			expect(result.message).toBe('latitude conflicts with coordinate.latitude');
 		});
+
+		test('normalizes administrative countryCode to uppercase ISO alpha-2', () => {
+			const result = validateLocationPatch({
+				administrative: {
+					countryCode: 'tr',
+				},
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data.administrative.countryCode).toBe('TR');
+		});
+
+		test('rejects administrative countryCode when it is not ISO alpha-2', () => {
+			const result = validateLocationPatch({
+				administrative: {
+					countryCode: 'TURKEY',
+				},
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('administrative.countryCode must be a 2-letter ISO code');
+		});
 	});
 
 	describe('validatePrivacyPatch', () => {

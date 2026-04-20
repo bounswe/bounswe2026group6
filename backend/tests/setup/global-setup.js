@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
+const migrationFileNamePattern = /^\d{8}_\d{6}__[a-z0-9_]+\.sql$/;
+
 function listSqlFilesRecursive(baseDir) {
   if (!fs.existsSync(baseDir)) {
     return [];
@@ -26,6 +28,10 @@ function listSqlFilesRecursive(baseDir) {
   }
 
   return files;
+}
+
+function isMigrationFile(filePath) {
+  return migrationFileNamePattern.test(path.basename(filePath));
 }
 
 function quoteIdentifier(identifier) {
@@ -95,7 +101,9 @@ module.exports = async function globalSetup() {
     await testClient.query(initSql);
 
     const migrationsDir = path.resolve(__dirname, '../../migrations');
-    const migrationFiles = listSqlFilesRecursive(migrationsDir).sort((a, b) => a.localeCompare(b));
+    const migrationFiles = listSqlFilesRecursive(migrationsDir)
+      .filter(isMigrationFile)
+      .sort((a, b) => a.localeCompare(b));
 
     for (const migrationFile of migrationFiles) {
       const migrationSql = fs.readFileSync(migrationFile, 'utf-8');

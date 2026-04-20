@@ -155,6 +155,27 @@ describe('profiles integration', () => {
 		expect(response.body.code).toBe('VALIDATION_ERROR');
 	});
 
+	test('PATCH /api/profiles/me/location returns 400 for invalid administrative countryCode', async () => {
+		const app = createApp();
+		const userId = 'user_loc_invalid_countrycode_1';
+		await seedActiveUser(userId, 'locinvalidcountrycode1@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const response = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				administrative: {
+					countryCode: 'TURKEY',
+				},
+			});
+
+		expect(response.status).toBe(400);
+		expect(response.body.code).toBe('VALIDATION_ERROR');
+		expect(response.body.message).toBe('administrative.countryCode must be a 2-letter ISO code');
+	});
+
 	test('PATCH /api/profiles/me/location returns 200 for valid payload', async () => {
 		const app = createApp();
 		const userId = 'user_loc_2';

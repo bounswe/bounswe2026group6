@@ -63,6 +63,15 @@ function normalizeOptionalString(value, { uppercase = false } = {}) {
   return uppercase ? trimmed.toUpperCase() : trimmed;
 }
 
+function normalizeIsoCountryCode(value) {
+  const normalized = normalizeOptionalString(value, { uppercase: true });
+  if (!normalized) {
+    return null;
+  }
+
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
 function normalizeLocationInput(data) {
   const administrative = isPlainObject(data.administrative) ? data.administrative : null;
   const coordinate = isPlainObject(data.coordinate) ? data.coordinate : null;
@@ -72,7 +81,7 @@ function normalizeLocationInput(data) {
   const address = normalizeOptionalString(data.address ?? data.displayAddress ?? fallbackAddress);
   const city = normalizeOptionalString(data.city ?? administrative?.city);
   const country = normalizeOptionalString(data.country ?? administrative?.country);
-  const countryCode = normalizeOptionalString(administrative?.countryCode, { uppercase: true });
+  const countryCode = normalizeIsoCountryCode(administrative?.countryCode);
   const district = normalizeOptionalString(administrative?.district);
   const neighborhood = normalizeOptionalString(administrative?.neighborhood);
   const extraAddress = normalizeOptionalString(administrative?.extraAddress);

@@ -7,6 +7,7 @@ function readUserId(request) {
 }
 
 const visibilityValues = new Set(['PUBLIC', 'EMERGENCY_ONLY', 'PRIVATE']);
+const isoAlpha2Pattern = /^[A-Za-z]{2}$/;
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -240,6 +241,18 @@ function validateLocationPatch(body) {
       ) {
         return { ok: false, code: 'VALIDATION_ERROR', message: `administrative.${field} must be a string or null` };
       }
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(data.administrative, 'countryCode')
+      && data.administrative.countryCode !== null
+    ) {
+      const normalizedCountryCode = data.administrative.countryCode.trim();
+      if (!isoAlpha2Pattern.test(normalizedCountryCode)) {
+        return { ok: false, code: 'VALIDATION_ERROR', message: 'administrative.countryCode must be a 2-letter ISO code' };
+      }
+
+      data.administrative.countryCode = normalizedCountryCode.toUpperCase();
     }
   }
 

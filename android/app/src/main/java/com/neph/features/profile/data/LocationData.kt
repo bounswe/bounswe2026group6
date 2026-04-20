@@ -58,4 +58,5 @@ fun updateLocationData(newData: LocationData) {
 
 fun resetLocationDataForTesting() {
     currentLocationData = defaultLocationData
+    LocationTreeRepository.resetCacheMetadataForTesting()
 }
