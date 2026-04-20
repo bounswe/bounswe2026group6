@@ -13,6 +13,9 @@ type LocationPickerValue = {
     displayName: string;
     latitude: number;
     longitude: number;
+    accuracyMeters?: number | null;
+    source?: string | null;
+    capturedAt?: string | null;
     administrative: LocationSearchItem["administrative"];
 };
 
@@ -34,6 +37,9 @@ function toPickerValue(item: LocationSearchItem): LocationPickerValue {
         displayName: item.displayName,
         latitude: item.latitude,
         longitude: item.longitude,
+        accuracyMeters: null,
+        source: "search",
+        capturedAt: new Date().toISOString(),
         administrative: item.administrative,
     };
 }
@@ -47,6 +53,9 @@ function toManualPickerValue(latitude: number, longitude: number): LocationPicke
         displayName: `Pinned location (${normalizedLatitude}, ${normalizedLongitude})`,
         latitude,
         longitude,
+        accuracyMeters: null,
+        source: "map_pin",
+        capturedAt: new Date().toISOString(),
         administrative: {},
     };
 }
@@ -113,7 +122,14 @@ export function LocationPicker({
     }, [countryCode, query]);
 
     const handleResolveCoordinates = React.useCallback(
-        async (latitude: number, longitude: number) => {
+        async (
+            latitude: number,
+            longitude: number,
+            metadata?: {
+                source?: string | null;
+                accuracyMeters?: number | null;
+            }
+        ) => {
             const currentReverseRequestId = ++reverseRequestIdRef.current;
 
             try {
@@ -126,14 +142,24 @@ export function LocationPicker({
                     return;
                 }
 
-                onChange(toPickerValue(response.item));
+                onChange({
+                    ...toPickerValue(response.item),
+                    source: metadata?.source || "map_pin",
+                    accuracyMeters: metadata?.accuracyMeters ?? null,
+                    capturedAt: new Date().toISOString(),
+                });
             } catch (err) {
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
                     return;
                 }
 
                 setError(err instanceof Error ? err.message : "Could not resolve selected location.");
-                onChange(toManualPickerValue(latitude, longitude));
+                onChange({
+                    ...toManualPickerValue(latitude, longitude),
+                    source: metadata?.source || "map_pin",
+                    accuracyMeters: metadata?.accuracyMeters ?? null,
+                    capturedAt: new Date().toISOString(),
+                });
             } finally {
                 if (currentReverseRequestId === reverseRequestIdRef.current) {
                     setResolving(false);
@@ -156,7 +182,14 @@ export function LocationPicker({
             (position) => {
                 void handleResolveCoordinates(
                     position.coords.latitude,
-                    position.coords.longitude
+                    position.coords.longitude,
+                    {
+                        source: "current_device",
+                        accuracyMeters:
+                            typeof position.coords.accuracy === "number"
+                                ? position.coords.accuracy
+                                : null,
+                    }
                 );
             },
             (geoError) => {
@@ -209,7 +242,11 @@ export function LocationPicker({
                             type="button"
                             className="w-full border-b border-[#f0f0f2] px-3 py-2 text-left text-sm text-[#2b2b33] transition-colors hover:bg-[#fafafa]"
                             onClick={() => {
-                                onChange(toPickerValue(item));
+                                onChange({
+                                    ...toPickerValue(item),
+                                    source: "search",
+                                    capturedAt: new Date().toISOString(),
+                                });
                                 skipNextSearchRef.current = true;
                                 setResults([]);
                                 setQuery(item.displayName);
@@ -232,7 +269,10 @@ export function LocationPicker({
                         : null
                 }
                 onSelectPosition={(position) => {
-                    void handleResolveCoordinates(position.latitude, position.longitude);
+                    void handleResolveCoordinates(position.latitude, position.longitude, {
+                        source: "map_pin",
+                        accuracyMeters: null,
+                    });
                 }}
             />
 
