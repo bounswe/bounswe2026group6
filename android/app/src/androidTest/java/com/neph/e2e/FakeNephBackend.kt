@@ -15,6 +15,7 @@ import java.util.Locale
 
 private const val FakeBackendPort = 13006
 private const val ApiPathPrefix = "/api"
+private val IsoAlpha2CountryCodePattern = Regex("^[A-Za-z]{2}$")
 
 data class FakeProfileState(
     var firstName: String = "",
@@ -395,6 +396,8 @@ class FakeNephBackend {
         val administrative = payload.optJSONObject("administrative")
         val coordinate = payload.optJSONObject("coordinate")
 
+        validateAdministrativeCountryCode(administrative)
+
         val hasAddress =
             payload.has("address") ||
                 payload.has("displayAddress") ||
@@ -770,6 +773,30 @@ private fun normalizeLocationPatch(
         latitude = normalizeOptionalDouble(latitudeValue),
         longitude = normalizeOptionalDouble(longitudeValue)
     )
+}
+
+private fun validateAdministrativeCountryCode(administrative: JSONObject?) {
+    if (administrative == null || !administrative.has("countryCode") || administrative.isNull("countryCode")) {
+        return
+    }
+
+    val rawCountryCode = administrative.opt("countryCode")
+    if (rawCountryCode !is String) {
+        throw ApiException(
+            message = "administrative.countryCode must be a string or null",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
+
+    val normalizedCountryCode = rawCountryCode.trim()
+    if (!IsoAlpha2CountryCodePattern.matches(normalizedCountryCode)) {
+        throw ApiException(
+            message = "administrative.countryCode must be a 2-letter ISO code",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
 }
 
 private fun JSONObject?.hasOwn(key: String): Boolean {

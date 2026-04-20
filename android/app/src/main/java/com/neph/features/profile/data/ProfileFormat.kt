@@ -282,7 +282,12 @@ fun resolveCountryLabel(
         return null
     }
 
-    return locations[raw]?.label ?: raw
+    val countryKey = resolveCountryKey(raw, locations)
+    if (countryKey.isBlank()) {
+        return raw
+    }
+
+    return locations[countryKey]?.label ?: raw
 }
 
 fun resolveCityLabel(

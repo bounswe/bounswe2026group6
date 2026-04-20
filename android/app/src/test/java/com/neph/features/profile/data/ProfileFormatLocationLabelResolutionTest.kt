@@ -27,6 +27,7 @@ class ProfileFormatLocationLabelResolutionTest {
     @Test
     fun resolvesLocationLabelsFromSelectionKeys() {
         assertEquals("Turkey", resolveCountryLabel("tr", sampleLocations))
+        assertEquals("Turkey", resolveCountryLabel("TR", sampleLocations))
         assertEquals("Istanbul", resolveCityLabel("tr", "istanbul", sampleLocations))
         assertEquals("Kadıköy", resolveDistrictLabel("tr", "istanbul", "kadikoy", sampleLocations))
         assertEquals(
