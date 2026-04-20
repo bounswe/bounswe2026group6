@@ -16,6 +16,17 @@ import java.util.Locale
 private const val FakeBackendPort = 13006
 private const val ApiPathPrefix = "/api"
 private val IsoAlpha2CountryCodePattern = Regex("^[A-Za-z]{2}$")
+private val LocationPatchAllowedKeys = setOf(
+    "address",
+    "city",
+    "country",
+    "latitude",
+    "longitude",
+    "displayAddress",
+    "placeId",
+    "administrative",
+    "coordinate"
+)
 
 data class FakeProfileState(
     var firstName: String = "",
@@ -393,10 +404,11 @@ class FakeNephBackend {
         val user = requireAuthorizedUser(token)
         val profile = ensureProfile(user)
         val payload = body ?: JSONObject()
+
+        validateLocationPatchPayload(payload)
+
         val administrative = payload.optJSONObject("administrative")
         val coordinate = payload.optJSONObject("coordinate")
-
-        validateAdministrativeCountryCode(administrative)
 
         val hasAddress =
             payload.has("address") ||
@@ -775,28 +787,223 @@ private fun normalizeLocationPatch(
     )
 }
 
-private fun validateAdministrativeCountryCode(administrative: JSONObject?) {
-    if (administrative == null || !administrative.has("countryCode") || administrative.isNull("countryCode")) {
+private fun validateLocationPatchPayload(payload: JSONObject) {
+    val hasKnownField = jsonKeys(payload).any { LocationPatchAllowedKeys.contains(it) }
+    if (!hasKnownField) {
+        throw ApiException(
+            message = "At least one location field must be provided",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
+
+    if (payload.has("administrative") && payload.optJSONObject("administrative") == null) {
+        throw ApiException(
+            message = "administrative must be an object",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
+
+    if (payload.has("coordinate") && payload.optJSONObject("coordinate") == null) {
+        throw ApiException(
+            message = "coordinate must be an object",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
+
+    val administrative = payload.optJSONObject("administrative")
+    val coordinate = payload.optJSONObject("coordinate")
+
+    validateFlatCoordinatePair(payload)
+    validateFlatCoordinateRanges(payload)
+    validateLocationStringFields(payload)
+    validateCoordinateObject(payload, coordinate)
+    validateAdministrativeObject(administrative)
+}
+
+private fun validateFlatCoordinatePair(payload: JSONObject) {
+    val latitudeProvided = payload.has("latitude")
+    val longitudeProvided = payload.has("longitude")
+    if (latitudeProvided != longitudeProvided) {
+        throw ApiException(
+            message = "latitude and longitude must be provided together",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
+}
+
+private fun validateFlatCoordinateRanges(payload: JSONObject) {
+    if (payload.has("latitude") && !payload.isNull("latitude")) {
+        val latitude = payload.opt("latitude")
+        if (latitude !is Number || latitude.toDouble() !in -90.0..90.0) {
+            throw ApiException(
+                message = "latitude must be between -90 and 90",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+
+    if (payload.has("longitude") && !payload.isNull("longitude")) {
+        val longitude = payload.opt("longitude")
+        if (longitude !is Number || longitude.toDouble() !in -180.0..180.0) {
+            throw ApiException(
+                message = "longitude must be between -180 and 180",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+}
+
+private fun validateLocationStringFields(payload: JSONObject) {
+    for (field in listOf("address", "city", "country", "displayAddress", "placeId")) {
+        if (payload.has(field) && !payload.isNull(field) && payload.opt(field) !is String) {
+            throw ApiException(
+                message = "$field must be a string or null",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+}
+
+private fun validateCoordinateObject(payload: JSONObject, coordinate: JSONObject?) {
+    if (coordinate == null) {
         return
     }
 
-    val rawCountryCode = administrative.opt("countryCode")
-    if (rawCountryCode !is String) {
+    val coordinateHasLatitude = coordinate.has("latitude")
+    val coordinateHasLongitude = coordinate.has("longitude")
+    if (coordinateHasLatitude != coordinateHasLongitude) {
         throw ApiException(
-            message = "administrative.countryCode must be a string or null",
+            message = "coordinate.latitude and coordinate.longitude must be provided together",
             status = 400,
             code = "VALIDATION_ERROR"
         )
     }
 
-    val normalizedCountryCode = rawCountryCode.trim()
-    if (!IsoAlpha2CountryCodePattern.matches(normalizedCountryCode)) {
+    if (coordinateHasLatitude && !coordinate.isNull("latitude")) {
+        val latitude = coordinate.opt("latitude")
+        if (latitude !is Number || latitude.toDouble() !in -90.0..90.0) {
+            throw ApiException(
+                message = "coordinate.latitude must be between -90 and 90",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+
+    if (coordinateHasLongitude && !coordinate.isNull("longitude")) {
+        val longitude = coordinate.opt("longitude")
+        if (longitude !is Number || longitude.toDouble() !in -180.0..180.0) {
+            throw ApiException(
+                message = "coordinate.longitude must be between -180 and 180",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+
+    if (coordinate.has("accuracyMeters") && !coordinate.isNull("accuracyMeters")) {
+        val accuracyMeters = coordinate.opt("accuracyMeters")
+        if (accuracyMeters !is Number || accuracyMeters.toDouble() < 0.0) {
+            throw ApiException(
+                message = "coordinate.accuracyMeters must be a number >= 0",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+
+    if (coordinate.has("source") && !coordinate.isNull("source") && coordinate.opt("source") !is String) {
         throw ApiException(
-            message = "administrative.countryCode must be a 2-letter ISO code",
+            message = "coordinate.source must be a string or null",
             status = 400,
             code = "VALIDATION_ERROR"
         )
     }
+
+    if (coordinate.has("capturedAt") && !coordinate.isNull("capturedAt") && coordinate.opt("capturedAt") !is String) {
+        throw ApiException(
+            message = "coordinate.capturedAt must be a string or null",
+            status = 400,
+            code = "VALIDATION_ERROR"
+        )
+    }
+
+    if (
+        payload.has("latitude") &&
+            coordinate.has("latitude") &&
+            !payload.isNull("latitude") &&
+            !coordinate.isNull("latitude")
+    ) {
+        val latitude = payload.opt("latitude") as? Number
+        val coordinateLatitude = coordinate.opt("latitude") as? Number
+        if (latitude != null && coordinateLatitude != null && latitude.toDouble() != coordinateLatitude.toDouble()) {
+            throw ApiException(
+                message = "latitude conflicts with coordinate.latitude",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+
+    if (
+        payload.has("longitude") &&
+            coordinate.has("longitude") &&
+            !payload.isNull("longitude") &&
+            !coordinate.isNull("longitude")
+    ) {
+        val longitude = payload.opt("longitude") as? Number
+        val coordinateLongitude = coordinate.opt("longitude") as? Number
+        if (longitude != null && coordinateLongitude != null && longitude.toDouble() != coordinateLongitude.toDouble()) {
+            throw ApiException(
+                message = "longitude conflicts with coordinate.longitude",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+}
+
+private fun validateAdministrativeObject(administrative: JSONObject?) {
+    if (administrative == null) {
+        return
+    }
+
+    for (field in listOf("countryCode", "country", "city", "district", "neighborhood", "extraAddress", "postalCode")) {
+        if (administrative.has(field) && !administrative.isNull(field) && administrative.opt(field) !is String) {
+            throw ApiException(
+                message = "administrative.$field must be a string or null",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+
+    if (administrative.has("countryCode") && !administrative.isNull("countryCode")) {
+        val rawCountryCode = administrative.optString("countryCode").trim()
+        if (!IsoAlpha2CountryCodePattern.matches(rawCountryCode)) {
+            throw ApiException(
+                message = "administrative.countryCode must be a 2-letter ISO code",
+                status = 400,
+                code = "VALIDATION_ERROR"
+            )
+        }
+    }
+}
+
+private fun jsonKeys(json: JSONObject): List<String> {
+    val iterator = json.keys()
+    val keys = mutableListOf<String>()
+    while (iterator.hasNext()) {
+        keys.add(iterator.next())
+    }
+    return keys
 }
 
 private fun JSONObject?.hasOwn(key: String): Boolean {
