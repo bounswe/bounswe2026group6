@@ -342,6 +342,27 @@ export default function ProfileView() {
                 )?.label ||
                 locationPickerValue?.administrative.neighborhood ||
                 profile.neighborhood;
+            const hasCoordinateSelection =
+                typeof locationPickerValue?.latitude === "number" &&
+                typeof locationPickerValue?.longitude === "number";
+            const resolvedCountryLabel =
+                countryData?.label ||
+                locationPickerValue?.administrative.country ||
+                profile.country ||
+                null;
+            const resolvedCityLabel =
+                countryData?.cities[saveCityKey]?.label ||
+                locationPickerValue?.administrative.city ||
+                profile.city ||
+                null;
+            const resolvedExtraAddress =
+                profile.extraAddress ||
+                locationPickerValue?.administrative.extraAddress ||
+                "";
+            const resolvedCountryCode =
+                (locationPickerValue?.administrative.countryCode || "").trim().toUpperCase() ||
+                (saveCountryKey || "").trim().toUpperCase() ||
+                null;
 
             await patchMyPhysical(token, {
                 age: profile.age ? Number(profile.age) : undefined,
@@ -358,25 +379,41 @@ export default function ProfileView() {
             });
 
             await patchMyLocation(token, {
-                country:
-                    countryData?.label ||
-                    locationPickerValue?.administrative.country ||
-                    profile.country ||
-                    null,
-                city:
-                    countryData?.cities[saveCityKey]?.label ||
-                    locationPickerValue?.administrative.city ||
-                    profile.city ||
-                    null,
+                country: resolvedCountryLabel,
+                city: resolvedCityLabel,
                 address:
                     buildAddress({
                         district: districtLabel,
                         neighborhood: neighborhoodLabel,
-                        extraAddress:
-                            profile.extraAddress ||
-                            locationPickerValue?.administrative.extraAddress ||
-                            "",
+                        extraAddress: resolvedExtraAddress,
                     }) || null,
+                latitude: hasCoordinateSelection
+                    ? locationPickerValue.latitude
+                    : undefined,
+                longitude: hasCoordinateSelection
+                    ? locationPickerValue.longitude
+                    : undefined,
+                displayAddress: locationPickerValue?.displayName || undefined,
+                placeId: locationPickerValue?.placeId || undefined,
+                administrative: {
+                    countryCode: resolvedCountryCode,
+                    country: resolvedCountryLabel,
+                    city: resolvedCityLabel,
+                    district: districtLabel || null,
+                    neighborhood: neighborhoodLabel || null,
+                    extraAddress: resolvedExtraAddress || null,
+                },
+                coordinate: hasCoordinateSelection
+                    ? {
+                        latitude: locationPickerValue.latitude,
+                        longitude: locationPickerValue.longitude,
+                        accuracyMeters: locationPickerValue.accuracyMeters ?? null,
+                        source: locationPickerValue.source || "profile_form",
+                        capturedAt:
+                            locationPickerValue.capturedAt ||
+                            new Date().toISOString(),
+                    }
+                    : undefined,
             });
 
             await patchMyPrivacy(token, {

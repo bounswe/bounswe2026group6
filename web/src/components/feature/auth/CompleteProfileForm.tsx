@@ -280,6 +280,13 @@ export default function CompleteProfileForm() {
             form.extraAddress ||
             locationPickerValue?.administrative.extraAddress ||
             "";
+        const hasCoordinateSelection =
+            typeof locationPickerValue?.latitude === "number" &&
+            typeof locationPickerValue?.longitude === "number";
+        const resolvedCountryCode =
+            (locationPickerValue?.administrative.countryCode || "").trim().toUpperCase() ||
+            (form.country || "").trim().toUpperCase() ||
+            null;
 
         if (!form.height || !form.weight) {
             setError("Please fill in all required fields.");
@@ -328,6 +335,33 @@ export default function CompleteProfileForm() {
                         neighborhood: resolvedNeighborhoodLabel,
                         extraAddress: resolvedExtraAddress,
                     }) || null,
+                latitude: hasCoordinateSelection
+                    ? locationPickerValue.latitude
+                    : undefined,
+                longitude: hasCoordinateSelection
+                    ? locationPickerValue.longitude
+                    : undefined,
+                displayAddress: locationPickerValue?.displayName || undefined,
+                placeId: locationPickerValue?.placeId || undefined,
+                administrative: {
+                    countryCode: resolvedCountryCode,
+                    country: resolvedCountryLabel || null,
+                    city: resolvedCityLabel || null,
+                    district: resolvedDistrictLabel || null,
+                    neighborhood: resolvedNeighborhoodLabel || null,
+                    extraAddress: resolvedExtraAddress || null,
+                },
+                coordinate: hasCoordinateSelection
+                    ? {
+                        latitude: locationPickerValue.latitude,
+                        longitude: locationPickerValue.longitude,
+                        accuracyMeters: locationPickerValue.accuracyMeters ?? null,
+                        source: locationPickerValue.source || "profile_form",
+                        capturedAt:
+                            locationPickerValue.capturedAt ||
+                            new Date().toISOString(),
+                    }
+                    : undefined,
             });
 
             await patchMyPrivacy(token, {

@@ -260,7 +260,31 @@ export async function patchMyHealth(
 
 export async function patchMyLocation(
     token: string,
-    payload: { address?: string | null; city?: string | null; country?: string | null }
+    payload: {
+        address?: string | null;
+        city?: string | null;
+        country?: string | null;
+        latitude?: number | null;
+        longitude?: number | null;
+        displayAddress?: string | null;
+        placeId?: string | null;
+        administrative?: {
+            countryCode?: string | null;
+            country?: string | null;
+            city?: string | null;
+            district?: string | null;
+            neighborhood?: string | null;
+            extraAddress?: string | null;
+            postalCode?: string | null;
+        };
+        coordinate?: {
+            latitude?: number | null;
+            longitude?: number | null;
+            accuracyMeters?: number | null;
+            source?: string | null;
+            capturedAt?: string | null;
+        };
+    }
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/location", {
         method: "PATCH",
