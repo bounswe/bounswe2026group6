@@ -10,6 +10,8 @@ import mockwebserver3.RecordedRequest
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.time.Instant
+import java.util.Locale
 
 private const val FakeBackendPort = 13006
 private const val ApiPathPrefix = "/api"
@@ -29,6 +31,16 @@ data class FakeProfileState(
     var country: String? = null,
     var city: String? = null,
     var address: String? = null,
+    var displayAddress: String? = null,
+    var countryCode: String? = null,
+    var district: String? = null,
+    var neighborhood: String? = null,
+    var extraAddress: String? = null,
+    var postalCode: String? = null,
+    var placeId: String? = null,
+    var latitude: Double? = null,
+    var longitude: Double? = null,
+    var locationLastUpdated: String? = null,
     var locationSharingEnabled: Boolean = false,
     var profession: String? = null,
     var expertiseAreas: List<String> = emptyList()
@@ -41,6 +53,23 @@ private data class FakeUserState(
     var verified: Boolean,
     var accessToken: String = "access-token-1",
     var profile: FakeProfileState? = null
+)
+
+private object MissingJsonField
+
+private data class NormalizedLocationPatch(
+    val address: String?,
+    val displayAddress: String?,
+    val city: String?,
+    val country: String?,
+    val countryCode: String?,
+    val district: String?,
+    val neighborhood: String?,
+    val extraAddress: String?,
+    val postalCode: String?,
+    val placeId: String?,
+    val latitude: Double?,
+    val longitude: Double?
 )
 
 class FakeNephBackend {
@@ -362,17 +391,74 @@ class FakeNephBackend {
     private fun handlePatchLocation(token: String?, body: JSONObject?): JSONObject {
         val user = requireAuthorizedUser(token)
         val profile = ensureProfile(user)
-        val administrative = body?.optJSONObject("administrative")
-        profile.country = body.optStringOrNull("country")
-            ?: administrative.optStringOrNull("country")
-            ?: profile.country
-        profile.city = body.optStringOrNull("city")
-            ?: administrative.optStringOrNull("city")
-            ?: profile.city
-        profile.address = body.optStringOrNull("displayAddress")
-            ?: body.optStringOrNull("address")
-            ?: buildAdministrativeAddress(administrative)
-            ?: profile.address
+        val payload = body ?: JSONObject()
+        val administrative = payload.optJSONObject("administrative")
+        val coordinate = payload.optJSONObject("coordinate")
+
+        val hasAddress =
+            payload.has("address") ||
+                payload.has("displayAddress") ||
+                administrative.hasOwn("neighborhood") ||
+                administrative.hasOwn("district") ||
+                administrative.hasOwn("extraAddress")
+        val hasDisplayAddress = hasAddress || payload.has("displayAddress")
+        val hasCity = payload.has("city") || administrative.hasOwn("city")
+        val hasCountry = payload.has("country") || administrative.hasOwn("country")
+        val hasCountryCode = administrative.hasOwn("countryCode")
+        val hasDistrict = administrative.hasOwn("district")
+        val hasNeighborhood = administrative.hasOwn("neighborhood")
+        val hasExtraAddress = administrative.hasOwn("extraAddress")
+        val hasPostalCode = administrative.hasOwn("postalCode")
+        val hasPlaceId = payload.has("placeId")
+        val hasLatitude = payload.has("latitude") || coordinate.hasOwn("latitude")
+        val hasLongitude = payload.has("longitude") || coordinate.hasOwn("longitude")
+
+        val normalized = normalizeLocationPatch(payload, administrative, coordinate)
+
+        if (hasAddress) {
+            profile.address = normalized.address
+        }
+        if (hasDisplayAddress) {
+            profile.displayAddress = normalized.displayAddress
+        }
+        if (hasCity) {
+            profile.city = normalized.city
+        }
+        if (hasCountry) {
+            profile.country = normalized.country
+        }
+        if (hasCountryCode) {
+            profile.countryCode = normalized.countryCode
+        }
+        if (hasDistrict) {
+            profile.district = normalized.district
+        }
+        if (hasNeighborhood) {
+            profile.neighborhood = normalized.neighborhood
+        }
+        if (hasExtraAddress) {
+            profile.extraAddress = normalized.extraAddress
+        }
+        if (hasPostalCode) {
+            profile.postalCode = normalized.postalCode
+        }
+        if (hasPlaceId) {
+            profile.placeId = normalized.placeId
+        }
+        if (hasLatitude) {
+            profile.latitude = normalized.latitude
+        }
+        if (hasLongitude) {
+            profile.longitude = normalized.longitude
+        }
+
+        if (
+            hasAddress || hasDisplayAddress || hasCity || hasCountry || hasCountryCode || hasDistrict ||
+                hasNeighborhood || hasExtraAddress || hasPostalCode || hasPlaceId || hasLatitude || hasLongitude
+        ) {
+            profile.locationLastUpdated = Instant.now().toString()
+        }
+
         return profileResponseJson(user, profile)
     }
 
@@ -466,22 +552,38 @@ class FakeNephBackend {
             .put(
                 "locationProfile",
                 JSONObject()
-                    .put("address", profile.address)
-                    .put("displayAddress", profile.address)
-                    .put("city", profile.city)
-                    .put("country", profile.country)
+                    .putNullable("address", profile.address)
+                    .putNullable("displayAddress", profile.displayAddress ?: profile.address)
+                    .putNullable("city", profile.city)
+                    .putNullable("country", profile.country)
                     .put(
                         "administrative",
                         JSONObject()
-                            .put("country", profile.country)
-                            .put("city", profile.city)
-                            .put("district", JSONObject.NULL)
-                            .put("neighborhood", JSONObject.NULL)
-                            .put("extraAddress", profile.address)
+                            .putNullable("countryCode", profile.countryCode)
+                            .putNullable("country", profile.country)
+                            .putNullable("city", profile.city)
+                            .putNullable("district", profile.district)
+                            .putNullable("neighborhood", profile.neighborhood)
+                            .putNullable("extraAddress", profile.extraAddress)
+                            .putNullable("postalCode", profile.postalCode)
                     )
-                    .put("latitude", JSONObject.NULL)
-                    .put("longitude", JSONObject.NULL)
-                    .put("lastUpdated", "2026-04-19T00:00:00Z")
+                    .putNullable("placeId", profile.placeId)
+                    .putNullable("latitude", profile.latitude)
+                    .putNullable("longitude", profile.longitude)
+                    .put(
+                        "coordinate",
+                        if (profile.latitude == null || profile.longitude == null) {
+                            JSONObject.NULL
+                        } else {
+                            JSONObject()
+                                .put("latitude", profile.latitude)
+                                .put("longitude", profile.longitude)
+                                .put("accuracyMeters", JSONObject.NULL)
+                                .put("source", JSONObject.NULL)
+                                .put("capturedAt", profile.locationLastUpdated ?: "2026-04-19T00:00:00Z")
+                        }
+                    )
+                    .put("lastUpdated", profile.locationLastUpdated ?: "2026-04-19T00:00:00Z")
             )
             .put("expertise", expertiseArray)
     }
@@ -614,6 +716,115 @@ private fun buildAdministrativeAddress(administrative: JSONObject?): String? {
         .ifBlank { null }
 }
 
+private fun normalizeLocationPatch(
+    payload: JSONObject,
+    administrative: JSONObject?,
+    coordinate: JSONObject?
+): NormalizedLocationPatch {
+    val fallbackAddress = buildAdministrativeAddress(administrative)
+
+    val displayAddressValue = selectNullish(
+        payload.fieldOrMissing("displayAddress"),
+        payload.fieldOrMissing("address"),
+        fallbackAddress
+    )
+    val addressValue = selectNullish(
+        payload.fieldOrMissing("address"),
+        payload.fieldOrMissing("displayAddress"),
+        fallbackAddress
+    )
+    val cityValue = selectNullish(
+        payload.fieldOrMissing("city"),
+        administrative.fieldOrMissing("city")
+    )
+    val countryValue = selectNullish(
+        payload.fieldOrMissing("country"),
+        administrative.fieldOrMissing("country")
+    )
+    val countryCodeValue = administrative.fieldOrMissing("countryCode")
+    val districtValue = administrative.fieldOrMissing("district")
+    val neighborhoodValue = administrative.fieldOrMissing("neighborhood")
+    val extraAddressValue = administrative.fieldOrMissing("extraAddress")
+    val postalCodeValue = administrative.fieldOrMissing("postalCode")
+    val placeIdValue = payload.fieldOrMissing("placeId")
+    val latitudeValue = selectNullish(
+        payload.fieldOrMissing("latitude"),
+        coordinate.fieldOrMissing("latitude")
+    )
+    val longitudeValue = selectNullish(
+        payload.fieldOrMissing("longitude"),
+        coordinate.fieldOrMissing("longitude")
+    )
+
+    return NormalizedLocationPatch(
+        address = normalizeOptionalString(addressValue),
+        displayAddress = normalizeOptionalString(displayAddressValue),
+        city = normalizeOptionalString(cityValue),
+        country = normalizeOptionalString(countryValue),
+        countryCode = normalizeOptionalString(countryCodeValue, uppercase = true),
+        district = normalizeOptionalString(districtValue),
+        neighborhood = normalizeOptionalString(neighborhoodValue),
+        extraAddress = normalizeOptionalString(extraAddressValue),
+        postalCode = normalizeOptionalString(postalCodeValue),
+        placeId = normalizeOptionalString(placeIdValue),
+        latitude = normalizeOptionalDouble(latitudeValue),
+        longitude = normalizeOptionalDouble(longitudeValue)
+    )
+}
+
+private fun JSONObject?.hasOwn(key: String): Boolean {
+    return this != null && has(key)
+}
+
+private fun JSONObject?.fieldOrMissing(key: String): Any? {
+    if (this == null || !has(key)) {
+        return MissingJsonField
+    }
+
+    return if (isNull(key)) null else opt(key)
+}
+
+private fun selectNullish(vararg values: Any?): Any? {
+    for (value in values) {
+        if (value === MissingJsonField || value == null || value == JSONObject.NULL) {
+            continue
+        }
+
+        return value
+    }
+
+    return null
+}
+
+private fun normalizeOptionalString(value: Any?, uppercase: Boolean = false): String? {
+    if (value !is String) {
+        return null
+    }
+
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) {
+        return null
+    }
+
+    return if (uppercase) {
+        trimmed.uppercase(Locale.ROOT)
+    } else {
+        trimmed
+    }
+}
+
+private fun normalizeOptionalDouble(value: Any?): Double? {
+    return when (value) {
+        is Number -> value.toDouble()
+        is String -> value.trim().toDoubleOrNull()
+        else -> null
+    }
+}
+
 private fun JSONObject.putNullable(key: String, value: String?): JSONObject {
+    return put(key, value ?: JSONObject.NULL)
+}
+
+private fun JSONObject.putNullable(key: String, value: Double?): JSONObject {
     return put(key, value ?: JSONObject.NULL)
 }

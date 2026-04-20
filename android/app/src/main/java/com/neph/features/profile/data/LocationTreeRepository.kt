@@ -115,7 +115,7 @@ object LocationTreeRepository {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
                 val label = item.optString("label").trim()
-                val value = item.optString("value").trim().lowercase()
+                val value = item.optString("value").trim()
                 if (label.isBlank() || value.isBlank()) {
                     continue
                 }

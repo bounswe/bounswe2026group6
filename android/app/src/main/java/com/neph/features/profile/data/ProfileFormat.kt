@@ -116,7 +116,10 @@ fun findCountryKeyByLabel(label: String?, locations: LocationData = locationData
         return ""
     }
 
-    return locations.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
+    val normalizedLabel = label.trim()
+    return locations.entries.firstOrNull {
+        it.value.label.equals(normalizedLabel, ignoreCase = true)
+    }?.key.orEmpty()
 }
 
 fun findCityKeyByLabel(
@@ -129,7 +132,10 @@ fun findCityKeyByLabel(
     }
 
     val country = locations[countryKey] ?: return ""
-    return country.cities.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
+    val normalizedLabel = label.trim()
+    return country.cities.entries.firstOrNull {
+        it.value.label.equals(normalizedLabel, ignoreCase = true)
+    }?.key.orEmpty()
 }
 
 fun findDistrictKeyByLabel(
@@ -143,7 +149,10 @@ fun findDistrictKeyByLabel(
     }
 
     val city = locations[countryKey]?.cities?.get(cityKey) ?: return ""
-    return city.districts.entries.firstOrNull { it.value.label == label }?.key.orEmpty()
+    val normalizedLabel = label.trim()
+    return city.districts.entries.firstOrNull {
+        it.value.label.equals(normalizedLabel, ignoreCase = true)
+    }?.key.orEmpty()
 }
 
 fun findNeighborhoodValueByLabel(
@@ -164,7 +173,10 @@ fun findNeighborhoodValueByLabel(
         ?.get(districtKey)
         ?: return ""
 
-    return district.neighborhoods.firstOrNull { it.label == label }?.value.orEmpty()
+    val normalizedLabel = label.trim()
+    return district.neighborhoods.firstOrNull {
+        it.label.equals(normalizedLabel, ignoreCase = true)
+    }?.value.orEmpty()
 }
 
 fun splitAddressParts(address: String?): Triple<String?, String?, String?> {
@@ -197,11 +209,19 @@ private fun resolveCountryKey(
         return ""
     }
 
-    if (locations.containsKey(raw)) {
-        return raw
+    val normalizedKey = raw.lowercase(Locale.ROOT)
+    if (locations.containsKey(normalizedKey)) {
+        return normalizedKey
     }
 
     return findCountryKeyByLabel(raw, locations)
+}
+
+fun resolveCountrySelectionKey(
+    countryKeyOrLabel: String?,
+    locations: LocationData = locationData
+): String? {
+    return resolveCountryKey(countryKeyOrLabel, locations).ifBlank { null }
 }
 
 private fun resolveCityKey(
@@ -215,9 +235,11 @@ private fun resolveCityKey(
         return ""
     }
 
+    val normalizedCityKey = rawCity.lowercase(Locale.ROOT)
     val cityByKey = locations[countryKey]?.cities?.get(rawCity)
+        ?: locations[countryKey]?.cities?.get(normalizedCityKey)
     if (cityByKey != null) {
-        return rawCity
+        return if (locations[countryKey]?.cities?.containsKey(rawCity) == true) rawCity else normalizedCityKey
     }
 
     return findCityKeyByLabel(countryKey, rawCity, locations)
@@ -237,9 +259,15 @@ private fun resolveDistrictKey(
         return ""
     }
 
+    val normalizedDistrictKey = rawDistrict.lowercase(Locale.ROOT)
     val districtByKey = locations[countryKey]?.cities?.get(cityKey)?.districts?.get(rawDistrict)
+        ?: locations[countryKey]?.cities?.get(cityKey)?.districts?.get(normalizedDistrictKey)
     if (districtByKey != null) {
-        return rawDistrict
+        return if (locations[countryKey]?.cities?.get(cityKey)?.districts?.containsKey(rawDistrict) == true) {
+            rawDistrict
+        } else {
+            normalizedDistrictKey
+        }
     }
 
     return findDistrictKeyByLabel(countryKey, cityKey, rawDistrict, locations)
@@ -337,8 +365,8 @@ fun resolveNeighborhoodLabel(
         ?.neighborhoods
         ?: return rawNeighborhood
 
-    return neighborhoods.firstOrNull { it.value == rawNeighborhood }?.label
-        ?: neighborhoods.firstOrNull { it.label == rawNeighborhood }?.label
+    return neighborhoods.firstOrNull { it.value.equals(rawNeighborhood, ignoreCase = true) }?.label
+        ?: neighborhoods.firstOrNull { it.label.equals(rawNeighborhood, ignoreCase = true) }?.label
         ?: rawNeighborhood
 }
 

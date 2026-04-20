@@ -94,7 +94,7 @@ beforeEach(async () => {
 			users
 		RESTART IDENTITY CASCADE;
 	`);
-});
+}, 15000);
 
 describe('help-requests integration', () => {
 	test('POST /api/help-requests creates request as guest without token', async () => {

@@ -22,7 +22,7 @@ class LocationTreeRepositoryTest {
                         "cankaya": {
                           "label": "Çankaya",
                           "neighborhoods": [
-                            { "label": "Anıttepe", "value": "anittepe" }
+                            { "label": "Anıttepe", "value": "AnitTepeCode" }
                           ]
                         }
                       }
@@ -51,6 +51,6 @@ class LocationTreeRepositoryTest {
             .orEmpty()
         assertEquals(1, neighborhoods.size)
         assertEquals("Anıttepe", neighborhoods.first().label)
-        assertEquals("anittepe", neighborhoods.first().value)
+        assertEquals("AnitTepeCode", neighborhoods.first().value)
     }
 }

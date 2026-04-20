@@ -8,6 +8,7 @@ import com.neph.features.auth.data.AuthSessionStore
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
+import java.util.Locale
 
 object ProfileRepository {
     private const val PrefsName = "neph_profile"
@@ -147,13 +148,15 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    val countryCode = profile.country?.trim()?.takeIf(String::isNotBlank)
-                    val backendCountryCode = countryCode?.uppercase()
-                    val countryLabel = resolveCountryLabel(countryCode)
-                    val cityLabel = resolveCityLabel(countryCode, profile.city)
-                    val districtLabel = resolveDistrictLabel(countryCode, profile.city, profile.district)
+                    val selectedCountry = profile.country?.trim()?.takeIf(String::isNotBlank)
+                    val resolvedCountryKey = resolveCountrySelectionKey(selectedCountry)
+                    val countryLookupValue = resolvedCountryKey ?: selectedCountry
+                    val backendCountryCode = resolvedCountryKey?.uppercase(Locale.ROOT)
+                    val countryLabel = resolveCountryLabel(countryLookupValue)
+                    val cityLabel = resolveCityLabel(countryLookupValue, profile.city)
+                    val districtLabel = resolveDistrictLabel(countryLookupValue, profile.city, profile.district)
                     val neighborhoodLabel = resolveNeighborhoodLabel(
-                        countryCode,
+                        countryLookupValue,
                         profile.city,
                         profile.district,
                         profile.neighborhood

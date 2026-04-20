@@ -44,6 +44,11 @@ class ProfileFormatLocationLabelResolutionTest {
             "Bostancı",
             resolveNeighborhoodLabel("tr", "istanbul", "kadikoy", "Bostancı", sampleLocations)
         )
+        assertEquals(
+            "Bostancı",
+            resolveNeighborhoodLabel("tr", "istanbul", "kadikoy", "BOSTANCI", sampleLocations)
+        )
+        assertEquals("tr", findCountryKeyByLabel("turkey", sampleLocations))
     }
 
     @Test
@@ -52,5 +57,13 @@ class ProfileFormatLocationLabelResolutionTest {
         assertNull(resolveCityLabel("tr", "", sampleLocations))
         assertNull(resolveDistrictLabel("tr", "istanbul", "", sampleLocations))
         assertNull(resolveNeighborhoodLabel("tr", "istanbul", "kadikoy", "", sampleLocations))
+    }
+
+    @Test
+    fun resolvesTrustedCountryKeysFromEitherKeyOrLabel() {
+        assertEquals("tr", resolveCountrySelectionKey("tr", sampleLocations))
+        assertEquals("tr", resolveCountrySelectionKey("TR", sampleLocations))
+        assertEquals("tr", resolveCountrySelectionKey("Turkey", sampleLocations))
+        assertNull(resolveCountrySelectionKey("Unknown Country", sampleLocations))
     }
 }

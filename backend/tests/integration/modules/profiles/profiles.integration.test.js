@@ -227,6 +227,143 @@ describe('profiles integration', () => {
 		expect(getResponse.body.locationProfile.administrative.neighborhood).toBe('Levazim');
 	});
 
+	test('PATCH /api/profiles/me/location preserves omitted fields in partial updates', async () => {
+		const app = createApp();
+		const userId = 'user_loc_partial_1';
+		await seedActiveUser(userId, 'locpartial1@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const initialResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				country: 'Turkey',
+				city: 'Istanbul',
+				displayAddress: 'Levazim, Besiktas, Istanbul',
+				placeId: 'osm:node:111',
+				administrative: {
+					countryCode: 'TR',
+					country: 'Turkey',
+					city: 'Istanbul',
+					district: 'Besiktas',
+					neighborhood: 'Levazim',
+					extraAddress: 'Bina B',
+				},
+			});
+
+		expect(initialResponse.status).toBe(200);
+
+		const partialResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				administrative: {
+					district: 'Kadikoy',
+				},
+			});
+
+		expect(partialResponse.status).toBe(200);
+		expect(partialResponse.body.locationProfile.country).toBe('Turkey');
+		expect(partialResponse.body.locationProfile.city).toBe('Istanbul');
+		expect(partialResponse.body.locationProfile.placeId).toBe('osm:node:111');
+		expect(partialResponse.body.locationProfile.administrative.district).toBe('Kadikoy');
+	});
+
+	test('PATCH /api/profiles/me/location supports explicit null clear semantics', async () => {
+		const app = createApp();
+		const userId = 'user_loc_clear_1';
+		await seedActiveUser(userId, 'locclear1@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const initialResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				country: 'Turkey',
+				city: 'Istanbul',
+				displayAddress: 'Levazim, Besiktas, Istanbul',
+				placeId: 'osm:node:222',
+			});
+
+		expect(initialResponse.status).toBe(200);
+
+		const clearResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				country: null,
+				city: null,
+				displayAddress: null,
+				placeId: null,
+				administrative: {
+					district: null,
+					neighborhood: null,
+					extraAddress: null,
+				},
+			});
+
+		expect(clearResponse.status).toBe(200);
+		expect(clearResponse.body.locationProfile.country).toBeNull();
+		expect(clearResponse.body.locationProfile.city).toBeNull();
+		expect(clearResponse.body.locationProfile.address).toBeNull();
+		expect(clearResponse.body.locationProfile.displayAddress).toBeNull();
+		expect(clearResponse.body.locationProfile.placeId).toBeNull();
+		expect(clearResponse.body.locationProfile.administrative.district).toBeNull();
+		expect(clearResponse.body.locationProfile.administrative.neighborhood).toBeNull();
+		expect(clearResponse.body.locationProfile.administrative.extraAddress).toBeNull();
+	});
+
+	test('PATCH /api/profiles/me/location preserves coordinate nullability contract', async () => {
+		const app = createApp();
+		const userId = 'user_loc_coordinate_1';
+		await seedActiveUser(userId, 'loccoordinate1@example.com');
+		const token = buildAuthToken(userId);
+		await createBaseProfile(app, token);
+
+		const noCoordinateResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({ city: 'Istanbul' });
+
+		expect(noCoordinateResponse.status).toBe(200);
+		expect(noCoordinateResponse.body.locationProfile.coordinate).toBeNull();
+
+		const withCoordinateResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				coordinate: {
+					latitude: 41.01,
+					longitude: 29.02,
+				},
+			});
+
+		expect(withCoordinateResponse.status).toBe(200);
+		expect(withCoordinateResponse.body.locationProfile.coordinate).toEqual(
+			expect.objectContaining({
+				latitude: 41.01,
+				longitude: 29.02,
+			}),
+		);
+
+		const clearCoordinateResponse = await request(app)
+			.patch('/api/profiles/me/location')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				coordinate: {
+					latitude: null,
+					longitude: null,
+				},
+			});
+
+		expect(clearCoordinateResponse.status).toBe(200);
+		expect(clearCoordinateResponse.body.locationProfile.latitude).toBeNull();
+		expect(clearCoordinateResponse.body.locationProfile.longitude).toBeNull();
+		expect(clearCoordinateResponse.body.locationProfile.coordinate).toBeNull();
+	});
+
 	test('PATCH /api/profiles/me/privacy returns 200 with valid payload', async () => {
 		const app = createApp();
 		const userId = 'user_priv_1';

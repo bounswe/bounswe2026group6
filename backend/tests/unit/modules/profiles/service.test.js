@@ -78,6 +78,35 @@ describe('profiles service', () => {
 		expect(result.expertise[0].profession).toBe('Doctor');
 	});
 
+	test('getMyProfile keeps locationProfile.coordinate null when only one coordinate value exists', async () => {
+		repository.findProfileBundleByUserId.mockResolvedValueOnce(
+			makeBundleRow({ latitude: 41.0, longitude: null }),
+		);
+		repository.listExpertiseByProfileId.mockResolvedValueOnce([]);
+
+		const result = await getMyProfile('u1');
+
+		expect(result.locationProfile.latitude).toBe(41.0);
+		expect(result.locationProfile.longitude).toBeNull();
+		expect(result.locationProfile.coordinate).toBeNull();
+	});
+
+	test('getMyProfile includes locationProfile.coordinate when latitude and longitude both exist', async () => {
+		repository.findProfileBundleByUserId.mockResolvedValueOnce(
+			makeBundleRow({ latitude: 41.0123, longitude: 29.0456 }),
+		);
+		repository.listExpertiseByProfileId.mockResolvedValueOnce([]);
+
+		const result = await getMyProfile('u1');
+
+		expect(result.locationProfile.coordinate).toEqual(
+			expect.objectContaining({
+				latitude: 41.0123,
+				longitude: 29.0456,
+			}),
+		);
+	});
+
 	test('patchMyProfile creates profile when missing', async () => {
 		repository.findActiveUserById.mockResolvedValueOnce({ user_id: 'u1' });
 		repository.findProfileByUserId.mockResolvedValueOnce(null);
