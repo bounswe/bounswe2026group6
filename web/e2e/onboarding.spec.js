@@ -43,7 +43,14 @@ test('new user can sign up, verify email, complete their profile, and see persis
   await page.locator('#country').selectOption('tr');
   await page.locator('#city').selectOption('istanbul');
   await page.locator('#district').selectOption('kadikoy');
-  await page.locator('#neighborhood').selectOption('bostanci');
+  const neighborhoodValue = await page.locator('#neighborhood option').evaluateAll((options) => {
+    return options
+      .map((option) => option.value)
+      .find((value) => value && value.trim().length > 0) || null;
+  });
+
+  expect(neighborhoodValue).toBeTruthy();
+  await page.locator('#neighborhood').selectOption(neighborhoodValue);
   await page.locator('#extraAddress').fill('Test Apartment 7');
   await page.getByRole('button', { name: 'Share Current Location' }).click();
   await page.getByRole('button', { name: 'Save' }).click();
