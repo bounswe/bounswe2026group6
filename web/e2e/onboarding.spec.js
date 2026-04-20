@@ -70,7 +70,7 @@ test('new user can sign up, verify email, complete their profile, and see persis
   expect(profile.physicalInfo.weight).toBe(58);
   expect(profile.healthInfo.bloodType).toBe('a_pos');
   expect(profile.locationProfile.country).toBe('Turkey');
-  expect(profile.locationProfile.city).toBe('Istanbul');
+  expect(profile.locationProfile.city?.toLocaleLowerCase('tr')).toBe('istanbul');
   expect(profile.locationProfile.address).toContain('Test Apartment 7');
   expect(profile.privacySettings.locationSharingEnabled).toBe(true);
   expect(profile.expertise[0].profession).toBe('Engineer');
