@@ -92,7 +92,10 @@ object ProfileRepository {
         return mapped
     }
 
-    suspend fun syncProfile(profile: ProfileData): ProfileData {
+    suspend fun syncProfile(
+        profile: ProfileData,
+        currentDeviceLocation: CurrentDeviceLocation? = null
+    ): ProfileData {
         ensureInitialized()
 
         try {
@@ -147,40 +150,7 @@ object ProfileRepository {
                 path = "/profiles/me/location",
                 method = "PATCH",
                 token = token,
-                body = JSONObject().apply {
-                    val selectedCountry = profile.country?.trim()?.takeIf(String::isNotBlank)
-                    val resolvedCountryKey = resolveCountrySelectionKey(selectedCountry)
-                    val countryLookupValue = resolvedCountryKey ?: selectedCountry
-                    val backendCountryCode = resolvedCountryKey?.uppercase(Locale.ROOT)
-                    val countryLabel = resolveCountryLabel(countryLookupValue)
-                    val cityLabel = resolveCityLabel(countryLookupValue, profile.city)
-                    val districtLabel = resolveDistrictLabel(countryLookupValue, profile.city, profile.district)
-                    val neighborhoodLabel = resolveNeighborhoodLabel(
-                        countryLookupValue,
-                        profile.city,
-                        profile.district,
-                        profile.neighborhood
-                    )
-                    val normalizedExtraAddress = profile.extraAddress?.trim()?.takeIf(String::isNotBlank)
-                    val displayAddress = buildAddress(districtLabel, neighborhoodLabel, normalizedExtraAddress)
-
-                    putNullable("country", countryLabel)
-                    putNullable("city", cityLabel)
-                    putNullable("address", displayAddress)
-                    putNullable("displayAddress", displayAddress)
-
-                    put(
-                        "administrative",
-                        JSONObject().apply {
-                            putNullable("countryCode", backendCountryCode)
-                            putNullable("country", countryLabel)
-                            putNullable("city", cityLabel)
-                            putNullable("district", districtLabel)
-                            putNullable("neighborhood", neighborhoodLabel)
-                            putNullable("extraAddress", normalizedExtraAddress)
-                        }
-                    )
-                }
+                body = buildLocationPatchPayload(profile, currentDeviceLocation)
             )
 
             JsonHttpClient.request(
@@ -225,6 +195,61 @@ object ProfileRepository {
                 // Keep the last known local state if backend refresh also fails.
             }
             throw error
+        }
+    }
+
+    internal fun buildLocationPatchPayload(
+        profile: ProfileData,
+        currentDeviceLocation: CurrentDeviceLocation? = null
+    ): JSONObject {
+        val selectedCountry = profile.country?.trim()?.takeIf(String::isNotBlank)
+        val resolvedCountryKey = resolveCountrySelectionKey(selectedCountry)
+        val countryLookupValue = resolvedCountryKey ?: selectedCountry
+        val backendCountryCode = resolvedCountryKey?.uppercase(Locale.ROOT)
+        val countryLabel = resolveCountryLabel(countryLookupValue)
+        val cityLabel = resolveCityLabel(countryLookupValue, profile.city)
+        val districtLabel = resolveDistrictLabel(countryLookupValue, profile.city, profile.district)
+        val neighborhoodLabel = resolveNeighborhoodLabel(
+            countryLookupValue,
+            profile.city,
+            profile.district,
+            profile.neighborhood
+        )
+        val normalizedExtraAddress = profile.extraAddress?.trim()?.takeIf(String::isNotBlank)
+        val displayAddress = buildAddress(districtLabel, neighborhoodLabel, normalizedExtraAddress)
+
+        return JSONObject().apply {
+            putNullable("country", countryLabel)
+            putNullable("city", cityLabel)
+            putNullable("address", displayAddress)
+            putNullable("displayAddress", displayAddress)
+
+            put(
+                "administrative",
+                JSONObject().apply {
+                    putNullable("countryCode", backendCountryCode)
+                    putNullable("country", countryLabel)
+                    putNullable("city", cityLabel)
+                    putNullable("district", districtLabel)
+                    putNullable("neighborhood", neighborhoodLabel)
+                    putNullable("extraAddress", normalizedExtraAddress)
+                }
+            )
+
+            if (profile.shareLocation == true && currentDeviceLocation != null) {
+                put("latitude", currentDeviceLocation.latitude)
+                put("longitude", currentDeviceLocation.longitude)
+                put(
+                    "coordinate",
+                    JSONObject().apply {
+                        put("latitude", currentDeviceLocation.latitude)
+                        put("longitude", currentDeviceLocation.longitude)
+                        putNullable("accuracyMeters", currentDeviceLocation.accuracyMeters)
+                        putNullable("source", currentDeviceLocation.source)
+                        putNullable("capturedAt", currentDeviceLocation.capturedAt)
+                    }
+                )
+            }
         }
     }
 
