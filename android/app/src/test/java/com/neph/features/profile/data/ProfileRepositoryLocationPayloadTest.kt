@@ -2,6 +2,7 @@ package com.neph.features.profile.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -38,7 +39,7 @@ class ProfileRepositoryLocationPayloadTest {
     }
 
     @Test
-    fun buildLocationPatchPayload_omitsCoordinateWhenSharingDisabled() {
+    fun buildLocationPatchPayload_clearsCoordinateWhenSharingDisabled() {
         val payload = ProfileRepository.buildLocationPatchPayload(
             profile = ProfileData(
                 country = "tr",
@@ -55,25 +56,34 @@ class ProfileRepositoryLocationPayloadTest {
             )
         )
 
-        assertFalse(payload.has("latitude"))
-        assertFalse(payload.has("longitude"))
-        assertFalse(payload.has("coordinate"))
+        assertTrue(payload.has("latitude"))
+        assertTrue(payload.isNull("latitude"))
+        assertTrue(payload.has("longitude"))
+        assertTrue(payload.isNull("longitude"))
+        assertTrue(payload.has("coordinate"))
+        val coordinate = payload.getJSONObject("coordinate")
+        assertTrue(coordinate.has("latitude"))
+        assertTrue(coordinate.isNull("latitude"))
+        assertTrue(coordinate.has("longitude"))
+        assertTrue(coordinate.isNull("longitude"))
     }
 
     @Test
-    fun buildLocationPatchPayload_omitsCoordinateWhenLocationUnavailable() {
+    fun buildLocationPatchPayload_omitsCoordinateWhenLocationUnavailableButKeepsAddressFields() {
         val payload = ProfileRepository.buildLocationPatchPayload(
             profile = ProfileData(
                 country = "tr",
                 city = "ankara",
                 district = "cankaya",
                 neighborhood = "AnitTepeCode",
+                extraAddress = "Building A",
                 shareLocation = true
             ),
             currentDeviceLocation = null
         )
 
         assertTrue(payload.has("administrative"))
+        assertNotNull(payload.opt("displayAddress"))
         assertFalse(payload.has("latitude"))
         assertFalse(payload.has("longitude"))
         assertFalse(payload.has("coordinate"))

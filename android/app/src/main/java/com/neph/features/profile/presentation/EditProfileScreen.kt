@@ -181,9 +181,14 @@ fun EditProfileScreen(
                     context = context,
                     sharingEnabled = profileToSync.shareLocation == true
                 )
+                val syncedProfile = when (locationShareAttempt.warning) {
+                    CurrentLocationShareWarning.PERMISSION_DENIED,
+                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE -> profileToSync.copy(shareLocation = false)
+                    null -> profileToSync
+                }
 
                 profile = ProfileRepository.syncProfile(
-                    profile = profileToSync,
+                    profile = syncedProfile,
                     currentDeviceLocation = locationShareAttempt.location
                 )
                 val phoneParts = normalizePhoneParts(profile.phone)
@@ -194,10 +199,10 @@ fun EditProfileScreen(
                 ageText = profile.age?.toString().orEmpty()
                 info = when (locationShareAttempt.warning) {
                     CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Profile updated successfully. Location permission is denied, so current coordinates were not shared."
+                        "Profile updated successfully. Location permission is denied, so location sharing was turned off and stored coordinates were cleared."
 
                     CurrentLocationShareWarning.LOCATION_UNAVAILABLE ->
-                        "Profile updated successfully. Current location is unavailable, so coordinates were not shared."
+                        "Profile updated successfully. Current location is unavailable, so location sharing was turned off and stored coordinates were cleared."
 
                     null -> {
                         if (locationShareAttempt.location != null) {

@@ -236,19 +236,36 @@ object ProfileRepository {
                 }
             )
 
-            if (profile.shareLocation == true && currentDeviceLocation != null) {
-                put("latitude", currentDeviceLocation.latitude)
-                put("longitude", currentDeviceLocation.longitude)
-                put(
-                    "coordinate",
-                    JSONObject().apply {
-                        put("latitude", currentDeviceLocation.latitude)
-                        put("longitude", currentDeviceLocation.longitude)
-                        putNullable("accuracyMeters", currentDeviceLocation.accuracyMeters)
-                        putNullable("source", currentDeviceLocation.source)
-                        putNullable("capturedAt", currentDeviceLocation.capturedAt)
-                    }
-                )
+            when {
+                profile.shareLocation != true -> {
+                    putNullable("latitude", null)
+                    putNullable("longitude", null)
+                    put(
+                        "coordinate",
+                        JSONObject().apply {
+                            putNullable("latitude", null)
+                            putNullable("longitude", null)
+                            putNullable("accuracyMeters", null)
+                            putNullable("source", null)
+                            putNullable("capturedAt", null)
+                        }
+                    )
+                }
+
+                currentDeviceLocation != null -> {
+                    put("latitude", currentDeviceLocation.latitude)
+                    put("longitude", currentDeviceLocation.longitude)
+                    put(
+                        "coordinate",
+                        JSONObject().apply {
+                            put("latitude", currentDeviceLocation.latitude)
+                            put("longitude", currentDeviceLocation.longitude)
+                            putNullable("accuracyMeters", currentDeviceLocation.accuracyMeters)
+                            putNullable("source", currentDeviceLocation.source)
+                            putNullable("capturedAt", currentDeviceLocation.capturedAt)
+                        }
+                    )
+                }
             }
         }
     }
