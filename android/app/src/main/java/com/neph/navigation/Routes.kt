@@ -41,7 +41,8 @@ sealed class Routes(
             Home,
             News,
             MyHelpRequests,
-            EmergencyInfo
+            EmergencyInfo,
+            GatheringAreas
         )
 
         val drawerItems = authenticatedDrawerItems

@@ -186,12 +186,106 @@ class FakeNephBackend {
             route == "/availability/my-assignment" && method == "GET" -> handleCurrentAssignment(token)
             route == "/help-requests" && method == "GET" -> handleHelpRequestList(token)
             route == "/location/tree" && method == "GET" -> handleLocationTree(uri)
+            route == "/gathering-areas/nearby" && method == "GET" -> handleNearbyGatheringAreas(uri)
             else -> throw ApiException(
                 message = "Unhandled fake backend request: $method $path",
                 status = 500,
                 code = "UNHANDLED_FAKE_ROUTE"
             )
         }
+    }
+
+    private fun handleNearbyGatheringAreas(uri: Uri): JSONObject {
+        val lat = uri.getQueryParameter("lat")?.toDoubleOrNull()
+            ?: throw ApiException("lat must be a number between -90 and 90", 400, "VALIDATION_ERROR")
+        val lon = uri.getQueryParameter("lon")?.toDoubleOrNull()
+            ?: throw ApiException("lon must be a number between -180 and 180", 400, "VALIDATION_ERROR")
+
+        if (lat !in -90.0..90.0) {
+            throw ApiException("lat must be a number between -90 and 90", 400, "VALIDATION_ERROR")
+        }
+
+        if (lon !in -180.0..180.0) {
+            throw ApiException("lon must be a number between -180 and 180", 400, "VALIDATION_ERROR")
+        }
+
+        val radius = (uri.getQueryParameter("radius")?.toIntOrNull() ?: 2000).coerceIn(1, 10_000)
+        val limit = (uri.getQueryParameter("limit")?.toIntOrNull() ?: 20).coerceIn(1, 50)
+
+        val features = JSONArray().apply {
+            put(
+                JSONObject()
+                    .put("type", "Feature")
+                    .put(
+                        "geometry",
+                        JSONObject()
+                            .put("type", "Point")
+                            .put("coordinates", JSONArray().put(lon + 0.0012).put(lat + 0.0009))
+                    )
+                    .put(
+                        "properties",
+                        JSONObject()
+                            .put("id", "fake-ga-1")
+                            .put("osmType", "node")
+                            .put("name", "Local Assembly Point")
+                            .put("category", "assembly_point")
+                            .put("distanceMeters", 180)
+                            .put(
+                                "rawTags",
+                                JSONObject()
+                                    .put("name", "Local Assembly Point")
+                                    .put("addr:street", "Ataturk Blvd")
+                            )
+                    )
+            )
+
+            put(
+                JSONObject()
+                    .put("type", "Feature")
+                    .put(
+                        "geometry",
+                        JSONObject()
+                            .put("type", "Point")
+                            .put("coordinates", JSONArray().put(lon - 0.0021).put(lat - 0.0015))
+                    )
+                    .put(
+                        "properties",
+                        JSONObject()
+                            .put("id", "fake-ga-2")
+                            .put("osmType", "node")
+                            .put("name", "Community Shelter")
+                            .put("category", "shelter")
+                            .put("distanceMeters", 360)
+                            .put(
+                                "rawTags",
+                                JSONObject()
+                                    .put("name", "Community Shelter")
+                                    .put("description", "Municipal sports hall")
+                            )
+                    )
+            )
+        }
+
+        return JSONObject()
+            .put("center", JSONObject().put("lat", lat).put("lon", lon))
+            .put("radius", radius)
+            .put("source", "overpass")
+            .put(
+                "meta",
+                JSONObject()
+                    .put("requestedLimit", limit)
+                    .put("returnedCount", minOf(limit, features.length()))
+            )
+            .put(
+                "collection",
+                JSONObject()
+                    .put("type", "FeatureCollection")
+                    .put("features", JSONArray().apply {
+                        for (i in 0 until minOf(limit, features.length())) {
+                            put(features.getJSONObject(i))
+                        }
+                    })
+            )
     }
 
     private fun handleLocationTree(uri: Uri): JSONObject {
