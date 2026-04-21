@@ -55,7 +55,7 @@ export function LeafletGatheringAreasMap({
     features,
     selectedFeatureId,
     onSelectFeature,
-    heightClassName = "h-[420px]",
+    heightClassName = "h-[380px] md:h-[500px]",
     zoom = 14,
 }: LeafletGatheringAreasMapProps) {
     const containerRef = React.useRef<HTMLDivElement | null>(null);

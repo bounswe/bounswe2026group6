@@ -3,10 +3,6 @@
 import * as React from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
-import { SectionHeader } from "@/components/ui/display/SectionHeader";
-import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
-import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
-import { HelperText } from "@/components/ui/display/HelperText";
 import { GatheringAreasMap } from "@/components/feature/location/GatheringAreasMap";
 import { fetchNearbyGatheringAreas } from "@/lib/gatheringAreas";
 import type { GatheringAreaFeature } from "@/types/location";
@@ -46,11 +42,16 @@ export default function GatheringAreasPage() {
     const [center, setCenter] = React.useState(DEFAULT_CENTER);
     const [areas, setAreas] = React.useState<GatheringAreaMapFeature[]>([]);
     const [selectedAreaId, setSelectedAreaId] = React.useState<string | null>(null);
+    const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
     const [loading, setLoading] = React.useState(false);
-    const [locating, setLocating] = React.useState(false);
     const [error, setError] = React.useState("");
     const [locationNote, setLocationNote] = React.useState("");
     const requestIdRef = React.useRef(0);
+
+    const handleSelectArea = React.useCallback((featureId: string) => {
+        setSelectedAreaId(featureId);
+        setIsDetailsOpen(true);
+    }, []);
 
     const loadNearbyAreas = React.useCallback(
         async (sourceCenter: { latitude: number; longitude: number }) => {
@@ -92,11 +93,17 @@ export default function GatheringAreasPage() {
                     return;
                 }
 
-                setError(
+                const rawMessage =
                     err instanceof Error
                         ? err.message
-                        : "Could not load gathering areas right now."
-                );
+                        : "Could not load gathering areas right now.";
+
+                const uiMessage =
+                    rawMessage === "Internal Server Error"
+                        ? "Gathering areas service is temporarily unavailable. Please try again shortly."
+                        : rawMessage;
+
+                setError(uiMessage);
                 setAreas([]);
                 setSelectedAreaId(null);
             } finally {
@@ -117,7 +124,6 @@ export default function GatheringAreasPage() {
             return;
         }
 
-        setLocating(true);
         setLocationNote("");
 
         navigator.geolocation.getCurrentPosition(
@@ -129,11 +135,9 @@ export default function GatheringAreasPage() {
 
                 setCenter(nextCenter);
                 setLocationNote("Showing gathering areas around your current location.");
-                setLocating(false);
                 void loadNearbyAreas(nextCenter);
             },
             () => {
-                setLocating(false);
                 setLocationNote(
                     "Location permission was denied or unavailable. Showing nearby areas around Istanbul."
                 );
@@ -156,44 +160,108 @@ export default function GatheringAreasPage() {
         (areas.length ? areas[0] : null);
 
     return (
-        <AppShell title="Gathering Areas">
+        <AppShell
+            title="Gathering Areas"
+            titleClassName="gathering-areas-page-title"
+            containerClassName="gathering-areas-page-container"
+        >
             <div className="gathering-areas-page-grid">
-                <SectionCard>
-                    <SectionHeader
-                        title="Nearby Gathering Areas"
-                        subtitle="Assembly points and shelter locations around your selected area."
-                    />
-
-                    <div className="gathering-areas-actions">
-                        <PrimaryButton
-                            type="button"
-                            onClick={resolveCurrentLocation}
-                            loading={locating}
-                            className="gathering-areas-action-button"
-                        >
-                            Use Current Location
-                        </PrimaryButton>
-
-                        <SecondaryButton
-                            type="button"
-                            onClick={() => void loadNearbyAreas(center)}
-                            disabled={loading}
-                        >
-                            Refresh Results
-                        </SecondaryButton>
-                    </div>
-
-                    {locationNote ? (
-                        <HelperText className="gathering-areas-location-note">{locationNote}</HelperText>
-                    ) : null}
-
+                <SectionCard className="gathering-areas-main-card">
                     <div className="gathering-areas-map-wrap">
                         <GatheringAreasMap
                             center={center}
                             features={areas}
                             selectedFeatureId={selectedAreaId}
-                            onSelectFeature={setSelectedAreaId}
+                            onSelectFeature={handleSelectArea}
+                            heightClassName="h-[380px] md:h-[500px]"
                         />
+
+                        {locationNote ? (
+                            <p className="gathering-areas-map-note">{locationNote}</p>
+                        ) : null}
+
+                        <button
+                            type="button"
+                            aria-label="Retry Results"
+                            title="Retry Results"
+                            className="gathering-areas-map-retry"
+                            onClick={() => void loadNearbyAreas(center)}
+                            disabled={loading}
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    d="M20 11.5A8 8 0 1 0 17.66 17M20 11.5V6M20 11.5H14.5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </svg>
+                        </button>
+
+                        <button
+                            type="button"
+                            className="gathering-areas-overlay-toggle"
+                            onClick={() => setIsDetailsOpen((current) => !current)}
+                        >
+                            {isDetailsOpen ? "Hide Area Details" : "Show Area Details"}
+                        </button>
+
+                        {isDetailsOpen ? (
+                            <aside className="gathering-areas-map-overlay">
+                                <p className="gathering-areas-overlay-title">Area Details</p>
+
+                                {selectedArea ? (
+                                    <article className="gathering-areas-selected-card">
+                                        <p className="gathering-areas-selected-name">{selectedArea.name}</p>
+                                        <p className="gathering-areas-selected-meta">
+                                            Category: {selectedArea.category}
+                                        </p>
+                                        <p className="gathering-areas-selected-meta">
+                                            Distance: {selectedArea.distanceMeters} m
+                                        </p>
+                                        <p className="gathering-areas-selected-meta">
+                                            Coordinates: {selectedArea.latitude.toFixed(5)}, {selectedArea.longitude.toFixed(5)}
+                                        </p>
+                                    </article>
+                                ) : (
+                                    <p className="gathering-areas-empty-detail">
+                                        Select a gathering area to view details.
+                                    </p>
+                                )}
+
+                                <p className="gathering-areas-overlay-title">Nearby Results</p>
+
+                                <div className="gathering-areas-list">
+                                    {areas.length ? (
+                                        areas.map((area) => (
+                                            <button
+                                                key={area.featureKey}
+                                                type="button"
+                                                className={`gathering-areas-item${selectedArea?.featureKey === area.featureKey ? " is-active" : ""}`}
+                                                onClick={() => handleSelectArea(area.featureKey)}
+                                            >
+                                                <p className="gathering-areas-item-name">{area.name}</p>
+                                                <p className="gathering-areas-item-meta">
+                                                    {area.category} • {area.distanceMeters} m • {area.osmType}
+                                                </p>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <p className="gathering-areas-empty-detail">
+                                            No nearby areas in the current result.
+                                        </p>
+                                    )}
+                                </div>
+                            </aside>
+                        ) : null}
                     </div>
 
                     {loading ? (
@@ -205,12 +273,6 @@ export default function GatheringAreasPage() {
                     {error ? (
                         <div className="gathering-areas-status-box is-error">
                             <p>{error}</p>
-                            <SecondaryButton
-                                type="button"
-                                onClick={() => void loadNearbyAreas(center)}
-                            >
-                                Retry
-                            </SecondaryButton>
                         </div>
                     ) : null}
 
@@ -219,48 +281,6 @@ export default function GatheringAreasPage() {
                             <p>No gathering areas were found for this location and radius.</p>
                         </div>
                     ) : null}
-                </SectionCard>
-
-                <SectionCard>
-                    <SectionHeader
-                        title="Area Details"
-                        subtitle="Select a marker on the map to inspect area information."
-                    />
-
-                    {selectedArea ? (
-                        <article className="gathering-areas-selected-card">
-                            <p className="gathering-areas-selected-name">{selectedArea.name}</p>
-                            <p className="gathering-areas-selected-meta">
-                                Category: {selectedArea.category}
-                            </p>
-                            <p className="gathering-areas-selected-meta">
-                                Distance: {selectedArea.distanceMeters} m
-                            </p>
-                            <p className="gathering-areas-selected-meta">
-                                Coordinates: {selectedArea.latitude.toFixed(5)}, {selectedArea.longitude.toFixed(5)}
-                            </p>
-                        </article>
-                    ) : (
-                        <p className="gathering-areas-empty-detail">
-                            Select a gathering area to view details.
-                        </p>
-                    )}
-
-                    <div className="gathering-areas-list">
-                        {areas.map((area) => (
-                            <button
-                                key={area.featureKey}
-                                type="button"
-                                className={`gathering-areas-item${selectedArea?.featureKey === area.featureKey ? " is-active" : ""}`}
-                                onClick={() => setSelectedAreaId(area.featureKey)}
-                            >
-                                <p className="gathering-areas-item-name">{area.name}</p>
-                                <p className="gathering-areas-item-meta">
-                                    {area.category} • {area.distanceMeters} m • {area.osmType}
-                                </p>
-                            </button>
-                        ))}
-                    </div>
                 </SectionCard>
             </div>
         </AppShell>

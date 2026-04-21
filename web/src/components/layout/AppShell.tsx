@@ -4,18 +4,27 @@ import { PageContainer } from "@/components/layout/PageContainer";
 
 type AppShellProps = {
     title?: string;
+    titleClassName?: string;
+    containerClassName?: string;
     children: React.ReactNode;
 };
 
-export function AppShell({ title, children }: AppShellProps) {
+export function AppShell({
+    title,
+    titleClassName,
+    containerClassName,
+    children,
+}: AppShellProps) {
     return (
         <div className="app-shell">
             <TopNavbar />
             <main className="app-shell-main">
-                <PageContainer>
+                <PageContainer className={containerClassName}>
                     {title ? (
                         <div className="app-shell-title-wrap">
-                            <h1 className="app-shell-title">{title}</h1>
+                            <h1 className={`app-shell-title${titleClassName ? ` ${titleClassName}` : ""}`}>
+                                {title}
+                            </h1>
                         </div>
                     ) : null}
                     {children}

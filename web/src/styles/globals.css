@@ -167,7 +167,7 @@ textarea::placeholder {
 .top-navbar {
     position: sticky;
     top: 0;
-    z-index: 30;
+    z-index: 80;
     border-bottom: 1px solid var(--border-subtle);
     background: color-mix(in srgb, var(--surface-card) 95%, transparent);
     backdrop-filter: blur(8px);
@@ -774,30 +774,154 @@ textarea::placeholder {
     gap: 24px;
 }
 
-@media (min-width: 1024px) {
-    .gathering-areas-page-grid {
-        grid-template-columns: 1.3fr 0.9fr;
-        align-items: start;
-    }
+.gathering-areas-page-container {
+    max-width: 85rem;
+    padding-left: 4px;
+    padding-right: 4px;
 }
 
-.gathering-areas-actions {
-    margin-top: 12px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+.gathering-areas-page-title {
+    font-size: 1.5rem;
 }
 
-.gathering-areas-action-button {
-    width: auto;
-}
-
-.gathering-areas-location-note {
-    margin-top: 10px;
+.gathering-areas-main-card {
+    padding: 6px;
 }
 
 .gathering-areas-map-wrap {
-    margin-top: 14px;
+    margin-top: 0;
+    position: relative;
+    isolation: isolate;
+}
+
+.gathering-areas-map-note {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 25;
+    margin: 0;
+    max-width: min(440px, calc(100% - 280px));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.gathering-areas-map-retry {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 35;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-card);
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gathering-areas-map-retry:hover {
+    border-color: var(--primary-soft-200);
+    background: var(--primary-soft-100);
+}
+
+.gathering-areas-map-retry:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.gathering-areas-overlay-toggle {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 40;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-card);
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.gathering-areas-overlay-toggle:hover {
+    border-color: var(--primary-soft-200);
+    background: var(--primary-soft-100);
+}
+
+.gathering-areas-map-wrap .leaflet-container {
+    z-index: 1;
+}
+
+.gathering-areas-map-wrap .leaflet-top,
+.gathering-areas-map-wrap .leaflet-bottom,
+.gathering-areas-map-wrap .leaflet-pane,
+.gathering-areas-map-wrap .leaflet-control {
+    z-index: 10 !important;
+}
+
+.gathering-areas-map-overlay {
+    position: absolute;
+    top: 48px;
+    right: 12px;
+    bottom: 12px;
+    width: min(240px, calc(100% - 24px));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--surface-card) 92%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-card);
+    padding: 12px;
+    display: grid;
+    grid-template-rows: auto auto auto 1fr;
+    gap: 10px;
+    z-index: 20;
+}
+
+.gathering-areas-overlay-title {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 1023px) {
+    .gathering-areas-page-container {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    .gathering-areas-page-title {
+        font-size: 1.3rem;
+    }
+
+    .gathering-areas-overlay-toggle {
+        right: 10px;
+    }
+
+    .gathering-areas-map-overlay {
+        position: static;
+        width: 100%;
+        margin-top: 12px;
+        background: var(--surface-card);
+        backdrop-filter: none;
+    }
+
+    .gathering-areas-map-note {
+        max-width: calc(100% - 24px);
+    }
 }
 
 .gathering-areas-status-box {
@@ -818,7 +942,7 @@ textarea::placeholder {
 }
 
 .gathering-areas-selected-card {
-    margin-top: 14px;
+    margin-top: 0;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     background: var(--surface-card);
@@ -841,16 +965,16 @@ textarea::placeholder {
 }
 
 .gathering-areas-empty-detail {
-    margin: 14px 0 0;
+    margin: 0;
     font-size: 0.875rem;
     color: var(--text-secondary);
 }
 
 .gathering-areas-list {
-    margin-top: 14px;
+    margin-top: 0;
     display: grid;
     gap: 10px;
-    max-height: 420px;
+    min-height: 0;
     overflow: auto;
 }
 

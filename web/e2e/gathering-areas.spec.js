@@ -129,8 +129,8 @@ test('shows empty and error states for gathering areas retrieval', async ({ page
 
   await expect(page.getByText('No gathering areas were found for this location and radius.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Refresh Results' }).click();
+  await page.getByRole('button', { name: 'Retry Results' }).click();
 
   await expect(page.getByText('Gathering areas provider is unavailable')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
