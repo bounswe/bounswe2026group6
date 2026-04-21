@@ -7,11 +7,13 @@ test.beforeEach(async () => {
 
 test('guest can browse public pages and is redirected away from protected pages', async ({ page }) => {
   await page.goto('/');
+  await page.waitForLoadState('domcontentloaded');
 
   const continueAsGuestButton = page.getByRole('button', { name: 'Continue as Guest' });
-  const onWelcomeScreen = await continueAsGuestButton.isVisible().catch(() => false);
+  const onHomeScreen = /\/home$/.test(page.url());
 
-  if (onWelcomeScreen) {
+  if (!onHomeScreen) {
+    await expect(continueAsGuestButton).toBeVisible();
     await continueAsGuestButton.click();
   }
 

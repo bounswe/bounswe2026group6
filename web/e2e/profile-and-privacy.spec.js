@@ -158,6 +158,12 @@ test('persists real current-device metadata when sharing is enabled after fresh 
   expect(profile.locationProfile.placeId).toBeTruthy();
   expect(profile.locationProfile.displayAddress).toBeTruthy();
   expect(profile.privacySettings.locationSharingEnabled).toBe(true);
+
+  await page.getByRole('button', { name: 'Open user menu' }).click();
+  await page.getByRole('button', { name: 'Logout' }).click();
+
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { name: 'Log In' })).toBeVisible();
 });
 
 test('shows denied geolocation error on current location action', async ({ page }) => {
