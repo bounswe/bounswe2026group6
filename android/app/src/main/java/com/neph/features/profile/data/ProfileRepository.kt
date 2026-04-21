@@ -147,15 +147,11 @@ object ProfileRepository {
                 }
             )
 
-            JsonHttpClient.request(
-                path = "/profiles/me/location",
-                method = "PATCH",
+            patchLocationProfile(
                 token = token,
-                body = buildLocationPatchPayload(
-                    profile = profile,
-                    currentDeviceLocation = currentDeviceLocation,
-                    forceClearSharedCoordinates = forceClearSharedCoordinates
-                )
+                profile = profile,
+                currentDeviceLocation = currentDeviceLocation,
+                forceClearSharedCoordinates = forceClearSharedCoordinates
             )
 
             JsonHttpClient.request(
@@ -201,6 +197,48 @@ object ProfileRepository {
             }
             throw error
         }
+    }
+
+    suspend fun syncLocationOnLaunch(
+        profile: ProfileData,
+        currentDeviceLocation: CurrentDeviceLocation? = null,
+        forceClearSharedCoordinates: Boolean = false
+    ) {
+        ensureInitialized()
+
+        try {
+            LocationTreeRepository.ensureLocationData()
+        } catch (_: Exception) {
+            // Keep fallback location mapping when location tree is unavailable.
+        }
+
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        check(token.isNotBlank()) { "Access token is required before sending launch location update." }
+
+        patchLocationProfile(
+            token = token,
+            profile = profile,
+            currentDeviceLocation = currentDeviceLocation,
+            forceClearSharedCoordinates = forceClearSharedCoordinates
+        )
+    }
+
+    private suspend fun patchLocationProfile(
+        token: String,
+        profile: ProfileData,
+        currentDeviceLocation: CurrentDeviceLocation? = null,
+        forceClearSharedCoordinates: Boolean = false
+    ) {
+        JsonHttpClient.request(
+            path = "/profiles/me/location",
+            method = "PATCH",
+            token = token,
+            body = buildLocationPatchPayload(
+                profile = profile,
+                currentDeviceLocation = currentDeviceLocation,
+                forceClearSharedCoordinates = forceClearSharedCoordinates
+            )
+        )
     }
 
     internal fun buildLocationPatchPayload(
