@@ -71,12 +71,12 @@ class AppLaunchLocationUpdaterTest {
     }
 
     @Test
-    fun mapCaptureAttemptToSyncAction_returnsClearOnLocationUnavailable() {
+    fun mapCaptureAttemptToSyncAction_skipsOnLocationUnavailable() {
         val action = AppLaunchLocationUpdater.mapCaptureAttemptToSyncAction(
             CurrentLocationShareAttempt(warning = CurrentLocationShareWarning.LOCATION_UNAVAILABLE)
         )
 
-        assertEquals(LaunchLocationSyncAction.CLEAR_STALE_COORDINATES, action)
+        assertEquals(LaunchLocationSyncAction.SKIP, action)
     }
 
     @Test

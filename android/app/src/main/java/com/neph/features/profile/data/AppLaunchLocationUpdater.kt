@@ -11,8 +11,7 @@ private const val LaunchLocationCaptureTimeoutMillis = 5_000L
 
 enum class LaunchLocationSyncAction {
     SKIP,
-    UPDATE_WITH_LOCATION,
-    CLEAR_STALE_COORDINATES
+    UPDATE_WITH_LOCATION
 }
 
 object AppLaunchLocationUpdater {
@@ -22,6 +21,11 @@ object AppLaunchLocationUpdater {
         val guestMode = AuthSessionStore.isGuestMode()
 
         if (!shouldRunLaunchLocationUpdate(hasAccessToken, guestMode)) {
+            return
+        }
+
+        val permissionGranted = DeviceLocationProvider.hasLocationPermission(appContext)
+        if (!permissionGranted) {
             return
         }
 
@@ -35,7 +39,6 @@ object AppLaunchLocationUpdater {
             return
         }
 
-        val permissionGranted = DeviceLocationProvider.hasLocationPermission(appContext)
         if (!shouldAttemptLocationCapture(profile.shareLocation == true, permissionGranted)) {
             return
         }
@@ -55,16 +58,7 @@ object AppLaunchLocationUpdater {
             LaunchLocationSyncAction.UPDATE_WITH_LOCATION -> {
                 runLocationSyncCatching(
                     profile = profile,
-                    currentDeviceLocation = captureAttempt.location,
-                    forceClearSharedCoordinates = false
-                )
-            }
-
-            LaunchLocationSyncAction.CLEAR_STALE_COORDINATES -> {
-                runLocationSyncCatching(
-                    profile = profile,
-                    currentDeviceLocation = null,
-                    forceClearSharedCoordinates = true
+                    currentDeviceLocation = captureAttempt.location
                 )
             }
 
@@ -91,7 +85,7 @@ object AppLaunchLocationUpdater {
         }
 
         return when (attempt.warning) {
-            CurrentLocationShareWarning.LOCATION_UNAVAILABLE -> LaunchLocationSyncAction.CLEAR_STALE_COORDINATES
+            CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
             CurrentLocationShareWarning.PERMISSION_DENIED,
             null -> LaunchLocationSyncAction.SKIP
         }
@@ -99,14 +93,12 @@ object AppLaunchLocationUpdater {
 
     private suspend fun runLocationSyncCatching(
         profile: ProfileData,
-        currentDeviceLocation: CurrentDeviceLocation?,
-        forceClearSharedCoordinates: Boolean
+        currentDeviceLocation: CurrentDeviceLocation?
     ) {
         try {
             ProfileRepository.syncLocationOnLaunch(
                 profile = profile,
-                currentDeviceLocation = currentDeviceLocation,
-                forceClearSharedCoordinates = forceClearSharedCoordinates
+                currentDeviceLocation = currentDeviceLocation
             )
         } catch (error: ApiException) {
             Log.w(Tag, "App-launch location sync API call failed.", error)
