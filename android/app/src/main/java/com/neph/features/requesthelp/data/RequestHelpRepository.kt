@@ -19,6 +19,7 @@ import com.neph.core.sync.SyncStatus
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.Locale
 import java.util.UUID
 
 private const val PendingHelpRequestStatus = "PENDING_SYNC"
@@ -29,6 +30,15 @@ data class RequestHelpLocationSubmission(
     val district: String,
     val neighborhood: String,
     val extraAddress: String
+)
+
+data class RequestHelpReverseLocation(
+    val countryCode: String? = null,
+    val country: String? = null,
+    val city: String? = null,
+    val district: String? = null,
+    val neighborhood: String? = null,
+    val extraAddress: String? = null
 )
 
 data class RequestHelpContactSubmission(
@@ -183,6 +193,34 @@ object RequestHelpRepository {
         )
 
         return response.optJSONObject("request")
+    }
+
+    suspend fun reverseGeocodeCurrentLocation(
+        latitude: Double,
+        longitude: Double
+    ): RequestHelpReverseLocation? {
+        ensureInitialized()
+
+        val response = JsonHttpClient.request(
+            path = String.format(
+                Locale.US,
+                "/location/reverse?lat=%.6f&lon=%.6f",
+                latitude,
+                longitude
+            )
+        )
+
+        val item = response.optJSONObject("item") ?: return null
+        val administrative = item.optJSONObject("administrative") ?: JSONObject()
+
+        return RequestHelpReverseLocation(
+            countryCode = administrative.optTrimmedString("countryCode"),
+            country = administrative.optTrimmedString("country"),
+            city = administrative.optTrimmedString("city"),
+            district = administrative.optTrimmedString("district"),
+            neighborhood = administrative.optTrimmedString("neighborhood"),
+            extraAddress = administrative.optTrimmedString("extraAddress")
+        )
     }
 
     internal suspend fun pushCreateOperation(operation: SyncOperationEntity, token: String?) {
@@ -371,6 +409,10 @@ object RequestHelpRepository {
             "RequestHelpRepository must be initialized before use."
         }
     }
+}
+
+private fun JSONObject.optTrimmedString(key: String): String? {
+    return optString(key).trim().takeIf { it.isNotBlank() }
 }
 
 internal fun RequestHelpSubmission.toJson(): JSONObject {

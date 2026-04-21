@@ -1,5 +1,7 @@
 package com.neph.features.requesthelp.presentation
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,14 +13,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.auth.util.countryCodeOptions
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
+import com.neph.features.profile.data.findCityKeyByLabel
+import com.neph.features.profile.data.findCountryKeyByLabel
+import com.neph.features.profile.data.findDistrictKeyByLabel
+import com.neph.features.profile.data.findNeighborhoodValueByLabel
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileData
@@ -31,6 +41,7 @@ import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
 import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
 import com.neph.features.profile.presentation.components.LocationSelector
+import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.requesthelp.data.RequestHelpSubmission
 import com.neph.ui.components.buttons.PrimaryButton
@@ -290,6 +301,69 @@ private fun buildSubmission(
     )
 }
 
+internal data class GuestLocationAutofillSelection(
+    val country: String,
+    val city: String,
+    val district: String,
+    val neighborhood: String,
+    val shortAddress: String
+)
+
+internal fun resolveGuestLocationAutofillSelection(
+    currentCountry: String,
+    currentCity: String,
+    currentDistrict: String,
+    currentNeighborhood: String,
+    currentShortAddress: String,
+    reverseLocation: RequestHelpReverseLocation,
+    locations: LocationData
+): GuestLocationAutofillSelection {
+    val countryFromCode = reverseLocation.countryCode
+        ?.lowercase()
+        ?.takeIf { locations.containsKey(it) }
+        .orEmpty()
+    val countryFromLabel = findCountryKeyByLabel(reverseLocation.country, locations)
+    val country = countryFromCode.ifBlank {
+        countryFromLabel.ifBlank { currentCountry }
+    }
+
+    val city = if (country.isNotBlank()) {
+        findCityKeyByLabel(country, reverseLocation.city, locations).ifBlank { currentCity }
+    } else {
+        currentCity
+    }
+
+    val district = if (country.isNotBlank() && city.isNotBlank()) {
+        findDistrictKeyByLabel(country, city, reverseLocation.district, locations).ifBlank { currentDistrict }
+    } else {
+        currentDistrict
+    }
+
+    val neighborhood = if (country.isNotBlank() && city.isNotBlank() && district.isNotBlank()) {
+        findNeighborhoodValueByLabel(
+            country,
+            city,
+            district,
+            reverseLocation.neighborhood,
+            locations
+        ).ifBlank { currentNeighborhood }
+    } else {
+        currentNeighborhood
+    }
+
+    val shortAddress = reverseLocation.extraAddress
+        ?.takeIf { it.isNotBlank() }
+        ?: currentShortAddress
+
+    return GuestLocationAutofillSelection(
+        country = country,
+        city = city,
+        district = district,
+        neighborhood = neighborhood,
+        shortAddress = shortAddress
+    )
+}
+
 @Composable
 fun RequestHelpScreen(
     onNavigateBack: () -> Unit,
@@ -298,6 +372,7 @@ fun RequestHelpScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val sessionToken = AuthSessionStore.getAccessToken().orEmpty()
     val isLoggedIn = sessionToken.isNotBlank()
 
@@ -313,6 +388,75 @@ fun RequestHelpScreen(
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
+    var guestLocationAutoFillLoading by remember { mutableStateOf(false) }
+    var guestLocationPermissionHandled by rememberSaveable { mutableStateOf(false) }
+    fun triggerGuestLocationAutofill() {
+        scope.launch {
+            if (guestLocationAutoFillLoading) return@launch
+            guestLocationAutoFillLoading = true
+            try {
+                val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                val location = attempt.location
+                if (location == null) {
+                    infoMessage = when (attempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission is denied. You can continue with manual location entry."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Could not retrieve your current location. You can continue with manual location entry."
+                    }
+                    return@launch
+                }
+
+                val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
+                    latitude = location.latitude,
+                    longitude = location.longitude
+                )
+                if (reverseLocation == null) {
+                    infoMessage = "Could not resolve your current location. You can continue with manual location entry."
+                    return@launch
+                }
+
+                val autofill = resolveGuestLocationAutofillSelection(
+                    currentCountry = formState.country,
+                    currentCity = formState.city,
+                    currentDistrict = formState.district,
+                    currentNeighborhood = formState.neighborhood,
+                    currentShortAddress = formState.shortAddress,
+                    reverseLocation = reverseLocation,
+                    locations = availableLocationData
+                )
+
+                formState = formState.copy(
+                    country = autofill.country,
+                    city = autofill.city,
+                    district = autofill.district,
+                    neighborhood = autofill.neighborhood,
+                    shortAddress = autofill.shortAddress
+                )
+                infoMessage = "Current location applied. You can edit location fields if needed."
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                infoMessage = "Could not retrieve your current location. You can continue with manual location entry."
+            } finally {
+                guestLocationAutoFillLoading = false
+            }
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.values.any { it }) {
+            triggerGuestLocationAutofill()
+        } else {
+            infoMessage = "Location permission is denied. You can continue with manual location entry."
+        }
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -361,6 +505,21 @@ fun RequestHelpScreen(
         } finally {
             checkingActiveRequest = false
         }
+    }
+
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn || guestLocationPermissionHandled) {
+            return@LaunchedEffect
+        }
+
+        guestLocationPermissionHandled = true
+
+        if (DeviceLocationProvider.hasLocationPermission(context)) {
+            triggerGuestLocationAutofill()
+            return@LaunchedEffect
+        }
+
+        locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
     }
 
     fun handleSubmit() {
@@ -522,6 +681,10 @@ fun RequestHelpScreen(
 
                     if (locationLoading) {
                         HelperText(text = "Loading location options...")
+                    }
+
+                    if (!isLoggedIn && guestLocationAutoFillLoading) {
+                        HelperText(text = "Detecting your current location. You can continue filling the form while this runs.")
                     }
 
                     LocationSelector(
