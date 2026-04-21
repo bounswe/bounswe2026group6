@@ -69,7 +69,7 @@ class ProfileRepositoryLocationPayloadTest {
     }
 
     @Test
-    fun buildLocationPatchPayload_omitsCoordinateWhenLocationUnavailableButKeepsAddressFields() {
+    fun buildLocationPatchPayload_clearsCoordinateWhenLocationUnavailableAndForceClearRequested() {
         val payload = ProfileRepository.buildLocationPatchPayload(
             profile = ProfileData(
                 country = "tr",
@@ -79,7 +79,37 @@ class ProfileRepositoryLocationPayloadTest {
                 extraAddress = "Building A",
                 shareLocation = true
             ),
-            currentDeviceLocation = null
+            currentDeviceLocation = null,
+            forceClearSharedCoordinates = true
+        )
+
+        assertTrue(payload.has("administrative"))
+        assertNotNull(payload.opt("displayAddress"))
+        assertTrue(payload.has("latitude"))
+        assertTrue(payload.isNull("latitude"))
+        assertTrue(payload.has("longitude"))
+        assertTrue(payload.isNull("longitude"))
+        assertTrue(payload.has("coordinate"))
+        val coordinate = payload.getJSONObject("coordinate")
+        assertTrue(coordinate.has("latitude"))
+        assertTrue(coordinate.isNull("latitude"))
+        assertTrue(coordinate.has("longitude"))
+        assertTrue(coordinate.isNull("longitude"))
+    }
+
+    @Test
+    fun buildLocationPatchPayload_omitsCoordinateWhenLocationUnavailableAndNoForceClear() {
+        val payload = ProfileRepository.buildLocationPatchPayload(
+            profile = ProfileData(
+                country = "tr",
+                city = "ankara",
+                district = "cankaya",
+                neighborhood = "AnitTepeCode",
+                extraAddress = "Building A",
+                shareLocation = true
+            ),
+            currentDeviceLocation = null,
+            forceClearSharedCoordinates = false
         )
 
         assertTrue(payload.has("administrative"))

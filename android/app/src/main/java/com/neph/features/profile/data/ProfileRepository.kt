@@ -94,7 +94,8 @@ object ProfileRepository {
 
     suspend fun syncProfile(
         profile: ProfileData,
-        currentDeviceLocation: CurrentDeviceLocation? = null
+        currentDeviceLocation: CurrentDeviceLocation? = null,
+        forceClearSharedCoordinates: Boolean = false
     ): ProfileData {
         ensureInitialized()
 
@@ -150,7 +151,11 @@ object ProfileRepository {
                 path = "/profiles/me/location",
                 method = "PATCH",
                 token = token,
-                body = buildLocationPatchPayload(profile, currentDeviceLocation)
+                body = buildLocationPatchPayload(
+                    profile = profile,
+                    currentDeviceLocation = currentDeviceLocation,
+                    forceClearSharedCoordinates = forceClearSharedCoordinates
+                )
             )
 
             JsonHttpClient.request(
@@ -200,7 +205,8 @@ object ProfileRepository {
 
     internal fun buildLocationPatchPayload(
         profile: ProfileData,
-        currentDeviceLocation: CurrentDeviceLocation? = null
+        currentDeviceLocation: CurrentDeviceLocation? = null,
+        forceClearSharedCoordinates: Boolean = false
     ): JSONObject {
         val selectedCountry = profile.country?.trim()?.takeIf(String::isNotBlank)
         val resolvedCountryKey = resolveCountrySelectionKey(selectedCountry)
@@ -237,7 +243,7 @@ object ProfileRepository {
             )
 
             when {
-                profile.shareLocation != true -> {
+                profile.shareLocation != true || forceClearSharedCoordinates -> {
                     putNullable("latitude", null)
                     putNullable("longitude", null)
                     put(
