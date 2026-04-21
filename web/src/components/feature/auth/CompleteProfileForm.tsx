@@ -350,6 +350,7 @@ export default function CompleteProfileForm() {
                     district: resolvedDistrictLabel || null,
                     neighborhood: resolvedNeighborhoodLabel || null,
                     extraAddress: resolvedExtraAddress || null,
+                    postalCode: locationPickerValue?.administrative.postalCode || null,
                 },
                 coordinate: hasCoordinateSelection
                     ? {

@@ -119,8 +119,11 @@ export default function ProfileView() {
                     backendProfile.locationProfile.longitude !== null
                 ) {
                     setLocationPickerValue({
-                        placeId: "profile:location",
+                        placeId:
+                            backendProfile.locationProfile.placeId ||
+                            "profile:location",
                         displayName:
+                            backendProfile.locationProfile.displayAddress ||
                             [
                                 backendProfile.locationProfile.city,
                                 backendProfile.locationProfile.country,
@@ -135,7 +138,19 @@ export default function ProfileView() {
                             district: refreshedProfile.district,
                             neighborhood: refreshedProfile.neighborhood,
                             extraAddress: refreshedProfile.extraAddress,
+                            postalCode:
+                                backendProfile.locationProfile.administrative?.postalCode ||
+                                null,
                         },
+                        source:
+                            backendProfile.locationProfile.coordinate?.source ||
+                            "profile_saved",
+                        capturedAt:
+                            backendProfile.locationProfile.coordinate?.capturedAt ||
+                            backendProfile.locationProfile.lastUpdated,
+                        accuracyMeters:
+                            backendProfile.locationProfile.coordinate?.accuracyMeters ||
+                            null,
                     });
                 }
 
@@ -183,8 +198,11 @@ export default function ProfileView() {
                     backendProfile.locationProfile.longitude !== null
                 ) {
                     setLocationPickerValue({
-                        placeId: "profile:location",
+                        placeId:
+                            backendProfile.locationProfile.placeId ||
+                            "profile:location",
                         displayName:
+                            backendProfile.locationProfile.displayAddress ||
                             [
                                 backendProfile.locationProfile.city,
                                 backendProfile.locationProfile.country,
@@ -199,7 +217,19 @@ export default function ProfileView() {
                             district: mappedProfile.district,
                             neighborhood: mappedProfile.neighborhood,
                             extraAddress: mappedProfile.extraAddress,
+                            postalCode:
+                                backendProfile.locationProfile.administrative?.postalCode ||
+                                null,
                         },
+                        source:
+                            backendProfile.locationProfile.coordinate?.source ||
+                            "profile_saved",
+                        capturedAt:
+                            backendProfile.locationProfile.coordinate?.capturedAt ||
+                            backendProfile.locationProfile.lastUpdated,
+                        accuracyMeters:
+                            backendProfile.locationProfile.coordinate?.accuracyMeters ||
+                            null,
                     });
                 }
 
@@ -363,6 +393,12 @@ export default function ProfileView() {
                 (locationPickerValue?.administrative.countryCode || "").trim().toUpperCase() ||
                 (saveCountryKey || "").trim().toUpperCase() ||
                 null;
+            const resolvedAddress =
+                buildAddress({
+                    district: districtLabel,
+                    neighborhood: neighborhoodLabel,
+                    extraAddress: resolvedExtraAddress,
+                }) || null;
 
             await patchMyPhysical(token, {
                 age: profile.age ? Number(profile.age) : undefined,
@@ -381,12 +417,7 @@ export default function ProfileView() {
             await patchMyLocation(token, {
                 country: resolvedCountryLabel,
                 city: resolvedCityLabel,
-                address:
-                    buildAddress({
-                        district: districtLabel,
-                        neighborhood: neighborhoodLabel,
-                        extraAddress: resolvedExtraAddress,
-                    }) || null,
+                address: resolvedAddress,
                 latitude: hasCoordinateSelection
                     ? locationPickerValue.latitude
                     : undefined,
@@ -402,6 +433,7 @@ export default function ProfileView() {
                     district: districtLabel || null,
                     neighborhood: neighborhoodLabel || null,
                     extraAddress: resolvedExtraAddress || null,
+                    postalCode: locationPickerValue?.administrative.postalCode || null,
                 },
                 coordinate: hasCoordinateSelection
                     ? {

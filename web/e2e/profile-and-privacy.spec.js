@@ -46,7 +46,6 @@ test('verified user can log in through a protected redirect, update privacy sett
   await expect
     .poll(async () => {
       const profile = await fetchMyProfile(accessToken);
-
       return {
         height: profile.physicalInfo.height,
         address: profile.locationProfile.address,
@@ -60,6 +59,10 @@ test('verified user can log in through a protected redirect, update privacy sett
 
   const refreshedProfile = await fetchMyProfile(accessToken);
   expect(refreshedProfile.locationProfile.address).toContain('Updated Address 42');
+  expect(refreshedProfile.locationProfile.placeId).toBe('seed:profile-location');
+  expect(refreshedProfile.locationProfile.displayAddress).toBe('Bostancı, Kadıköy, Existing Street 5');
+  expect(refreshedProfile.locationProfile.coordinate?.source).toBe('seed_data');
+  expect(refreshedProfile.privacySettings.locationSharingEnabled).toBe(true);
 
   await page.getByRole('button', { name: 'Open user menu' }).click();
   await page.getByRole('button', { name: 'Logout' }).click();

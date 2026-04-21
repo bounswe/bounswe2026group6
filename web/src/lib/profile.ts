@@ -30,10 +30,28 @@ export type BackendProfileResponse = {
     };
     locationProfile: {
         address: string | null;
+        displayAddress?: string | null;
         city: string | null;
         country: string | null;
+        placeId?: string | null;
         latitude: number | null;
         longitude: number | null;
+        administrative?: {
+            countryCode?: string | null;
+            country?: string | null;
+            city?: string | null;
+            district?: string | null;
+            neighborhood?: string | null;
+            extraAddress?: string | null;
+            postalCode?: string | null;
+        };
+        coordinate?: {
+            latitude?: number | null;
+            longitude?: number | null;
+            accuracyMeters?: number | null;
+            source?: string | null;
+            capturedAt?: string | null;
+        } | null;
         lastUpdated: string | null;
     };
     expertise: Array<{
