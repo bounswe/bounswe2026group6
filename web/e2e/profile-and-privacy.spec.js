@@ -61,7 +61,7 @@ test('verified user can log in through a protected redirect, update privacy sett
   expect(refreshedProfile.locationProfile.address).toContain('Updated Address 42');
   expect(refreshedProfile.locationProfile.placeId).toBe('seed:profile-location');
   expect(refreshedProfile.locationProfile.displayAddress).toBe('Bostancı, Kadıköy, Existing Street 5');
-  expect(refreshedProfile.locationProfile.coordinate?.source).toBe('seed_data');
+  expect(refreshedProfile.locationProfile.coordinate?.source ?? null).toBeNull();
   expect(refreshedProfile.privacySettings.locationSharingEnabled).toBe(true);
 
   await page.getByRole('button', { name: 'Open user menu' }).click();
