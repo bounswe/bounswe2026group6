@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { LeafletMapCanvas } from "@/components/feature/location/LeafletMapCanvas";
 
 type LatLng = {
     latitude: number;
@@ -58,45 +58,34 @@ export function LeafletGatheringAreasMap({
     heightClassName = "h-[380px] md:h-[500px]",
     zoom = 14,
 }: LeafletGatheringAreasMapProps) {
-    const containerRef = React.useRef<HTMLDivElement | null>(null);
     const mapRef = React.useRef<L.Map | null>(null);
     const centerMarkerRef = React.useRef<L.CircleMarker | null>(null);
     const markerLayerRef = React.useRef<L.LayerGroup | null>(null);
     const markerRefs = React.useRef<Map<string, L.CircleMarker>>(new Map());
     const onSelectRef = React.useRef(onSelectFeature);
+    const [mapReadyVersion, setMapReadyVersion] = React.useState(0);
 
     React.useEffect(() => {
         onSelectRef.current = onSelectFeature;
     }, [onSelectFeature]);
 
     React.useEffect(() => {
-        if (!containerRef.current || mapRef.current) {
+        const map = mapRef.current;
+        if (!map || markerLayerRef.current) {
             return;
         }
 
-        const map = L.map(containerRef.current, {
-            center: [center.latitude, center.longitude],
-            zoom,
-            scrollWheelZoom: true,
-        });
-
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution:
-                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        }).addTo(map);
-
         const markerLayer = L.layerGroup().addTo(map);
         markerLayerRef.current = markerLayer;
+    }, [mapReadyVersion]);
 
-        mapRef.current = map;
-
+    React.useEffect(() => {
         return () => {
             markerRefs.current.clear();
-            markerLayer.clearLayers();
-            map.remove();
-            mapRef.current = null;
+            markerLayerRef.current?.clearLayers();
             markerLayerRef.current = null;
             centerMarkerRef.current = null;
+            mapRef.current = null;
         };
     }, []);
 
@@ -146,7 +135,7 @@ export function LeafletGatheringAreasMap({
             marker.addTo(markerLayer);
             markerRefs.current.set(feature.featureKey, marker);
         }
-    }, [features, selectedFeatureId]);
+    }, [features, selectedFeatureId, mapReadyVersion]);
 
     React.useEffect(() => {
         for (const [featureId, marker] of markerRefs.current.entries()) {
@@ -164,9 +153,15 @@ export function LeafletGatheringAreasMap({
     }, [selectedFeatureId]);
 
     return (
-        <div className={`overflow-hidden rounded-[10px] border border-[#e7e7ea] ${heightClassName}`}>
-            <div ref={containerRef} className="h-full w-full" />
-        </div>
+        <LeafletMapCanvas
+            center={center}
+            zoom={zoom}
+            heightClassName={heightClassName}
+            onMapReady={(map) => {
+                mapRef.current = map;
+                setMapReadyVersion((version) => version + 1);
+            }}
+        />
     );
 }
 
