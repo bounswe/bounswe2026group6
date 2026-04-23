@@ -33,9 +33,12 @@ export default function AdminEmergencyOverviewView() {
     const [overview, setOverview] = React.useState<EmergencyOverview | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [refreshing, setRefreshing] = React.useState(false);
-    const [error, setError] = React.useState("");
+    const [initialError, setInitialError] = React.useState("");
+    const [refreshError, setRefreshError] = React.useState("");
+    const [regionError, setRegionError] = React.useState("");
     const [includeRegionSummary, setIncludeRegionSummary] = React.useState(false);
     const isFirstLoadRef = React.useRef(true);
+    const latestRequestIdRef = React.useRef(0);
 
     const redirectToLogin = React.useCallback(() => {
         clearAccessToken();
@@ -56,14 +59,30 @@ export default function AdminEmergencyOverviewView() {
             } else {
                 setRefreshing(true);
             }
-            setError("");
+            const requestId = latestRequestIdRef.current + 1;
+            latestRequestIdRef.current = requestId;
+
+            if (mode === "initial") {
+                setInitialError("");
+            } else {
+                setRefreshError("");
+                if (includeRegion) {
+                    setRegionError("");
+                }
+            }
 
             try {
                 const result = await fetchAdminEmergencyOverview(token, {
                     includeRegionSummary: includeRegion,
                 });
+                if (requestId !== latestRequestIdRef.current) {
+                    return;
+                }
                 setOverview(result);
             } catch (err) {
+                if (requestId !== latestRequestIdRef.current) {
+                    return;
+                }
                 if (err instanceof ApiError && err.status === 401) {
                     redirectToLogin();
                     return;
@@ -74,12 +93,22 @@ export default function AdminEmergencyOverviewView() {
                     return;
                 }
 
-                setError(
+                const message =
                     err instanceof Error
                         ? err.message
-                        : "Could not load admin emergency overview."
-                );
+                        : "Could not load admin emergency overview.";
+
+                if (mode === "initial") {
+                    setInitialError(message);
+                } else if (includeRegion) {
+                    setRegionError(message);
+                } else {
+                    setRefreshError(message);
+                }
             } finally {
+                if (requestId !== latestRequestIdRef.current) {
+                    return;
+                }
                 setLoading(false);
                 setRefreshing(false);
             }
@@ -92,6 +121,12 @@ export default function AdminEmergencyOverviewView() {
         isFirstLoadRef.current = false;
         void loadOverview(includeRegionSummary, mode);
     }, [includeRegionSummary, loadOverview]);
+
+    React.useEffect(() => {
+        if (!includeRegionSummary && regionError) {
+            setRegionError("");
+        }
+    }, [includeRegionSummary, regionError]);
 
     if (loading) {
         return (
@@ -112,8 +147,8 @@ export default function AdminEmergencyOverviewView() {
                     subtitle="Could not load overview data."
                 />
                 <div className="admin-empty-state">
-                    <p>{error || "No overview data available right now."}</p>
-                    <PrimaryButton onClick={() => void loadOverview(includeRegionSummary, "refresh")}>
+                    <p>{initialError || "No overview data available right now."}</p>
+                    <PrimaryButton onClick={() => void loadOverview(includeRegionSummary, "initial")}>
                         Retry
                     </PrimaryButton>
                 </div>
@@ -122,9 +157,31 @@ export default function AdminEmergencyOverviewView() {
     }
 
     const regionSummary = overview.regionSummary || [];
+    const hasNoEmergencyData =
+        overview.totals.totalEmergencies === 0
+        && overview.statusBreakdown.pending === 0
+        && overview.statusBreakdown.inProgress === 0
+        && overview.statusBreakdown.resolved === 0
+        && overview.statusBreakdown.cancelled === 0;
 
     return (
         <div className="admin-overview-grid">
+            {hasNoEmergencyData ? (
+                <SectionCard>
+                    <p className="admin-subtle">
+                        There are currently no emergency records. This is a valid empty system state.
+                    </p>
+                </SectionCard>
+            ) : null}
+
+            {refreshError ? (
+                <SectionCard>
+                    <p className="admin-subtle">
+                        Showing previous data. Latest refresh failed: {refreshError}
+                    </p>
+                </SectionCard>
+            ) : null}
+
             <SectionCard>
                 <SectionHeader
                     title="Headline Metrics"
@@ -240,13 +297,11 @@ export default function AdminEmergencyOverviewView() {
                         Region summary is optional. Load it when you need city-level details.
                     </p>
                 )}
-            </SectionCard>
 
-            {error ? (
-                <SectionCard>
-                    <p className="admin-error-text">{error}</p>
-                </SectionCard>
-            ) : null}
+                {includeRegionSummary && regionError ? (
+                    <p className="admin-error-text">Region summary refresh failed: {regionError}</p>
+                ) : null}
+            </SectionCard>
         </div>
     );
 }

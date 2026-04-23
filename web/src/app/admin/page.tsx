@@ -1,16 +1,13 @@
-import { Suspense } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { AdminRouteGate } from "@/components/auth/AdminRouteGate";
 import AdminEmergencyOverviewView from "@/components/feature/admin/AdminEmergencyOverviewView";
 
 export default function AdminPage() {
     return (
-        <Suspense>
-            <AdminRouteGate>
-                <AppShell title="Admin Dashboard">
-                    <AdminEmergencyOverviewView />
-                </AppShell>
-            </AdminRouteGate>
-        </Suspense>
+        <AdminRouteGate>
+            <AppShell title="Admin Dashboard">
+                <AdminEmergencyOverviewView />
+            </AppShell>
+        </AdminRouteGate>
     );
 }

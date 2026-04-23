@@ -70,8 +70,106 @@ async function waitForUserByEmail(email, { timeoutMs = 10_000, intervalMs = 250 
   throw new Error(`Timed out waiting for user ${email}`);
 }
 
+async function promoteUserToAdmin({ userId, role = 'COORDINATOR' }) {
+  await withClient((client) =>
+    client.query(
+      `
+        INSERT INTO admins (admin_id, user_id, role)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id) DO UPDATE
+        SET role = EXCLUDED.role
+      `,
+      [`e2e_admin_${userId}`, userId, role]
+    )
+  );
+}
+
+async function seedEmergencyOverviewRecord({
+  requestId = `e2e_req_${Date.now()}`,
+  status = 'PENDING',
+  city = 'istanbul',
+  createdAtHoursAgo = 2,
+}) {
+  return withClient(async (client) => {
+    await client.query(
+      `
+        INSERT INTO help_requests (
+          request_id,
+          user_id,
+          help_types,
+          other_help_text,
+          affected_people_count,
+          risk_flags,
+          vulnerable_groups,
+          need_type,
+          description,
+          blood_type,
+          contact_full_name,
+          contact_phone,
+          contact_alternative_phone,
+          consent_given,
+          status,
+          created_at,
+          resolved_at,
+          cancelled_at,
+          is_saved_locally
+        )
+        VALUES (
+          $1,
+          NULL,
+          ARRAY['first_aid']::TEXT[],
+          '',
+          2,
+          ARRAY['injury']::TEXT[],
+          ARRAY[]::TEXT[],
+          'first_aid',
+          'E2E seeded request',
+          NULL,
+          'E2E Contact',
+          5551112233,
+          NULL,
+          TRUE,
+          $2::request_status,
+          NOW() - ($3 || ' hours')::interval,
+          CASE
+            WHEN $2 = 'RESOLVED'
+              THEN (NOW() - ($3 || ' hours')::interval) + INTERVAL '10 minutes'
+            ELSE NULL
+          END,
+          CASE
+            WHEN $2 = 'CANCELLED'
+              THEN (NOW() - ($3 || ' hours')::interval) + INTERVAL '7 minutes'
+            ELSE NULL
+          END,
+          FALSE
+        )
+      `,
+      [requestId, status, String(createdAtHoursAgo)]
+    );
+
+    await client.query(
+      `
+        INSERT INTO request_locations (
+          location_id,
+          request_id,
+          country,
+          city,
+          district,
+          neighborhood,
+          extra_address
+        )
+        VALUES ($1, $2, 'turkiye', $3, 'besiktas', 'levazim', 'e2e')
+        ON CONFLICT (request_id) DO NOTHING
+      `,
+      [`e2e_loc_${requestId}`, requestId, city]
+    );
+  });
+}
+
 module.exports = {
   findUserByEmail,
+  promoteUserToAdmin,
   resetDatabase,
+  seedEmergencyOverviewRecord,
   waitForUserByEmail,
 };

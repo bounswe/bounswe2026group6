@@ -1,0 +1,119 @@
+const { test, expect } = require('@playwright/test');
+const { createCompletedUser } = require('./helpers/api');
+const {
+  promoteUserToAdmin,
+  resetDatabase,
+  seedEmergencyOverviewRecord,
+  waitForUserByEmail,
+} = require('./helpers/db');
+const { loginThroughUi } = require('./helpers/ui');
+
+test.beforeEach(async () => {
+  await resetDatabase();
+});
+
+test('guest visiting /admin is redirected to login with returnTo', async ({ page }) => {
+  await page.goto('/admin');
+
+  await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin$/);
+  await expect(page.getByRole('heading', { name: 'Log In' })).toBeVisible();
+});
+
+test('authenticated non-admin visiting /admin is redirected to /home', async ({ page }) => {
+  const email = `non-admin-${Date.now()}@example.com`;
+  const password = 'Passw0rd!';
+
+  await createCompletedUser({ email, password });
+
+  await page.goto('/login?returnTo=%2Fadmin');
+  await loginThroughUi(page, { email, password });
+
+  await expect(page).toHaveURL(/\/home$/);
+});
+
+test('authenticated admin can open dashboard and toggle region summary', async ({ page }) => {
+  const email = `admin-${Date.now()}@example.com`;
+  const password = 'Passw0rd!';
+
+  const completedUser = await createCompletedUser({ email, password });
+  const dbUser = await waitForUserByEmail(email);
+  await promoteUserToAdmin({ userId: dbUser.user_id });
+  await seedEmergencyOverviewRecord({ requestId: 'e2e_admin_req_1', status: 'PENDING', city: 'ankara' });
+
+  await page.goto('/login');
+  await loginThroughUi(page, { email, password });
+
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
+
+  await page.goto('/admin');
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible();
+  await expect(page.getByText('Headline Metrics')).toBeVisible();
+
+  await expect(page.getByRole('columnheader', { name: 'City' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load Region Summary' }).click();
+  await expect(page.getByRole('columnheader', { name: 'City' })).toBeVisible();
+  await page.getByRole('button', { name: 'Hide Region Summary' }).click();
+  await expect(page.getByRole('columnheader', { name: 'City' })).toHaveCount(0);
+
+  // keep variable usage explicit for lint/readability in CI logs
+  expect(completedUser.accessToken).toBeDefined();
+});
+
+test('navbar admin link visibility is role-aware', async ({ page }) => {
+  await page.goto('/home');
+  await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
+
+  const nonAdminEmail = `role-non-admin-${Date.now()}@example.com`;
+  const nonAdminPassword = 'Passw0rd!';
+  await createCompletedUser({ email: nonAdminEmail, password: nonAdminPassword });
+  await page.goto('/login');
+  await loginThroughUi(page, { email: nonAdminEmail, password: nonAdminPassword });
+  await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Open user menu' }).click();
+  await page.getByRole('button', { name: 'Logout' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+
+  const adminEmail = `role-admin-${Date.now()}@example.com`;
+  const adminPassword = 'Passw0rd!';
+  await createCompletedUser({ email: adminEmail, password: adminPassword });
+  const adminDbUser = await waitForUserByEmail(adminEmail);
+  await promoteUserToAdmin({ userId: adminDbUser.user_id });
+
+  await page.goto('/login');
+  await loginThroughUi(page, { email: adminEmail, password: adminPassword });
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
+});
+
+test('initial overview fetch error can be retried successfully', async ({ page }) => {
+  const email = `retry-admin-${Date.now()}@example.com`;
+  const password = 'Passw0rd!';
+  await createCompletedUser({ email, password });
+  const dbUser = await waitForUserByEmail(email);
+  await promoteUserToAdmin({ userId: dbUser.user_id });
+  await seedEmergencyOverviewRecord({ requestId: 'e2e_admin_req_retry', status: 'PENDING', city: 'izmir' });
+
+  await page.goto('/login');
+  await loginThroughUi(page, { email, password });
+
+  let failedOnce = false;
+  await page.route('**/api/admin/emergency-overview*', async (route) => {
+    if (!failedOnce) {
+      failedOnce = true;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Injected e2e failure' }),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+
+  await page.goto('/admin');
+  await expect(page.getByText('Could not load overview data.')).toBeVisible();
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.getByText('Headline Metrics')).toBeVisible();
+});

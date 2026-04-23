@@ -4,7 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
+import { clearAccessToken } from "@/lib/auth";
+import { useAuthSession } from "@/lib/authSession";
 
 const navItemsOrdered = [
     { label: "Home", href: "/home" },
@@ -20,62 +21,28 @@ const guestAllowedPaths = new Set(["/home", "/news", "/emergency-numbers"]);
 export function TopNavbar() {
     const router = useRouter();
     const pathname = usePathname();
-    const [isAuthenticated, setIsAuthenticated] = React.useState(false);
-    const [isAdmin, setIsAdmin] = React.useState(false);
+    const { state, refresh } = useAuthSession();
     const [isMenuOpen, setIsMenuOpen] = React.useState(false);
     const menuRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
-        let cancelled = false;
-
-        const syncAuthState = async () => {
-            const token = getAccessToken();
-
-            if (!token) {
-                if (!cancelled) {
-                    setIsAuthenticated(false);
-                    setIsAdmin(false);
-                }
-                return;
-            }
-
-            if (!cancelled) {
-                setIsAuthenticated(true);
-            }
-
-            try {
-                const user = await fetchCurrentUser(token);
-                if (!cancelled) {
-                    setIsAdmin(Boolean(user.isAdmin));
-                }
-            } catch {
-                clearAccessToken();
-                if (!cancelled) {
-                    setIsAuthenticated(false);
-                    setIsAdmin(false);
-                }
-            }
-        };
-
         const handleStorage = (event: StorageEvent) => {
             if (event.key === null || event.key === "neph_access_token") {
-                void syncAuthState();
+                void refresh();
             }
         };
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
-                void syncAuthState();
+                void refresh();
             }
         };
         const handleFocus = () => {
-            void syncAuthState();
+            void refresh();
         };
         const handleAuthChanged = () => {
-            void syncAuthState();
+            void refresh();
         };
-
-        void syncAuthState();
 
         window.addEventListener("storage", handleStorage);
         window.addEventListener("focus", handleFocus);
@@ -83,13 +50,12 @@ export function TopNavbar() {
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
         return () => {
-            cancelled = true;
             window.removeEventListener("storage", handleStorage);
             window.removeEventListener("focus", handleFocus);
             window.removeEventListener("neph-auth-changed", handleAuthChanged);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, []);
+    }, [refresh]);
 
     React.useEffect(() => {
         setIsMenuOpen(false);
@@ -111,9 +77,12 @@ export function TopNavbar() {
 
     const handleLogout = () => {
         clearAccessToken();
-        setIsAuthenticated(false);
+        void refresh({ force: true });
         router.replace("/login");
     };
+
+    const isAuthenticated = state.phase === "authenticated";
+    const isAdmin = Boolean(state.user?.isAdmin);
 
     const navItems = navItemsOrdered.filter((item) => {
         if (!isAuthenticated) {
@@ -191,7 +160,7 @@ export function TopNavbar() {
                                         className="top-navbar-dropdown-item"
                                         onClick={() => {
                                             clearAccessToken();
-                                            setIsAuthenticated(false);
+                                            void refresh({ force: true });
                                             setIsMenuOpen(false);
                                             router.push("/login");
                                         }}

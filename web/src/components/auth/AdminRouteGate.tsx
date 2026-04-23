@@ -2,64 +2,43 @@
 
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
+import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { useAuthSession } from "@/lib/authSession";
 
 type AdminRouteGateProps = {
     children: React.ReactNode;
 };
 
-type AdminAuthStatus = "checking" | "allowed" | "forbidden" | "guest";
-
 export function AdminRouteGate({ children }: AdminRouteGateProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const [status, setStatus] = React.useState<AdminAuthStatus>("checking");
+    const { state, refresh } = useAuthSession();
 
     React.useEffect(() => {
-        let cancelled = false;
-
-        async function resolveStatus() {
-            setStatus("checking");
-
-            const token = getAccessToken();
-            if (!token || !token.trim()) {
-                if (!cancelled) {
-                    setStatus("guest");
-                    router.replace(`/login?returnTo=${encodeURIComponent(pathname || "/admin")}`);
-                }
-                return;
-            }
-
-            try {
-                const currentUser = await fetchCurrentUser(token);
-                if (cancelled) {
-                    return;
-                }
-
-                if (currentUser.isAdmin) {
-                    setStatus("allowed");
-                    return;
-                }
-
-                setStatus("forbidden");
-                router.replace("/home");
-            } catch {
-                clearAccessToken();
-                if (!cancelled) {
-                    setStatus("guest");
-                    router.replace(`/login?returnTo=${encodeURIComponent(pathname || "/admin")}`);
-                }
-            }
+        if (state.phase === "guest") {
+            router.replace(`/login?returnTo=${encodeURIComponent(pathname || "/admin")}`);
+            return;
         }
 
-        void resolveStatus();
+        if (state.phase === "authenticated" && !state.user?.isAdmin) {
+            router.replace("/home");
+        }
+    }, [pathname, router, state.phase, state.user?.isAdmin]);
 
-        return () => {
-            cancelled = true;
-        };
-    }, [pathname, router]);
+    if (state.phase === "loading") {
+        return null;
+    }
 
-    if (status !== "allowed") {
+    if (state.phase === "error") {
+        return (
+            <div className="admin-empty-state">
+                <p>{state.errorMessage || "Could not verify admin access right now."}</p>
+                <PrimaryButton onClick={() => void refresh({ force: true })}>Retry</PrimaryButton>
+            </div>
+        );
+    }
+
+    if (state.phase !== "authenticated" || !state.user?.isAdmin) {
         return null;
     }
 
