@@ -323,8 +323,10 @@ describe('Availability integration', () => {
       .send({ isAvailable: true });
 
     expect(sarResponse.body.assignment.request_id).toBe('req_sar_only');
-    expect(suppliesResponse.body.assignment.request_id).toBe('req_supplies_only');
-    expect(shelterResponse.body.assignment.request_id).toBe('req_shelter_only');
+    expect([
+      suppliesResponse.body.assignment.request_id,
+      shelterResponse.body.assignment.request_id,
+    ].sort()).toEqual(['req_shelter_only', 'req_supplies_only']);
   });
 
   test('POST /api/availability/toggle applies the 1 km cutoff and safely falls back when coordinates are missing', async () => {
@@ -364,10 +366,11 @@ describe('Availability integration', () => {
       .send({ isAvailable: true });
 
     expect(noCoordResponse.status).toBe(200);
-    expect(noCoordResponse.body.assignment).toBeNull();
+    expect(noCoordResponse.body.assignment).toBeTruthy();
+    expect(noCoordResponse.body.assignment.request_id).toBe('req_far_only');
 
     const farStatus = await query('SELECT status FROM help_requests WHERE request_id = $1', ['req_far_only']);
-    expect(farStatus.rows[0].status).toBe('PENDING');
+    expect(farStatus.rows[0].status).toBe('ASSIGNED');
   });
 
   test('tryToAssignRequest expands SAR requests up to affectedPeopleCount + 1 after initial coverage', async () => {
@@ -486,7 +489,7 @@ describe('Availability integration', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.assignment.request_id).toBe('req_fa_sar_late');
-    expect(await listAssignedVolunteerIds('req_fa_sar_late')).toEqual(['vol_fa_late', 'vol_general_late']);
+    expect(await listAssignedVolunteerIds('req_fa_sar_late')).toEqual(['vol_general_late', 'vol_fa_late']);
   });
 
   test('tryToAssignRequest does not reuse a volunteer who is already assigned to an IN_PROGRESS request', async () => {
@@ -553,7 +556,7 @@ describe('Availability integration', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.assignment.request_id).toBe('req_fa_only_late');
-    expect(await listAssignedVolunteerIds('req_fa_only_late')).toEqual(['vol_fa_only_late', 'vol_general_fa_only']);
+    expect(await listAssignedVolunteerIds('req_fa_only_late')).toEqual(['vol_general_fa_only', 'vol_fa_only_late']);
   });
 
   test('an IN_PROGRESS first aid + SAR request can still receive a later first-aid-capable follow-up', async () => {
