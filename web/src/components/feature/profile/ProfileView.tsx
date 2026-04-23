@@ -622,7 +622,11 @@ export default function ProfileView() {
                             label="Height (cm)"
                             value={profile.height}
                             onChange={(e) =>
-                                setProfile({ ...profile, height: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, height: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
                         <TextInput
@@ -630,7 +634,11 @@ export default function ProfileView() {
                             label="Weight (kg)"
                             value={profile.weight}
                             onChange={(e) =>
-                                setProfile({ ...profile, weight: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, weight: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
                         <SelectInput
@@ -638,7 +646,11 @@ export default function ProfileView() {
                             label="Gender"
                             value={profile.gender}
                             onChange={(e) =>
-                                setProfile({ ...profile, gender: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, gender: e.target.value }
+                                        : currentProfile
+                                )
                             }
                             options={[
                                 { label: "Select", value: "" },
@@ -655,10 +667,14 @@ export default function ProfileView() {
                                 inputMode="numeric"
                                 value={profile.age}
                                 onChange={(e) =>
-                                    setProfile({
-                                        ...profile,
-                                        age: e.target.value.replace(/\D/g, "").slice(0, 3),
-                                    })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                age: e.target.value.replace(/\D/g, "").slice(0, 3),
+                                            }
+                                            : currentProfile
+                                    )
                                 }
                             />
                         </div>
@@ -677,7 +693,11 @@ export default function ProfileView() {
                             label="Profession"
                             value={profile.profession}
                             onChange={(e) =>
-                                setProfile({ ...profile, profession: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, profession: e.target.value }
+                                        : currentProfile
+                                )
                             }
                             options={professionOptions}
                         />
@@ -693,14 +713,18 @@ export default function ProfileView() {
                                     label={option}
                                     checked={profile.expertise.includes(option)}
                                     onCheckedChange={(checked) =>
-                                        setProfile({
-                                            ...profile,
-                                            expertise: checked
-                                                ? [...profile.expertise, option]
-                                                : profile.expertise.filter(
-                                                    (item) => item !== option
-                                                ),
-                                        })
+                                        setProfile((currentProfile) =>
+                                            currentProfile
+                                                ? {
+                                                    ...currentProfile,
+                                                    expertise: checked
+                                                        ? [...currentProfile.expertise, option]
+                                                        : currentProfile.expertise.filter(
+                                                            (item) => item !== option
+                                                        ),
+                                                }
+                                                : currentProfile
+                                        )
                                     }
                                 />
                             ))}
@@ -722,7 +746,11 @@ export default function ProfileView() {
                             value={profile.bloodType}
                             options={bloodTypeOptions}
                             onChange={(e) =>
-                                setProfile({ ...profile, bloodType: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, bloodType: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -731,7 +759,11 @@ export default function ProfileView() {
                             label="Medical History"
                             value={profile.medicalHistory}
                             onChange={(e) =>
-                                setProfile({ ...profile, medicalHistory: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, medicalHistory: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -768,10 +800,14 @@ export default function ProfileView() {
                                 id="chronic"
                                 value={profile.chronicDiseases}
                                 onChange={(e) =>
-                                    setProfile({
-                                        ...profile,
-                                        chronicDiseases: e.target.value,
-                                    })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                chronicDiseases: e.target.value,
+                                            }
+                                            : currentProfile
+                                    )
                                 }
                             />
 
@@ -836,7 +872,11 @@ export default function ProfileView() {
                                 id="allergy"
                                 value={profile.allergies}
                                 onChange={(e) =>
-                                    setProfile({ ...profile, allergies: e.target.value })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? { ...currentProfile, allergies: e.target.value }
+                                            : currentProfile
+                                    )
                                 }
                             />
 
@@ -889,13 +929,17 @@ export default function ProfileView() {
                             value={resolvedCountryKey}
                             options={[{ label: "Select Country", value: "" }, ...countryOptions]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
-                                    country: e.target.value,
-                                    city: "",
-                                    district: "",
-                                    neighborhood: "",
-                                })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? {
+                                            ...currentProfile,
+                                            country: e.target.value,
+                                            city: "",
+                                            district: "",
+                                            neighborhood: "",
+                                        }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -906,12 +950,16 @@ export default function ProfileView() {
                             disabled={!resolvedCountryKey}
                             options={[{ label: "Select City", value: "" }, ...cityOptions]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
-                                    city: e.target.value,
-                                    district: "",
-                                    neighborhood: "",
-                                })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? {
+                                            ...currentProfile,
+                                            city: e.target.value,
+                                            district: "",
+                                            neighborhood: "",
+                                        }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -925,11 +973,15 @@ export default function ProfileView() {
                                 ...districtOptions,
                             ]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
-                                    district: e.target.value,
-                                    neighborhood: "",
-                                })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? {
+                                            ...currentProfile,
+                                            district: e.target.value,
+                                            neighborhood: "",
+                                        }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -943,10 +995,14 @@ export default function ProfileView() {
                                 ...neighborhoodOptions,
                             ]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
-                                    neighborhood: e.target.value,
-                                })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? {
+                                            ...currentProfile,
+                                            neighborhood: e.target.value,
+                                        }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -956,10 +1012,14 @@ export default function ProfileView() {
                                 label="Extra Address"
                                 value={profile.extraAddress}
                                 onChange={(e) =>
-                                    setProfile({
-                                        ...profile,
-                                        extraAddress: e.target.value,
-                                    })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                extraAddress: e.target.value,
+                                            }
+                                            : currentProfile
+                                    )
                                 }
                             />
                             <HelperText>
@@ -980,7 +1040,11 @@ export default function ProfileView() {
                             aria-label="Share Current Location"
                             checked={profile.shareLocation}
                             onCheckedChange={(value) =>
-                                setProfile({ ...profile, shareLocation: value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, shareLocation: value }
+                                        : currentProfile
+                                )
                             }
                         />
                     </div>
