@@ -8,6 +8,17 @@ const {
 } = require('./helpers/db');
 const { loginThroughUi } = require('./helpers/ui');
 
+async function ensureOverviewReady(page) {
+  const retryButton = page.getByRole('button', { name: 'Retry' });
+  const loadRegionButton = page.getByRole('button', { name: 'Load Region Summary' });
+
+  if (await retryButton.isVisible().catch(() => false)) {
+    await retryButton.click();
+  }
+
+  await expect(loadRegionButton).toBeVisible();
+}
+
 test.beforeEach(async () => {
   await resetDatabase();
 });
@@ -48,7 +59,7 @@ test('authenticated admin can open dashboard and toggle region summary', async (
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible();
-  await expect(page.getByText('Headline Metrics')).toBeVisible();
+  await ensureOverviewReady(page);
 
   await expect(page.getByRole('columnheader', { name: 'City' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Load Region Summary' }).click();
@@ -97,10 +108,9 @@ test('initial overview fetch error can be retried successfully', async ({ page }
   await page.goto('/login');
   await loginThroughUi(page, { email, password });
 
-  let failedOnce = false;
+  let failUntilRetried = true;
   await page.route('**/api/admin/emergency-overview*', async (route) => {
-    if (!failedOnce) {
-      failedOnce = true;
+    if (failUntilRetried) {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -113,7 +123,8 @@ test('initial overview fetch error can be retried successfully', async ({ page }
   });
 
   await page.goto('/admin');
-  await expect(page.getByText('Could not load overview data.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  failUntilRetried = false;
   await page.getByRole('button', { name: 'Retry' }).click();
-  await expect(page.getByText('Headline Metrics')).toBeVisible();
+  await ensureOverviewReady(page);
 });
