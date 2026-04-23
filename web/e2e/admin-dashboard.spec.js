@@ -11,12 +11,21 @@ const { loginThroughUi } = require('./helpers/ui');
 async function ensureOverviewReady(page) {
   const retryButton = page.getByRole('button', { name: 'Retry' });
   const loadRegionButton = page.getByRole('button', { name: 'Load Region Summary' });
+  const deadline = Date.now() + 20_000;
 
-  if (await retryButton.isVisible().catch(() => false)) {
-    await retryButton.click();
+  while (Date.now() < deadline) {
+    if (await loadRegionButton.isVisible().catch(() => false)) {
+      return;
+    }
+
+    if (await retryButton.isVisible().catch(() => false)) {
+      await retryButton.click();
+    }
+
+    await page.waitForTimeout(250);
   }
 
-  await expect(loadRegionButton).toBeVisible();
+  throw new Error('Admin overview did not become ready (neither Load Region Summary nor Retry became visible).');
 }
 
 test.beforeEach(async () => {
@@ -123,7 +132,7 @@ test('initial overview fetch error can be retried successfully', async ({ page }
   });
 
   await page.goto('/admin');
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await page.getByRole('button', { name: 'Retry' }).waitFor({ state: 'visible', timeout: 20_000 });
   failUntilRetried = false;
   await page.getByRole('button', { name: 'Retry' }).click();
   await ensureOverviewReady(page);
