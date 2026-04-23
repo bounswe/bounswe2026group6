@@ -30,7 +30,7 @@ async function ensureOverviewReady(page) {
     await page.waitForTimeout(250);
   }
 
-  throw new Error('Admin overview did not become ready (neither Load Region Summary nor Retry became visible).');
+  throw new Error(`Admin overview did not become ready. Current URL: ${page.url()}`);
 }
 
 test.beforeEach(async () => {
@@ -129,7 +129,7 @@ test('initial overview fetch error can be retried successfully', async ({ page }
 
   let failUntilRetried = true;
   let initialFailCount = 0;
-  await page.route('**/api/admin/emergency-overview*', async (route) => {
+  await page.route('**/admin/emergency-overview*', async (route) => {
     if (failUntilRetried && initialFailCount < 2) {
       initialFailCount += 1;
       await route.fulfill({

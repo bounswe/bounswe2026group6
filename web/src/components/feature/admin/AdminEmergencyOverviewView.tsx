@@ -154,6 +154,14 @@ export default function AdminEmergencyOverviewView() {
                     title="Emergency Overview"
                     subtitle="Loading aggregate emergency metrics..."
                 />
+                <div className="admin-empty-state">
+                    <p className="admin-subtle">
+                        If this takes too long, retry the overview request.
+                    </p>
+                    <PrimaryButton onClick={() => void loadOverview(includeRegionSummary, "initial")}>
+                        Retry
+                    </PrimaryButton>
+                </div>
             </SectionCard>
         );
     }
