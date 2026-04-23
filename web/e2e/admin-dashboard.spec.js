@@ -8,23 +8,56 @@ const {
 } = require('./helpers/db');
 const { loginThroughUi } = require('./helpers/ui');
 
-async function ensureOverviewReady(page) {
+function getOverviewUiState(page) {
   const retryButton = page.getByRole('button', { name: 'Retry Overview' });
   const loadRegionButton = page.getByRole('button', { name: 'Load Region Summary' });
   const hideRegionButton = page.getByRole('button', { name: 'Hide Region Summary' });
+  const url = page.url();
+
+  if (/\/login(\?|$)/.test(url)) {
+    return "redirected-login";
+  }
+
+  if (/\/home(\?|$)/.test(url)) {
+    return "redirected-home";
+  }
+
+  return Promise.all([
+    loadRegionButton.isVisible().catch(() => false),
+    hideRegionButton.isVisible().catch(() => false),
+    retryButton.isVisible().catch(() => false),
+  ]).then(([isLoadVisible, isHideVisible, isRetryVisible]) => {
+    if (isLoadVisible || isHideVisible) {
+      return "ready";
+    }
+
+    if (isRetryVisible) {
+      return "retry";
+    }
+
+    return "pending";
+  });
+}
+
+async function ensureOverviewReady(page, { allowRetryClick = false } = {}) {
+  const retryButton = page.getByRole('button', { name: 'Retry Overview' });
   const deadline = Date.now() + 30_000;
+  let retryClicked = false;
 
   while (Date.now() < deadline) {
-    if (await loadRegionButton.isVisible().catch(() => false)) {
+    const state = await getOverviewUiState(page);
+
+    if (state === "ready") {
       return;
     }
 
-    if (await hideRegionButton.isVisible().catch(() => false)) {
-      return;
+    if (state === "redirected-login" || state === "redirected-home") {
+      throw new Error(`Admin overview redirected unexpectedly. Current URL: ${page.url()}`);
     }
 
-    if (await retryButton.isVisible().catch(() => false)) {
-      await retryButton.click({ timeout: 800, force: true }).catch(() => {});
+    if (state === "retry" && allowRetryClick && !retryClicked) {
+      retryClicked = true;
+      await retryButton.click({ timeout: 1500, force: true }).catch(() => {});
     }
 
     await page.waitForTimeout(250);
@@ -73,7 +106,7 @@ test('authenticated admin can open dashboard and toggle region summary', async (
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible();
-  await ensureOverviewReady(page);
+  await ensureOverviewReady(page, { allowRetryClick: true });
 
   const loadRegionButton = page.getByRole('button', { name: 'Load Region Summary' });
   const hideRegionButton = page.getByRole('button', { name: 'Hide Region Summary' });
@@ -126,12 +159,11 @@ test('initial overview fetch error can be retried successfully', async ({ page }
 
   await page.goto('/login');
   await loginThroughUi(page, { email, password });
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
 
   let failUntilRetried = true;
-  let initialFailCount = 0;
   await page.route('**/*emergency-overview*', async (route) => {
-    if (failUntilRetried && initialFailCount < 2) {
-      initialFailCount += 1;
+    if (failUntilRetried) {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -144,15 +176,7 @@ test('initial overview fetch error can be retried successfully', async ({ page }
   });
 
   await page.goto('/admin');
-  await page.waitForTimeout(1200);
-
-  const retryOverviewButton = page.getByRole('button', { name: 'Retry Overview' });
-  if (await retryOverviewButton.isVisible().catch(() => false)) {
-    failUntilRetried = false;
-    await retryOverviewButton.click({ timeout: 1500, force: true }).catch(() => {});
-  } else {
-    failUntilRetried = false;
-  }
-
-  await ensureOverviewReady(page);
+  await page.getByRole('button', { name: 'Retry Overview' }).waitFor({ state: 'visible', timeout: 30_000 });
+  failUntilRetried = false;
+  await ensureOverviewReady(page, { allowRetryClick: true });
 });
