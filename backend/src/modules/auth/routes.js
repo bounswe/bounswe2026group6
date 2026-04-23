@@ -1,10 +1,12 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const { env } = require('../../config/env');
 const { adminRouter } = require('../admin/routes');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // max 10 requests
+  skip: () => env.nodeEnv === 'test',
   message: {
     code: 'TOO_MANY_REQUESTS',
     message: 'Too many requests, please try again later',
