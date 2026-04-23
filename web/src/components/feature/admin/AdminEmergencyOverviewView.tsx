@@ -159,7 +159,7 @@ export default function AdminEmergencyOverviewView() {
                         If this takes too long, retry the overview request.
                     </p>
                     <PrimaryButton onClick={() => void loadOverview(includeRegionSummary, "initial")}>
-                        Retry
+                        Retry Overview
                     </PrimaryButton>
                 </div>
             </SectionCard>
@@ -176,7 +176,7 @@ export default function AdminEmergencyOverviewView() {
                 <div className="admin-empty-state">
                     <p>{initialError || "No overview data available right now."}</p>
                     <PrimaryButton onClick={() => void loadOverview(includeRegionSummary, "initial")}>
-                        Retry
+                        Retry Overview
                     </PrimaryButton>
                 </div>
             </SectionCard>

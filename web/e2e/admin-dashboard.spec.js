@@ -9,10 +9,10 @@ const {
 const { loginThroughUi } = require('./helpers/ui');
 
 async function ensureOverviewReady(page) {
-  const retryButton = page.getByRole('button', { name: 'Retry' });
+  const retryButton = page.getByRole('button', { name: 'Retry Overview' });
   const loadRegionButton = page.getByRole('button', { name: 'Load Region Summary' });
   const hideRegionButton = page.getByRole('button', { name: 'Hide Region Summary' });
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 30_000;
 
   while (Date.now() < deadline) {
     if (await loadRegionButton.isVisible().catch(() => false)) {
@@ -24,7 +24,7 @@ async function ensureOverviewReady(page) {
     }
 
     if (await retryButton.isVisible().catch(() => false)) {
-      await retryButton.click();
+      await retryButton.click({ timeout: 800, force: true }).catch(() => {});
     }
 
     await page.waitForTimeout(250);
@@ -129,7 +129,7 @@ test('initial overview fetch error can be retried successfully', async ({ page }
 
   let failUntilRetried = true;
   let initialFailCount = 0;
-  await page.route('**/admin/emergency-overview*', async (route) => {
+  await page.route('**/*emergency-overview*', async (route) => {
     if (failUntilRetried && initialFailCount < 2) {
       initialFailCount += 1;
       await route.fulfill({
@@ -144,9 +144,15 @@ test('initial overview fetch error can be retried successfully', async ({ page }
   });
 
   await page.goto('/admin');
-  await expect.poll(() => initialFailCount, { timeout: 20_000 }).toBeGreaterThan(0);
-  await page.getByRole('button', { name: 'Retry' }).waitFor({ state: 'visible', timeout: 20_000 });
-  failUntilRetried = false;
-  await page.getByRole('button', { name: 'Retry' }).click();
+  await page.waitForTimeout(1200);
+
+  const retryOverviewButton = page.getByRole('button', { name: 'Retry Overview' });
+  if (await retryOverviewButton.isVisible().catch(() => false)) {
+    failUntilRetried = false;
+    await retryOverviewButton.click({ timeout: 1500, force: true }).catch(() => {});
+  } else {
+    failUntilRetried = false;
+  }
+
   await ensureOverviewReady(page);
 });

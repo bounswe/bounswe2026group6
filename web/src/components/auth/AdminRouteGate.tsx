@@ -26,7 +26,14 @@ export function AdminRouteGate({ children }: AdminRouteGateProps) {
     }, [pathname, router, state.phase, state.user?.isAdmin]);
 
     if (state.phase === "loading") {
-        return null;
+        return (
+            <div className="admin-empty-state">
+                <p>Checking admin access...</p>
+                <PrimaryButton onClick={() => void refresh({ force: true })}>
+                    Retry Access Check
+                </PrimaryButton>
+            </div>
+        );
     }
 
     if (state.phase === "error") {
