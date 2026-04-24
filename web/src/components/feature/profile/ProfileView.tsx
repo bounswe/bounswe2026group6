@@ -128,6 +128,10 @@ export default function ProfileView() {
                 fetchMyProfile(token),
             ]);
 
+            setInitialShareLocation(
+                backendProfile.privacySettings.locationSharingEnabled
+            );
+
             setProfile((currentProfile) => {
                 const refreshedProfile = toProfileData(
                     backendProfile,
