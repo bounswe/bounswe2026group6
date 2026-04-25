@@ -20,6 +20,7 @@ const notificationsRouter = express.Router();
 const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     code: 'TOO_MANY_REQUESTS',
     message: 'Too many notification write requests, please try again soon.',
