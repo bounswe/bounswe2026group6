@@ -171,6 +171,17 @@ async function createCompletedUser({ email, password = 'Passw0rd!' } = {}) {
       country: 'Turkey',
       city: 'Istanbul',
       address: 'Bostancı, Kadıköy, Existing Street 5',
+      displayAddress: 'Bostancı, Kadıköy, Existing Street 5',
+      placeId: 'seed:profile-location',
+      latitude: 40.9566,
+      longitude: 29.0852,
+      coordinate: {
+        latitude: 40.9566,
+        longitude: 29.0852,
+        source: 'seed_data',
+        accuracyMeters: 12,
+        capturedAt: new Date().toISOString(),
+      },
     },
   });
 

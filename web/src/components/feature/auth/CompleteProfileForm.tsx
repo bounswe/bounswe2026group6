@@ -77,6 +77,25 @@ const initialForm: ProfileForm = {
     shareLocation: false,
 };
 
+const FRESH_DEVICE_CAPTURE_MAX_AGE_MS = 5 * 60 * 1000;
+
+function isFreshCurrentDeviceSelection(value: LocationPickerValue | null) {
+    if (!value || value.source !== "current_device") {
+        return false;
+    }
+
+    if (!value.capturedAt) {
+        return false;
+    }
+
+    const capturedAtMs = Date.parse(value.capturedAt);
+    if (Number.isNaN(capturedAtMs)) {
+        return false;
+    }
+
+    return Date.now() - capturedAtMs <= FRESH_DEVICE_CAPTURE_MAX_AGE_MS;
+}
+
 export default function CompleteProfileForm() {
     const router = useRouter();
     const [form, setForm] = React.useState<ProfileForm>(initialForm);
@@ -298,6 +317,13 @@ export default function CompleteProfileForm() {
             return;
         }
 
+        if (form.shareLocation && !isFreshCurrentDeviceSelection(locationPickerValue)) {
+            setError(
+                "To enable Share Current Location, click Use Current Location first so we can save a fresh device location."
+            );
+            return;
+        }
+
         const token = getAccessToken();
 
         if (!token) {
@@ -341,8 +367,8 @@ export default function CompleteProfileForm() {
                 longitude: hasCoordinateSelection
                     ? locationPickerValue.longitude
                     : undefined,
-                displayAddress: locationPickerValue?.displayName || undefined,
-                placeId: locationPickerValue?.placeId || undefined,
+                displayAddress: locationPickerValue?.displayName ?? undefined,
+                placeId: locationPickerValue?.placeId ?? undefined,
                 administrative: {
                     countryCode: resolvedCountryCode,
                     country: resolvedCountryLabel || null,
@@ -350,15 +376,16 @@ export default function CompleteProfileForm() {
                     district: resolvedDistrictLabel || null,
                     neighborhood: resolvedNeighborhoodLabel || null,
                     extraAddress: resolvedExtraAddress || null,
+                    postalCode: locationPickerValue?.administrative.postalCode ?? null,
                 },
                 coordinate: hasCoordinateSelection
                     ? {
                         latitude: locationPickerValue.latitude,
                         longitude: locationPickerValue.longitude,
                         accuracyMeters: locationPickerValue.accuracyMeters ?? null,
-                        source: locationPickerValue.source || "profile_form",
+                        source: locationPickerValue.source ?? "profile_form",
                         capturedAt:
-                            locationPickerValue.capturedAt ||
+                            locationPickerValue.capturedAt ??
                             new Date().toISOString(),
                     }
                     : undefined,

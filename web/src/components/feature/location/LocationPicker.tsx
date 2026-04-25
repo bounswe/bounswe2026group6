@@ -60,6 +60,19 @@ function toManualPickerValue(latitude: number, longitude: number): LocationPicke
     };
 }
 
+function mapGeolocationError(geoError: GeolocationPositionError) {
+    switch (geoError.code) {
+        case geoError.PERMISSION_DENIED:
+            return "Location permission was denied. Enable location access in your browser settings.";
+        case geoError.POSITION_UNAVAILABLE:
+            return "Current location is unavailable right now. Please try again or select from map.";
+        case geoError.TIMEOUT:
+            return "Location request timed out. Please try again.";
+        default:
+            return geoError.message || "Could not access current location.";
+    }
+}
+
 export function LocationPicker({
     countryCode = "TR",
     value,
@@ -128,6 +141,7 @@ export function LocationPicker({
             metadata?: {
                 source?: string | null;
                 accuracyMeters?: number | null;
+                capturedAt?: string | null;
             }
         ) => {
             const currentReverseRequestId = ++reverseRequestIdRef.current;
@@ -144,9 +158,9 @@ export function LocationPicker({
 
                 onChange({
                     ...toPickerValue(response.item),
-                    source: metadata?.source || "map_pin",
+                    source: metadata?.source ?? "map_pin",
                     accuracyMeters: metadata?.accuracyMeters ?? null,
-                    capturedAt: new Date().toISOString(),
+                    capturedAt: metadata?.capturedAt ?? new Date().toISOString(),
                 });
             } catch (err) {
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
@@ -156,9 +170,9 @@ export function LocationPicker({
                 setError(err instanceof Error ? err.message : "Could not resolve selected location.");
                 onChange({
                     ...toManualPickerValue(latitude, longitude),
-                    source: metadata?.source || "map_pin",
+                    source: metadata?.source ?? "map_pin",
                     accuracyMeters: metadata?.accuracyMeters ?? null,
-                    capturedAt: new Date().toISOString(),
+                    capturedAt: metadata?.capturedAt ?? new Date().toISOString(),
                 });
             } finally {
                 if (currentReverseRequestId === reverseRequestIdRef.current) {
@@ -175,32 +189,56 @@ export function LocationPicker({
             return;
         }
 
-        setError("");
-        setResolving(true);
+        const requestLocation = () => {
+            setError("");
+            setResolving(true);
 
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                void handleResolveCoordinates(
-                    position.coords.latitude,
-                    position.coords.longitude,
-                    {
-                        source: "current_device",
-                        accuracyMeters:
-                            typeof position.coords.accuracy === "number"
-                                ? position.coords.accuracy
-                                : null,
-                    }
-                );
-            },
-            (geoError) => {
-                setResolving(false);
-                setError(geoError.message || "Could not access current location.");
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-            }
-        );
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    void handleResolveCoordinates(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        {
+                            source: "current_device",
+                            accuracyMeters:
+                                typeof position.coords.accuracy === "number"
+                                    ? position.coords.accuracy
+                                    : null,
+                            capturedAt: new Date(position.timestamp).toISOString(),
+                        }
+                    );
+                },
+                (geoError) => {
+                    setResolving(false);
+                    setError(mapGeolocationError(geoError));
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                }
+            );
+        };
+
+        if (!navigator.permissions?.query) {
+            requestLocation();
+            return;
+        }
+
+        void navigator.permissions
+            .query({ name: "geolocation" })
+            .then((permissionStatus) => {
+                if (permissionStatus.state === "denied") {
+                    setError(
+                        "Location permission is denied. Enable location access in your browser settings."
+                    );
+                    return;
+                }
+
+                requestLocation();
+            })
+            .catch(() => {
+                requestLocation();
+            });
     }, [handleResolveCoordinates]);
 
     React.useEffect(() => {

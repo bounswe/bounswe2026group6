@@ -18,6 +18,7 @@ export default function PrivacySecurityView() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [shareLocation, setShareLocation] = React.useState(false);
+    const [initialShareLocation, setInitialShareLocation] = React.useState(false);
     const [error, setError] = React.useState("");
     const [info, setInfo] = React.useState("");
 
@@ -39,6 +40,7 @@ export default function PrivacySecurityView() {
             try {
                 const profile = await fetchMyProfile(token);
                 setShareLocation(profile.privacySettings.locationSharingEnabled);
+                setInitialShareLocation(profile.privacySettings.locationSharingEnabled);
             } catch (err) {
                 if (err instanceof ApiError && err.status === 401) {
                     redirectToLoginAfterAuthExpiry();
@@ -70,6 +72,13 @@ export default function PrivacySecurityView() {
             setSaving(true);
             setError("");
             setInfo("");
+
+            if (!initialShareLocation && shareLocation) {
+                setError(
+                    "To enable Share Current Location, go to Profile, click Use Current Location, and save there first."
+                );
+                return;
+            }
 
             await patchMyPrivacy(token, {
                 locationSharingEnabled: shareLocation,

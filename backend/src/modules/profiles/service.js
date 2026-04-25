@@ -62,9 +62,9 @@ function mapProfileRow(row) {
         : {
           latitude: row.latitude,
           longitude: row.longitude,
-          accuracyMeters: null,
-          source: null,
-          capturedAt: row.last_updated,
+          accuracyMeters: row.coordinate_accuracy_meters,
+          source: row.coordinate_source,
+          capturedAt: row.coordinate_captured_at || row.last_updated,
         },
       placeId: row.place_id,
       lastUpdated: row.last_updated,

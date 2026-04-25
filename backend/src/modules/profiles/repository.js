@@ -72,6 +72,20 @@ function normalizeIsoCountryCode(value) {
   return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeOptionalTimestamp(value) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const parsedMs = Date.parse(normalized);
+  if (Number.isNaN(parsedMs)) {
+    return null;
+  }
+
+  return new Date(parsedMs).toISOString();
+}
+
 function normalizeLocationInput(data) {
   const administrative = isPlainObject(data.administrative) ? data.administrative : null;
   const coordinate = isPlainObject(data.coordinate) ? data.coordinate : null;
@@ -89,6 +103,12 @@ function normalizeLocationInput(data) {
   const placeId = normalizeOptionalString(data.placeId);
   const latitude = data.latitude ?? coordinate?.latitude ?? null;
   const longitude = data.longitude ?? coordinate?.longitude ?? null;
+    const coordinateAccuracyMeters =
+      typeof coordinate?.accuracyMeters === 'number' && Number.isFinite(coordinate.accuracyMeters)
+        ? coordinate.accuracyMeters
+        : null;
+    const coordinateSource = normalizeOptionalString(coordinate?.source);
+    const coordinateCapturedAt = normalizeOptionalTimestamp(coordinate?.capturedAt);
 
   return {
     address,
@@ -103,6 +123,9 @@ function normalizeLocationInput(data) {
     placeId,
     latitude,
     longitude,
+      coordinateAccuracyMeters,
+      coordinateSource,
+      coordinateCapturedAt,
   };
 }
 
@@ -331,6 +354,9 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
   const hasPlaceId = provided.has('placeId');
   const hasLatitude = provided.has('latitude') || hasOwn(coordinate, 'latitude');
   const hasLongitude = provided.has('longitude') || hasOwn(coordinate, 'longitude');
+  const hasCoordinateAccuracyMeters = hasOwn(coordinate, 'accuracyMeters');
+  const hasCoordinateSource = hasOwn(coordinate, 'source');
+  const hasCoordinateCapturedAt = hasOwn(coordinate, 'capturedAt');
   const normalizedLocation = normalizeLocationInput(data);
 
   const sql = `
@@ -348,23 +374,29 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
       postal_code,
       place_id,
       latitude,
-      longitude
+      longitude,
+      coordinate_accuracy_meters,
+      coordinate_source,
+      coordinate_captured_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     ON CONFLICT (profile_id)
     DO UPDATE SET
-      address = CASE WHEN $15 THEN EXCLUDED.address ELSE location_profiles.address END,
-      display_address = CASE WHEN $16 THEN EXCLUDED.display_address ELSE location_profiles.display_address END,
-      city = CASE WHEN $17 THEN EXCLUDED.city ELSE location_profiles.city END,
-      country = CASE WHEN $18 THEN EXCLUDED.country ELSE location_profiles.country END,
-      country_code = CASE WHEN $19 THEN EXCLUDED.country_code ELSE location_profiles.country_code END,
-      district = CASE WHEN $20 THEN EXCLUDED.district ELSE location_profiles.district END,
-      neighborhood = CASE WHEN $21 THEN EXCLUDED.neighborhood ELSE location_profiles.neighborhood END,
-      extra_address = CASE WHEN $22 THEN EXCLUDED.extra_address ELSE location_profiles.extra_address END,
-      postal_code = CASE WHEN $23 THEN EXCLUDED.postal_code ELSE location_profiles.postal_code END,
-      place_id = CASE WHEN $24 THEN EXCLUDED.place_id ELSE location_profiles.place_id END,
-      latitude = CASE WHEN $25 THEN EXCLUDED.latitude ELSE location_profiles.latitude END,
-      longitude = CASE WHEN $26 THEN EXCLUDED.longitude ELSE location_profiles.longitude END,
+      address = CASE WHEN $18 THEN EXCLUDED.address ELSE location_profiles.address END,
+      display_address = CASE WHEN $19 THEN EXCLUDED.display_address ELSE location_profiles.display_address END,
+      city = CASE WHEN $20 THEN EXCLUDED.city ELSE location_profiles.city END,
+      country = CASE WHEN $21 THEN EXCLUDED.country ELSE location_profiles.country END,
+      country_code = CASE WHEN $22 THEN EXCLUDED.country_code ELSE location_profiles.country_code END,
+      district = CASE WHEN $23 THEN EXCLUDED.district ELSE location_profiles.district END,
+      neighborhood = CASE WHEN $24 THEN EXCLUDED.neighborhood ELSE location_profiles.neighborhood END,
+      extra_address = CASE WHEN $25 THEN EXCLUDED.extra_address ELSE location_profiles.extra_address END,
+      postal_code = CASE WHEN $26 THEN EXCLUDED.postal_code ELSE location_profiles.postal_code END,
+      place_id = CASE WHEN $27 THEN EXCLUDED.place_id ELSE location_profiles.place_id END,
+      latitude = CASE WHEN $28 THEN EXCLUDED.latitude ELSE location_profiles.latitude END,
+      longitude = CASE WHEN $29 THEN EXCLUDED.longitude ELSE location_profiles.longitude END,
+      coordinate_accuracy_meters = CASE WHEN $30 THEN EXCLUDED.coordinate_accuracy_meters ELSE location_profiles.coordinate_accuracy_meters END,
+      coordinate_source = CASE WHEN $31 THEN EXCLUDED.coordinate_source ELSE location_profiles.coordinate_source END,
+      coordinate_captured_at = CASE WHEN $32 THEN EXCLUDED.coordinate_captured_at ELSE location_profiles.coordinate_captured_at END,
       last_updated = CURRENT_TIMESTAMP
     RETURNING profile_id;
   `;
@@ -384,6 +416,9 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
     normalizedLocation.placeId,
     normalizedLocation.latitude,
     normalizedLocation.longitude,
+    normalizedLocation.coordinateAccuracyMeters,
+    normalizedLocation.coordinateSource,
+    normalizedLocation.coordinateCapturedAt,
     hasAddress,
     hasDisplayAddress,
     hasCity,
@@ -396,6 +431,9 @@ async function upsertLocationProfile(profileId, data, providedFields = []) {
     hasPlaceId,
     hasLatitude,
     hasLongitude,
+    hasCoordinateAccuracyMeters,
+    hasCoordinateSource,
+    hasCoordinateCapturedAt,
   ];
 
   await query(sql, values);
@@ -582,6 +620,9 @@ async function findProfileBundleByUserId(userId) {
       lp.place_id,
       lp.latitude,
       lp.longitude,
+      lp.coordinate_accuracy_meters,
+      lp.coordinate_source,
+      lp.coordinate_captured_at,
       lp.last_updated
     FROM user_profiles up
     JOIN users u ON u.user_id = up.user_id
