@@ -13,6 +13,19 @@ import { formatOperationalLabel } from "@/lib/formatters";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
+
+type AnalyticsControls = {
+    regionLimit: number;
+    trendDays: number;
+    comparisonWindowDays: number;
+};
+
+const DEFAULT_ANALYTICS_CONTROLS: AnalyticsControls = {
+    regionLimit: 10,
+    trendDays: 14,
+    comparisonWindowDays: 7,
+};
 
 function formatPercentChange(metric: EmergencyAnalyticsComparisonMetric) {
     if (metric.percentChange === null) {
@@ -34,15 +47,32 @@ function trendArrow(trend: "up" | "down" | "flat") {
     return "■";
 }
 
+function resolveTone(
+    metric: EmergencyAnalyticsComparisonMetric,
+    direction: "higher-is-better" | "lower-is-better"
+) {
+    if (metric.delta === 0) {
+        return "default";
+    }
+
+    if (direction === "higher-is-better") {
+        return metric.delta > 0 ? "success" : "warning";
+    }
+
+    return metric.delta > 0 ? "warning" : "success";
+}
+
 function ComparisonTile({
     label,
     metric,
+    direction,
 }: {
     label: string;
     metric: EmergencyAnalyticsComparisonMetric;
+    direction: "higher-is-better" | "lower-is-better";
 }) {
     const trend = getTrend(metric);
-    const tone = trend === "up" ? "warning" : trend === "down" ? "success" : "default";
+    const tone = resolveTone(metric, direction);
     return (
         <article className={`admin-metric-tile tone-${tone}`}>
             <p className="admin-metric-label">{label}</p>
@@ -78,6 +108,8 @@ export default function AdminEmergencyInsightsView() {
     const [analytics, setAnalytics] = React.useState<EmergencyAnalytics | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState("");
+    const [controls, setControls] = React.useState<AnalyticsControls>(DEFAULT_ANALYTICS_CONTROLS);
+    const [pendingControls, setPendingControls] = React.useState<AnalyticsControls>(DEFAULT_ANALYTICS_CONTROLS);
     const latestRequestIdRef = React.useRef(0);
 
     const redirectToLogin = React.useCallback(() => {
@@ -86,7 +118,7 @@ export default function AdminEmergencyInsightsView() {
         router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
     }, [pathname, router]);
 
-    const loadAnalytics = React.useCallback(async () => {
+    const loadAnalytics = React.useCallback(async (options: AnalyticsControls) => {
         const token = getAccessToken();
         if (!token) {
             setLoading(false);
@@ -100,7 +132,7 @@ export default function AdminEmergencyInsightsView() {
         latestRequestIdRef.current = requestId;
 
         try {
-            const result = await fetchAdminEmergencyAnalytics(token);
+            const result = await fetchAdminEmergencyAnalytics(token, options);
             if (requestId !== latestRequestIdRef.current) {
                 return;
             }
@@ -130,8 +162,8 @@ export default function AdminEmergencyInsightsView() {
     }, [redirectToLogin, router]);
 
     React.useEffect(() => {
-        void loadAnalytics();
-    }, [loadAnalytics]);
+        void loadAnalytics(controls);
+    }, [controls, loadAnalytics]);
 
     React.useEffect(() => {
         if (!loading) {
@@ -159,7 +191,7 @@ export default function AdminEmergencyInsightsView() {
                     <p className="admin-subtle">
                         If this takes too long, retry the analytics request.
                     </p>
-                    <PrimaryButton onClick={() => void loadAnalytics()}>
+                    <PrimaryButton onClick={() => void loadAnalytics(controls)}>
                         Retry Analytics
                     </PrimaryButton>
                 </div>
@@ -176,7 +208,7 @@ export default function AdminEmergencyInsightsView() {
                 />
                 <div className="admin-empty-state">
                     <p>{error || "No analytics data available right now."}</p>
-                    <PrimaryButton onClick={() => void loadAnalytics()}>
+                    <PrimaryButton onClick={() => void loadAnalytics(controls)}>
                         Retry Analytics
                     </PrimaryButton>
                 </div>
@@ -193,6 +225,27 @@ export default function AdminEmergencyInsightsView() {
     );
     const totalAcrossBreakdowns =
         regionBreakdown.length === 0 && typeBreakdown.length === 0;
+    const hasPeriodActivity =
+        periodComparison.created.current > 0
+        || periodComparison.created.previous > 0
+        || periodComparison.resolved.current > 0
+        || periodComparison.resolved.previous > 0
+        || periodComparison.cancelled.current > 0
+        || periodComparison.cancelled.previous > 0;
+    const hasDailyTrendActivity = dailyTrend.some(
+        (row) => row.created > 0 || row.resolved > 0 || row.cancelled > 0
+    );
+    const hasAnyAnalyticsData =
+        !totalAcrossBreakdowns || hasPeriodActivity || hasDailyTrendActivity;
+
+    const applyControls = () => {
+        setControls(pendingControls);
+    };
+
+    const resetControls = () => {
+        setPendingControls(DEFAULT_ANALYTICS_CONTROLS);
+        setControls(DEFAULT_ANALYTICS_CONTROLS);
+    };
 
     return (
         <div className="admin-overview-grid">
@@ -206,143 +259,234 @@ export default function AdminEmergencyInsightsView() {
 
             <SectionCard>
                 <SectionHeader
-                    title={`Period Comparison (last ${periodComparison.windowDays} days vs previous ${periodComparison.windowDays})`}
-                    subtitle="Recent activity compared to the previous equivalent period."
+                    title="Insights Controls"
+                    subtitle="Adjust how many regions and days are used for analytics summaries."
                 />
-                <div className="admin-metric-grid">
-                    <ComparisonTile label="Created" metric={periodComparison.created} />
-                    <ComparisonTile label="Resolved" metric={periodComparison.resolved} />
-                    <ComparisonTile label="Cancelled" metric={periodComparison.cancelled} />
+                <div className="admin-history-filter-grid">
+                    <label className="admin-history-filter-label" htmlFor="analytics-region-limit">
+                        Region Limit
+                        <select
+                            id="analytics-region-limit"
+                            className="admin-history-filter-input"
+                            value={pendingControls.regionLimit}
+                            onChange={(event) =>
+                                setPendingControls((current) => ({
+                                    ...current,
+                                    regionLimit: Number(event.target.value),
+                                }))
+                            }
+                        >
+                            <option value={5}>Top 5</option>
+                            <option value={10}>Top 10</option>
+                            <option value={20}>Top 20</option>
+                        </select>
+                    </label>
+
+                    <label className="admin-history-filter-label" htmlFor="analytics-trend-days">
+                        Trend Window
+                        <select
+                            id="analytics-trend-days"
+                            className="admin-history-filter-input"
+                            value={pendingControls.trendDays}
+                            onChange={(event) =>
+                                setPendingControls((current) => ({
+                                    ...current,
+                                    trendDays: Number(event.target.value),
+                                }))
+                            }
+                        >
+                            <option value={7}>Last 7 days</option>
+                            <option value={14}>Last 14 days</option>
+                            <option value={30}>Last 30 days</option>
+                        </select>
+                    </label>
+
+                    <label className="admin-history-filter-label" htmlFor="analytics-comparison-days">
+                        Comparison Window
+                        <select
+                            id="analytics-comparison-days"
+                            className="admin-history-filter-input"
+                            value={pendingControls.comparisonWindowDays}
+                            onChange={(event) =>
+                                setPendingControls((current) => ({
+                                    ...current,
+                                    comparisonWindowDays: Number(event.target.value),
+                                }))
+                            }
+                        >
+                            <option value={7}>7 days</option>
+                            <option value={14}>14 days</option>
+                            <option value={30}>30 days</option>
+                        </select>
+                    </label>
+                </div>
+                <div className="admin-history-actions">
+                    <PrimaryButton onClick={applyControls} disabled={loading}>
+                        Apply Controls
+                    </PrimaryButton>
+                    <SecondaryButton onClick={resetControls} disabled={loading}>
+                        Reset Defaults
+                    </SecondaryButton>
                 </div>
             </SectionCard>
 
-            <SectionCard>
-                <SectionHeader
-                    title="Region Breakdown"
-                    subtitle="Top cities by total emergency volume."
-                />
-                {regionBreakdown.length > 0 ? (
-                    <div className="admin-region-table-wrap">
-                        <table className="admin-region-table">
-                            <thead>
-                                <tr>
-                                    <th>City</th>
-                                    <th>Total</th>
-                                    <th>Distribution</th>
-                                    <th>Active</th>
-                                    <th>Resolved</th>
-                                    <th>Cancelled</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {regionBreakdown.map((row) => (
-                                    <tr key={row.city}>
-                                        <td>{formatOperationalLabel(row.city)}</td>
-                                        <td>{row.total}</td>
-                                        <td>
-                                            <PercentBar value={row.total} max={regionMaxTotal} />
-                                        </td>
-                                        <td>{row.active}</td>
-                                        <td>{row.resolved}</td>
-                                        <td>{row.cancelled}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <p className="admin-subtle">No regional data available yet.</p>
-                )}
-            </SectionCard>
-
-            <SectionCard>
-                <SectionHeader
-                    title="Type / Category Breakdown"
-                    subtitle="Emergency volume grouped by need type."
-                />
-                {typeBreakdown.length > 0 ? (
-                    <div className="admin-region-table-wrap">
-                        <table className="admin-region-table">
-                            <thead>
-                                <tr>
-                                    <th>Type</th>
-                                    <th>Total</th>
-                                    <th>Share</th>
-                                    <th>Distribution</th>
-                                    <th>Active</th>
-                                    <th>Resolved</th>
-                                    <th>Cancelled</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {typeBreakdown.map((row) => (
-                                    <tr key={row.needType}>
-                                        <td>{formatOperationalLabel(row.needType)}</td>
-                                        <td>{row.total}</td>
-                                        <td>{row.percentage.toFixed(1)}%</td>
-                                        <td>
-                                            <PercentBar value={row.total} max={typeMaxTotal} />
-                                        </td>
-                                        <td>{row.active}</td>
-                                        <td>{row.resolved}</td>
-                                        <td>{row.cancelled}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <p className="admin-subtle">No type data available yet.</p>
-                )}
-            </SectionCard>
-
-            <SectionCard>
-                <SectionHeader
-                    title={`Daily Trend (last ${dailyTrend.length} days)`}
-                    subtitle="Created, resolved, and cancelled emergencies per day."
-                />
-                {dailyTrend.length > 0 ? (
-                    <div className="admin-region-table-wrap">
-                        <table className="admin-region-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Created</th>
-                                    <th>Resolved</th>
-                                    <th>Cancelled</th>
-                                    <th>Activity</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {dailyTrend.map((row) => (
-                                    <tr key={row.date}>
-                                        <td>{row.date}</td>
-                                        <td>{row.created}</td>
-                                        <td>{row.resolved}</td>
-                                        <td>{row.cancelled}</td>
-                                        <td>
-                                            <PercentBar
-                                                value={row.created + row.resolved + row.cancelled}
-                                                max={trendMax * 3 || 1}
-                                            />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <p className="admin-subtle">No trend data available yet.</p>
-                )}
-            </SectionCard>
-
-            {totalAcrossBreakdowns ? (
+            {!hasAnyAnalyticsData ? (
                 <SectionCard>
+                    <SectionHeader
+                        title="Emergency Insights"
+                        subtitle="No emergency data is available for the selected analytics controls."
+                    />
                     <p className="admin-subtle">
-                        No emergency records yet. Insights will populate as activity is recorded.
+                        Try a wider time range or wait for new emergency activity.
                     </p>
                 </SectionCard>
-            ) : null}
+            ) : (
+                <>
+                    <SectionCard>
+                        <SectionHeader
+                            title={`Period Comparison (last ${periodComparison.windowDays} days vs previous ${periodComparison.windowDays})`}
+                            subtitle="Recent activity compared to the previous equivalent period."
+                        />
+                        <div className="admin-metric-grid">
+                            <ComparisonTile
+                                label="Created"
+                                metric={periodComparison.created}
+                                direction="lower-is-better"
+                            />
+                            <ComparisonTile
+                                label="Resolved"
+                                metric={periodComparison.resolved}
+                                direction="higher-is-better"
+                            />
+                            <ComparisonTile
+                                label="Cancelled"
+                                metric={periodComparison.cancelled}
+                                direction="lower-is-better"
+                            />
+                        </div>
+                    </SectionCard>
+
+                    <SectionCard>
+                        <SectionHeader
+                            title="Region Breakdown"
+                            subtitle="Top cities by total emergency volume."
+                        />
+                        {regionBreakdown.length > 0 ? (
+                            <div className="admin-region-table-wrap">
+                                <table className="admin-region-table">
+                                    <thead>
+                                        <tr>
+                                            <th>City</th>
+                                            <th>Total</th>
+                                            <th>Distribution</th>
+                                            <th>Active</th>
+                                            <th>Resolved</th>
+                                            <th>Cancelled</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {regionBreakdown.map((row) => (
+                                            <tr key={row.city}>
+                                                <td>{formatOperationalLabel(row.city)}</td>
+                                                <td>{row.total}</td>
+                                                <td>
+                                                    <PercentBar value={row.total} max={regionMaxTotal} />
+                                                </td>
+                                                <td>{row.active}</td>
+                                                <td>{row.resolved}</td>
+                                                <td>{row.cancelled}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="admin-subtle">No regional data available yet.</p>
+                        )}
+                    </SectionCard>
+
+                    <SectionCard>
+                        <SectionHeader
+                            title="Type / Category Breakdown"
+                            subtitle="Emergency volume grouped by need type."
+                        />
+                        {typeBreakdown.length > 0 ? (
+                            <div className="admin-region-table-wrap">
+                                <table className="admin-region-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Type</th>
+                                            <th>Total</th>
+                                            <th>Share</th>
+                                            <th>Distribution</th>
+                                            <th>Active</th>
+                                            <th>Resolved</th>
+                                            <th>Cancelled</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {typeBreakdown.map((row) => (
+                                            <tr key={row.needType}>
+                                                <td>{formatOperationalLabel(row.needType)}</td>
+                                                <td>{row.total}</td>
+                                                <td>{row.percentage.toFixed(1)}%</td>
+                                                <td>
+                                                    <PercentBar value={row.total} max={typeMaxTotal} />
+                                                </td>
+                                                <td>{row.active}</td>
+                                                <td>{row.resolved}</td>
+                                                <td>{row.cancelled}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="admin-subtle">No type data available yet.</p>
+                        )}
+                    </SectionCard>
+
+                    <SectionCard>
+                        <SectionHeader
+                            title={`Daily Trend (last ${dailyTrend.length} days)`}
+                            subtitle="Created, resolved, and cancelled emergencies per day."
+                        />
+                        {dailyTrend.length > 0 ? (
+                            <div className="admin-region-table-wrap">
+                                <table className="admin-region-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Created</th>
+                                            <th>Resolved</th>
+                                            <th>Cancelled</th>
+                                            <th>Activity</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {dailyTrend.map((row) => (
+                                            <tr key={row.date}>
+                                                <td>{row.date}</td>
+                                                <td>{row.created}</td>
+                                                <td>{row.resolved}</td>
+                                                <td>{row.cancelled}</td>
+                                                <td>
+                                                    <PercentBar
+                                                        value={row.created + row.resolved + row.cancelled}
+                                                        max={trendMax * 3 || 1}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="admin-subtle">No trend data available yet.</p>
+                        )}
+                    </SectionCard>
+                </>
+            )}
         </div>
     );
 }

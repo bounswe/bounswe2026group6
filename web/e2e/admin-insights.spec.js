@@ -8,6 +8,19 @@ const {
 } = require('./helpers/db');
 const { loginThroughUi } = require('./helpers/ui');
 
+async function openInsightsTab(page) {
+  await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByRole('tablist', { name: 'Admin dashboard sections' })).toBeVisible({
+    timeout: 20_000,
+  });
+
+  const insightsTab = page.getByRole('tab', { name: 'Emergency Insights' });
+  await expect(insightsTab).toBeVisible({ timeout: 20_000 });
+  await insightsTab.click();
+}
+
 async function ensureInsightsReady(page) {
   const retryButton = page.getByRole('button', { name: 'Retry Analytics' });
   const periodHeading = page.getByRole('heading', {
@@ -79,10 +92,7 @@ test('admin can open Emergency Insights tab and see analytics sections', async (
 
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/admin$/);
-
-  const insightsTab = page.getByRole('tab', { name: 'Emergency Insights' });
-  await expect(insightsTab).toBeVisible();
-  await insightsTab.click();
+  await openInsightsTab(page);
 
   await ensureInsightsReady(page);
 
@@ -136,7 +146,8 @@ test('admin sees retry state on analytics failure and recovers', async ({ page }
   await loginThroughUi(page, { email, password });
 
   await page.goto('/admin');
-  await page.getByRole('tab', { name: 'Emergency Insights' }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await openInsightsTab(page);
 
   const retryButton = page.getByRole('button', { name: 'Retry Analytics' });
   await expect(retryButton).toBeVisible({ timeout: 20_000 });
