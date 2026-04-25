@@ -9,9 +9,15 @@ const {
 const { loginThroughUi } = require('./helpers/ui');
 
 async function openInsightsTab(page) {
-  await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(page).toHaveURL(/\/admin(\?|$)/, { timeout: 20_000 });
+
+  if (/\/login(\?|$)/.test(page.url())) {
+    throw new Error(`Admin page redirected to login unexpectedly. URL: ${page.url()}`);
+  }
+  if (/\/home(\?|$)/.test(page.url())) {
+    throw new Error(`Admin page redirected to home unexpectedly. URL: ${page.url()}`);
+  }
+
   await expect(page.getByRole('tablist', { name: 'Admin dashboard sections' })).toBeVisible({
     timeout: 20_000,
   });
@@ -89,9 +95,9 @@ test('admin can open Emergency Insights tab and see analytics sections', async (
 
   await page.goto('/login');
   await loginThroughUi(page, { email, password });
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible({ timeout: 20_000 });
 
   await page.goto('/admin');
-  await expect(page).toHaveURL(/\/admin$/);
   await openInsightsTab(page);
 
   await ensureInsightsReady(page);
@@ -144,9 +150,9 @@ test('admin sees retry state on analytics failure and recovers', async ({ page }
 
   await page.goto('/login');
   await loginThroughUi(page, { email, password });
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible({ timeout: 20_000 });
 
   await page.goto('/admin');
-  await expect(page).toHaveURL(/\/admin$/);
   await openInsightsTab(page);
 
   const retryButton = page.getByRole('button', { name: 'Retry Analytics' });
