@@ -44,6 +44,21 @@ async function seedActiveUser(userId, email = `${userId}@example.com`) {
   );
 }
 
+async function seedActiveAdmin(userId, email = `${userId}@example.com`, role = 'SUPER_ADMIN') {
+  await seedActiveUser(userId, email);
+  await query(
+    `
+      INSERT INTO admins (
+        admin_id,
+        user_id,
+        role
+      )
+      VALUES ($1, $2, $3);
+    `,
+    [`admin_${userId}`.slice(0, 64), userId, role],
+  );
+}
+
 async function createNotificationAsAdmin(app, adminToken, recipientUserId, overridePayload = {}) {
   const basePayload = {
     type: 'SYSTEM',
@@ -160,7 +175,7 @@ describe('notifications integration', () => {
   test('type preferences and unread-count endpoints work', async () => {
     const app = createTestApp();
     await seedActiveUser('user_notif_type_1');
-    await seedActiveUser('user_notif_type_admin');
+    await seedActiveAdmin('user_notif_type_admin');
     const token = buildAuthToken('user_notif_type_1');
     const adminToken = buildAuthToken('user_notif_type_admin', { isAdmin: true });
 
@@ -202,7 +217,7 @@ describe('notifications integration', () => {
   test('admin stats endpoint requires admin and returns aggregates', async () => {
     const app = createTestApp();
     await seedActiveUser('user_notif_admin_1');
-    await seedActiveUser('user_notif_admin_2');
+    await seedActiveAdmin('user_notif_admin_2');
     const userToken = buildAuthToken('user_notif_admin_1', { isAdmin: false });
     const adminToken = buildAuthToken('user_notif_admin_2', { isAdmin: true });
 
@@ -234,7 +249,7 @@ describe('notifications integration', () => {
   test('POST creates notification and GET lists it with mobile payload shape', async () => {
     const app = createTestApp();
     await seedActiveUser('user_notif_1');
-    await seedActiveUser('user_notif_admin_creator_1');
+    await seedActiveAdmin('user_notif_admin_creator_1');
     const token = buildAuthToken('user_notif_1');
     const adminToken = buildAuthToken('user_notif_admin_creator_1', { isAdmin: true });
 
@@ -289,7 +304,7 @@ describe('notifications integration', () => {
   test('PATCH /:id/read marks notification as read idempotently', async () => {
     const app = createTestApp();
     await seedActiveUser('user_notif_2');
-    await seedActiveUser('user_notif_admin_creator_2');
+    await seedActiveAdmin('user_notif_admin_creator_2');
     const token = buildAuthToken('user_notif_2');
     const adminToken = buildAuthToken('user_notif_admin_creator_2', { isAdmin: true });
 
@@ -320,7 +335,7 @@ describe('notifications integration', () => {
   test('PATCH /read-all marks all unread notifications and returns unread count', async () => {
     const app = createTestApp();
     await seedActiveUser('user_notif_3');
-    await seedActiveUser('user_notif_admin_creator_3');
+    await seedActiveAdmin('user_notif_admin_creator_3');
     const token = buildAuthToken('user_notif_3');
     const adminToken = buildAuthToken('user_notif_admin_creator_3', { isAdmin: true });
 
@@ -347,7 +362,7 @@ describe('notifications integration', () => {
     const app = createTestApp();
     await seedActiveUser('user_notif_4');
     await seedActiveUser('user_notif_5');
-    await seedActiveUser('user_notif_admin_creator_4');
+    await seedActiveAdmin('user_notif_admin_creator_4');
     const tokenA = buildAuthToken('user_notif_4');
     const tokenB = buildAuthToken('user_notif_5');
     const adminToken = buildAuthToken('user_notif_admin_creator_4', { isAdmin: true });
