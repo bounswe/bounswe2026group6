@@ -266,10 +266,16 @@ export default function ProfileView() {
                 void (async () => {
                     try {
                         const treeResponse = await fetchLocationTree("TR");
-                        setLocationTree({
+                        const nextLocationTree = {
                             [treeResponse.countryCode.toLowerCase()]: treeResponse.tree,
-                        });
+                        };
+
+                        setLocationTree(nextLocationTree);
                         setLocationTreeError("");
+
+                        // Rehydrate picker+form location state after the tree is available
+                        // so district/neighborhood keys are resolved consistently.
+                        await refreshProfileFromBackend(token, nextLocationTree);
                     } catch (treeError) {
                         setLocationTree({});
                         setLocationTreeError(
