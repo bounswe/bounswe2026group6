@@ -7,8 +7,8 @@ export function formatOperationalLabel(value: string | null | undefined) {
         .trim()
         .replace(/[_-]+/g, " ")
         .replace(/\s+/g, " ")
-        .toLocaleLowerCase("tr-TR")
+        .toLocaleLowerCase("en-US")
         .split(" ")
-        .map((word) => (word ? word[0].toLocaleUpperCase("tr-TR") + word.slice(1) : word))
+        .map((word) => (word ? word[0].toLocaleUpperCase("en-US") + word.slice(1) : word))
         .join(" ");
 }
