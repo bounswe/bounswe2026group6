@@ -49,8 +49,12 @@ android/.gradle/
 android/**/build/
 android/local.properties
 android/keystore.properties
+android/app/google-services.json
 *.keystore
 *.jks
+
+# Firebase secrets
+backend/secrets/
 
 # Test artifacts
 playwright-report/

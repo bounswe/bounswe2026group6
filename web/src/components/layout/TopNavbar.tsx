@@ -4,12 +4,14 @@ import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { clearAccessToken } from "@/lib/auth";
+import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
+import { fetchUnreadNotificationCount } from "@/lib/notifications";
 
 const navItemsOrdered = [
     { label: "Home", href: "/home" },
     { label: "News", href: "/news" },
+    { label: "Notifications", href: "/notifications" },
     { label: "Emergency Numbers", href: "/emergency-numbers" },
     { label: "Gathering Areas", href: "/gathering-areas" },
     { label: "Admin", href: "/admin", requiresAdmin: true },
@@ -23,26 +25,55 @@ export function TopNavbar() {
     const router = useRouter();
     const pathname = usePathname();
     const { state, refresh } = useAuthSession();
+    const [unreadCount, setUnreadCount] = React.useState(0);
     const [isMenuOpen, setIsMenuOpen] = React.useState(false);
     const menuRef = React.useRef<HTMLDivElement | null>(null);
+    const isAuthenticated = state.phase === "authenticated";
+    const isAdmin = Boolean(state.user?.isAdmin);
 
     React.useEffect(() => {
+        const syncUnreadCount = () => {
+            if (!isAuthenticated) {
+                setUnreadCount(0);
+                return;
+            }
+
+            const token = getAccessToken();
+            if (!token) {
+                setUnreadCount(0);
+                return;
+            }
+
+            void fetchUnreadNotificationCount(token)
+                .then((result) => {
+                    setUnreadCount(result.unreadCount || 0);
+                })
+                .catch(() => {
+                    setUnreadCount(0);
+                });
+        };
+        syncUnreadCount();
+
         const handleStorage = (event: StorageEvent) => {
             if (event.key === null || event.key === "neph_access_token") {
                 void refresh();
+                syncUnreadCount();
             }
         };
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
                 void refresh();
+                syncUnreadCount();
             }
         };
         const handleFocus = () => {
             void refresh();
+            syncUnreadCount();
         };
         const handleAuthChanged = () => {
             void refresh();
+            syncUnreadCount();
         };
 
         window.addEventListener("storage", handleStorage);
@@ -56,7 +87,7 @@ export function TopNavbar() {
             window.removeEventListener("neph-auth-changed", handleAuthChanged);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [refresh]);
+    }, [isAuthenticated, refresh]);
 
     React.useEffect(() => {
         setIsMenuOpen(false);
@@ -81,9 +112,6 @@ export function TopNavbar() {
         void refresh({ force: true });
         router.replace("/login");
     };
-
-    const isAuthenticated = state.phase === "authenticated";
-    const isAdmin = Boolean(state.user?.isAdmin);
 
     const navItems = navItemsOrdered.filter((item) => {
         if (!isAuthenticated) {
@@ -112,6 +140,21 @@ export function TopNavbar() {
                             className={`top-navbar-nav-item${pathname === item.href || pathname.startsWith(`${item.href}/`) ? " is-active" : ""}`}
                         >
                             {item.label}
+                            {item.href === "/notifications" && isAuthenticated && unreadCount > 0 ? (
+                                <span
+                                    style={{
+                                        marginLeft: 8,
+                                        background: "#b42318",
+                                        color: "white",
+                                        borderRadius: 999,
+                                        padding: "2px 8px",
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                    }}
+                                >
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                </span>
+                            ) : null}
                         </Link>
                     ))}
                 </nav>

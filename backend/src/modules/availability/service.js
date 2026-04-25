@@ -12,6 +12,48 @@ const {
   cancelAssignment,
   findMatchingVolunteerForRequest,
 } = require('./repository');
+const { createNotification } = require('../notifications/service');
+
+async function notifyRequestStatusIfUserOwned(requestRow, actorUserId) {
+  if (!requestRow || !requestRow.user_id) {
+    return;
+  }
+
+  const status = (requestRow.status || '').toUpperCase();
+  if (!['ASSIGNED', 'RESOLVED', 'PENDING', 'CANCELLED'].includes(status)) {
+    return;
+  }
+
+  let body = `Your request status is now ${status}.`;
+  if (status === 'ASSIGNED') {
+    body = 'A volunteer has been assigned to your help request.';
+  } else if (status === 'RESOLVED') {
+    body = 'Your help request has been marked as resolved.';
+  } else if (status === 'PENDING') {
+    body = 'Your help request is pending reassignment.';
+  }
+
+  try {
+    await createNotification({
+      recipientUserId: requestRow.user_id,
+      actorUserId: actorUserId || null,
+      type: 'HELP_REQUEST_STATUS_CHANGED',
+      title: 'Help request status updated',
+      body,
+      entity: {
+        type: 'HELP_REQUEST',
+        id: requestRow.request_id,
+      },
+      data: {
+        screen: 'my-help-requests',
+        requestId: requestRow.request_id,
+        internalStatus: status,
+      },
+    });
+  } catch (error) {
+    console.error('availability.notifyRequestStatusIfUserOwned failed', error);
+  }
+}
 
 async function setAvailability(userId, { isAvailable, latitude, longitude }) {
   let volunteer = await findVolunteerByUserId(userId);
@@ -37,7 +79,8 @@ async function setAvailability(userId, { isAvailable, latitude, longitude }) {
       const matchingRequest = await findMatchingRequestForVolunteer(volunteer.volunteer_id);
       if (matchingRequest) {
         assignment = await createAssignment(volunteer.volunteer_id, matchingRequest.request_id);
-        await updateRequestStatus(matchingRequest.request_id, 'ASSIGNED');
+        const updatedRequest = await updateRequestStatus(matchingRequest.request_id, 'ASSIGNED');
+        await notifyRequestStatusIfUserOwned(updatedRequest, userId);
         // Refresh assignment with full data
         assignment = await getAssignmentByVolunteerId(volunteer.volunteer_id);
       }
@@ -49,7 +92,8 @@ async function setAvailability(userId, { isAvailable, latitude, longitude }) {
     const activeAssignment = await getAssignmentByVolunteerId(volunteer.volunteer_id);
     if (activeAssignment) {
       await cancelAssignment(activeAssignment.assignment_id);
-      await updateRequestStatus(activeAssignment.request_id, 'PENDING');
+      const updatedRequest = await updateRequestStatus(activeAssignment.request_id, 'PENDING');
+      await notifyRequestStatusIfUserOwned(updatedRequest, userId);
     }
   }
 
@@ -91,13 +135,15 @@ async function syncAvailability(userId, { records }) {
     const matchingRequest = await findMatchingRequestForVolunteer(volunteer.volunteer_id);
     if (matchingRequest) {
       await createAssignment(volunteer.volunteer_id, matchingRequest.request_id);
-      await updateRequestStatus(matchingRequest.request_id, 'ASSIGNED');
+      const updatedRequest = await updateRequestStatus(matchingRequest.request_id, 'ASSIGNED');
+      await notifyRequestStatusIfUserOwned(updatedRequest, userId);
       currentAssignment = await getAssignmentByVolunteerId(volunteer.volunteer_id);
     }
   } else if (!updatedVolunteer.is_available && currentAssignment) {
     // If volunteer is now unavailable, cancel their active assignment
     await cancelAssignment(currentAssignment.assignment_id);
-    await updateRequestStatus(currentAssignment.request_id, 'PENDING');
+    const updatedRequest = await updateRequestStatus(currentAssignment.request_id, 'PENDING');
+    await notifyRequestStatusIfUserOwned(updatedRequest, userId);
     currentAssignment = null;
   }
 
@@ -135,7 +181,8 @@ async function cancelMyAssignment(userId, { assignmentId }) {
   }
 
   await cancelAssignment(assignmentId);
-  await updateRequestStatus(assignment.request_id, 'PENDING'); // Put it back to pending for re-assignment
+  const updatedRequest = await updateRequestStatus(assignment.request_id, 'PENDING'); // Put it back to pending for re-assignment
+  await notifyRequestStatusIfUserOwned(updatedRequest, userId);
 
   // Volunteer becomes unavailable
   await updateVolunteerAvailability(volunteer.volunteer_id, false, volunteer.last_known_latitude, volunteer.last_known_longitude);
@@ -159,7 +206,8 @@ async function cancelAssignmentByRequestId(requestId) {
     const newRequest = await findMatchingRequestForVolunteer(assignment.volunteer_id);
     if (newRequest) {
       await createAssignment(assignment.volunteer_id, newRequest.request_id);
-      await updateRequestStatus(newRequest.request_id, 'ASSIGNED');
+      const updatedRequest = await updateRequestStatus(newRequest.request_id, 'ASSIGNED');
+      await notifyRequestStatusIfUserOwned(updatedRequest, null);
     }
   }
 }
@@ -179,14 +227,16 @@ async function resolveMyAssignment(userId, { requestId }) {
     throw error;
   }
 
-  await updateRequestStatus(requestId, 'RESOLVED');
+  const updatedRequest = await updateRequestStatus(requestId, 'RESOLVED');
+  await notifyRequestStatusIfUserOwned(updatedRequest, userId);
 
   // Try to find a NEW assignment for this volunteer
   const newAssignment = await findMatchingRequestForVolunteer(volunteer.volunteer_id);
   let assignmentResult = null;
   if (newAssignment) {
     await createAssignment(volunteer.volunteer_id, newAssignment.request_id);
-    await updateRequestStatus(newAssignment.request_id, 'ASSIGNED');
+    const reassignedRequest = await updateRequestStatus(newAssignment.request_id, 'ASSIGNED');
+    await notifyRequestStatusIfUserOwned(reassignedRequest, userId);
     assignmentResult = await getAssignmentByVolunteerId(volunteer.volunteer_id);
   }
 
@@ -221,7 +271,8 @@ async function tryToAssignRequest(requestId) {
   const matchingVolunteer = await findMatchingVolunteerForRequest(requestId);
   if (matchingVolunteer) {
     await createAssignment(matchingVolunteer.volunteer_id, requestId);
-    await updateRequestStatus(requestId, 'ASSIGNED');
+    const updatedRequest = await updateRequestStatus(requestId, 'ASSIGNED');
+    await notifyRequestStatusIfUserOwned(updatedRequest, matchingVolunteer.user_id);
     return true;
   }
   return false;

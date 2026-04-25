@@ -1,14 +1,21 @@
 package com.neph.features.auth.data
 
+import android.util.Log
+import com.google.firebase.messaging.FirebaseMessaging
 import com.neph.core.NephAppContext
 import com.neph.core.network.ApiException
 import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.core.network.JsonHttpClient
+import com.neph.features.notifications.data.PushTokenSync
+import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import org.json.JSONObject
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 enum class LoginDestination {
     PROFILE,
@@ -16,6 +23,7 @@ enum class LoginDestination {
 }
 
 object AuthRepository {
+    private val ioScope = CoroutineScope(Dispatchers.IO)
     suspend fun signup(
         email: String,
         password: String,
@@ -76,6 +84,7 @@ object AuthRepository {
             ?: false
 
         AuthSessionStore.saveAccessToken(accessToken, rememberMe)
+        PushTokenSync.syncCurrentToken()
         ProfileRepository.clearProfile()
         ProfileRepository.saveProfile(
             if (canReuseLocalProfileFields) {
@@ -124,6 +133,7 @@ object AuthRepository {
         val accessToken = response.optString("accessToken")
         if (accessToken.isNotBlank()) {
             AuthSessionStore.saveAccessToken(accessToken, rememberMe = true)
+            PushTokenSync.syncCurrentToken()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
 
@@ -177,6 +187,20 @@ object AuthRepository {
     }
 
     fun logout() {
+        val accessToken = AuthSessionStore.getAccessToken()
+        if (!accessToken.isNullOrBlank()) {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { deviceToken ->
+                    ioScope.launch {
+                        try {
+                            NotificationsRepository.unregisterDeviceToken(accessToken, deviceToken)
+                        } catch (error: Exception) {
+                            Log.w("AuthRepository", "Failed to unregister FCM token on logout", error)
+                        }
+                    }
+                }
+        }
+
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()

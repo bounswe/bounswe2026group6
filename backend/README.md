@@ -85,6 +85,7 @@ The backend exposes these top-level module paths (concrete endpoints are listed 
 - `GET /api/availability`
 - `GET /api/location`
 - `GET /api/gathering-areas`
+- `GET /api/notifications`
 
 Location module endpoints:
 
@@ -164,6 +165,64 @@ Hybrid location payload example:
   }
 }
 ```
+
+Notification module endpoints:
+
+- `POST /api/notifications`
+- `GET /api/notifications?limit=<int>&cursor=<base64>&unreadOnly=<bool>`
+- `PATCH /api/notifications/:notificationId/read`
+- `PATCH /api/notifications/read-all`
+- `POST /api/notifications/devices/register`
+- `POST /api/notifications/devices/unregister`
+- `GET /api/notifications/preferences`
+- `PATCH /api/notifications/preferences`
+- `GET /api/notifications/preferences/types`
+- `PATCH /api/notifications/preferences/types`
+- `GET /api/notifications/unread-count`
+- `GET /api/notifications/admin/stats` (admin)
+
+Notification payload shape (mobile contract):
+
+```json
+{
+  "id": "8fd6f7fc-35cf-4a25-b12a-c09008d58bc9",
+  "type": "HELP_REQUEST_STATUS_CHANGED",
+  "title": "Request updated",
+  "body": "Your help request is now matched with a volunteer.",
+  "isRead": false,
+  "createdAt": "2026-04-22T19:47:03.781Z",
+  "readAt": null,
+  "actorUserId": "user_actor_1",
+  "entity": {
+    "type": "HELP_REQUEST",
+    "id": "request_123"
+  },
+  "data": {
+    "screen": "request-details",
+    "requestId": "request_123"
+  }
+}
+```
+
+Push notification infrastructure:
+
+- register device token with `POST /api/notifications/devices/register`
+- unregister device token with `POST /api/notifications/devices/unregister`
+- each notification write creates an in-app delivery record
+- if user has active devices, push delivery attempts are recorded per device
+- user push preference is managed via `/api/notifications/preferences`
+
+Push env:
+
+- `PUSH_DELIVERY_MODE=log` (default) logs push attempts without external provider call
+- `PUSH_DELIVERY_MODE=disabled` disables push attempts
+- `PUSH_DELIVERY_MODE=fcm` enables real FCM push delivery via Firebase Admin SDK
+- `FIREBASE_SERVICE_ACCOUNT_PATH=secrets/firebase-service-account.json` points to service account JSON (relative to `backend/`)
+- `NOTIFICATION_RETENTION_DAYS=90` controls cleanup horizon for old notifications
+
+Cleanup job:
+
+- `npm run cleanup:notifications`
 
 ## Environment notes
 

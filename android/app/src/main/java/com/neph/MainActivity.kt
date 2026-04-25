@@ -14,6 +14,7 @@ import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.AppLaunchLocationUpdater
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.navigation.AppNavGraph
 import com.neph.navigation.Routes
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
         AvailabilityRepository.initialize(applicationContext)
         ProfileRepository.initialize(applicationContext)
         RequestHelpRepository.initialize(applicationContext)
+        PushTokenSync.syncCurrentToken()
         OfflineSyncScheduler.schedulePeriodicSync(applicationContext)
         OfflineSyncScheduler.enqueueSync(applicationContext, reason = "app-start")
         lifecycleScope.launch {

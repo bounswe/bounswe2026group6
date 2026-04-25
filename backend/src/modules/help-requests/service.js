@@ -14,6 +14,7 @@ const {
   markHelpRequestAsCancelledByRequestId,
 } = require('./repository');
 const { tryToAssignRequest, cancelAssignmentByRequestId } = require('../availability/service');
+const { createNotification } = require('../notifications/service');
 
 const JWT_SECRET = env.jwt.secret;
 const GUEST_HELP_REQUEST_SCOPE = 'help_request_guest_read';
@@ -25,6 +26,28 @@ async function createMyHelpRequest(userId, input) {
       ...input,
       userId,
     });
+
+    if (userId) {
+      try {
+        await createNotification({
+          recipientUserId: userId,
+          actorUserId: userId,
+          type: 'HELP_REQUEST_CREATED',
+          title: 'Help request created',
+          body: 'Your help request has been created successfully.',
+          entity: {
+            type: 'HELP_REQUEST',
+            id: helpRequest.id,
+          },
+          data: {
+            screen: 'my-help-requests',
+            requestId: helpRequest.id,
+          },
+        });
+      } catch (notificationError) {
+        console.error('help-requests.createMyHelpRequest notification failed', notificationError);
+      }
+    }
 
     // Try to auto-assign a volunteer
     await tryToAssignRequest(helpRequest.id);
@@ -164,7 +187,7 @@ async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
     return null;
   }
 
-  return applyStatusTransition(currentRequest, nextStatus, {
+  const updated = await applyStatusTransition(currentRequest, nextStatus, {
     sync: () => markHelpRequestAsSynced(userId, requestId),
     resolve: () => markHelpRequestAsResolved(userId, requestId),
     cancel: async () => {
@@ -172,6 +195,31 @@ async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
       return markHelpRequestAsCancelled(userId, requestId);
     },
   });
+
+  if (updated) {
+    try {
+      await createNotification({
+        recipientUserId: userId,
+        actorUserId: userId,
+        type: 'HELP_REQUEST_STATUS_CHANGED',
+        title: 'Help request status updated',
+        body: `Your help request status is now ${updated.status}.`,
+        entity: {
+          type: 'HELP_REQUEST',
+          id: updated.id,
+        },
+        data: {
+          screen: 'my-help-requests',
+          requestId: updated.id,
+          status: updated.status,
+        },
+      });
+    } catch (notificationError) {
+      console.error('help-requests.updateMyHelpRequestStatus notification failed', notificationError);
+    }
+  }
+
+  return updated;
 }
 
 async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessToken) {

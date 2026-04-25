@@ -37,6 +37,13 @@ const env = {
   },
   appUrl: process.env.APP_URL || 'http://localhost:3000',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  push: {
+    deliveryMode: (process.env.PUSH_DELIVERY_MODE || 'log').toLowerCase(), // log | disabled | fcm
+    firebaseServiceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'secrets/firebase-service-account.json',
+  },
+  notifications: {
+    retentionDays: readNumber(process.env.NOTIFICATION_RETENTION_DAYS, 90),
+  },
 };
 
 module.exports = {
