@@ -212,10 +212,109 @@ async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
   return overview;
 }
 
+async function getEmergencyHistory({
+  statuses = null,
+  cities = null,
+  needTypes = null,
+  urgencies = null,
+  limit = 50,
+  offset = 0,
+} = {}) {
+  const urgencySql = `
+    CASE
+      WHEN COALESCE(array_length(hr.risk_flags, 1), 0) >= 2 OR hr.affected_people_count >= 5 THEN 'HIGH'
+      WHEN COALESCE(array_length(hr.risk_flags, 1), 0) = 1 OR hr.affected_people_count BETWEEN 3 AND 4 THEN 'MEDIUM'
+      ELSE 'LOW'
+    END
+  `;
+
+  const [countResult, rowsResult] = await Promise.all([
+    query(
+      `
+        SELECT COUNT(*)::int AS total_count
+        FROM help_requests hr
+        LEFT JOIN LATERAL (
+          SELECT city
+          FROM request_locations loc
+          WHERE loc.request_id = hr.request_id
+          ORDER BY loc.captured_at DESC, loc.location_id DESC
+          LIMIT 1
+        ) rl ON TRUE
+        WHERE hr.status IN ('RESOLVED', 'CANCELLED')
+          AND ($1::request_status[] IS NULL OR hr.status = ANY($1))
+          AND ($2::text[] IS NULL OR LOWER(COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown')) = ANY($2))
+          AND ($3::text[] IS NULL OR LOWER(hr.need_type) = ANY($3))
+          AND ($4::text[] IS NULL OR (${urgencySql}) = ANY($4))
+      `,
+      [statuses, cities, needTypes, urgencies],
+    ),
+    query(
+    `
+      SELECT
+        hr.request_id,
+        hr.need_type,
+        hr.description,
+        hr.status,
+        hr.created_at,
+        hr.resolved_at,
+        hr.cancelled_at,
+        COALESCE(hr.cancelled_at, hr.resolved_at, hr.created_at) AS closed_at,
+        hr.affected_people_count,
+        hr.risk_flags,
+        COALESCE(NULLIF(TRIM(rl.country), ''), 'unknown') AS country,
+        COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown') AS city,
+        COALESCE(NULLIF(TRIM(rl.district), ''), 'unknown') AS district,
+        ${urgencySql} AS urgency_level
+      FROM help_requests hr
+      LEFT JOIN LATERAL (
+        SELECT country, city, district
+        FROM request_locations loc
+        WHERE loc.request_id = hr.request_id
+        ORDER BY loc.captured_at DESC, loc.location_id DESC
+        LIMIT 1
+      ) rl ON TRUE
+      WHERE hr.status IN ('RESOLVED', 'CANCELLED')
+        AND ($1::request_status[] IS NULL OR hr.status = ANY($1))
+        AND ($2::text[] IS NULL OR LOWER(COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown')) = ANY($2))
+        AND ($3::text[] IS NULL OR LOWER(hr.need_type) = ANY($3))
+        AND ($4::text[] IS NULL OR (${urgencySql}) = ANY($4))
+      ORDER BY closed_at DESC, hr.created_at DESC
+      LIMIT $5::int
+      OFFSET $6::int
+    `,
+    [statuses, cities, needTypes, urgencies, limit, offset],
+  )]);
+
+  const history = rowsResult.rows.map((row) => ({
+    requestId: row.request_id,
+    needType: row.need_type,
+    description: row.description,
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+    cancelledAt: row.cancelled_at,
+    closedAt: row.closed_at,
+    location: {
+      country: row.country,
+      city: row.city,
+      district: row.district,
+    },
+    affectedPeopleCount: row.affected_people_count,
+    urgencyLevel: row.urgency_level,
+    riskFlags: row.risk_flags || [],
+  }));
+
+  return {
+    history,
+    total: countResult.rows[0]?.total_count || 0,
+  };
+}
+
 module.exports = {
   listUsers,
   listHelpRequests,
   listAnnouncements,
   getBasicStats,
   getEmergencyOverview,
+  getEmergencyHistory,
 };

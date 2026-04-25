@@ -4,6 +4,7 @@ const {
   listAnnouncements,
   getBasicStats,
   getEmergencyOverview,
+  getEmergencyHistory,
 } = require('./repository');
 
 async function getUsersForAdmin() {
@@ -26,10 +27,15 @@ async function getEmergencyOverviewForAdmin(options = {}) {
   return getEmergencyOverview(options);
 }
 
+async function getEmergencyHistoryForAdmin(options = {}) {
+  return getEmergencyHistory(options);
+}
+
 module.exports = {
   getUsersForAdmin,
   getHelpRequestsForAdmin,
   getAnnouncementsForAdmin,
   getStatsForAdmin,
   getEmergencyOverviewForAdmin,
+  getEmergencyHistoryForAdmin,
 };

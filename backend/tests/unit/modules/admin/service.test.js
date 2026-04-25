@@ -8,6 +8,7 @@ const {
   getAnnouncementsForAdmin,
   getStatsForAdmin,
   getEmergencyOverviewForAdmin,
+  getEmergencyHistoryForAdmin,
 } = require('../../../../src/modules/admin/service');
 
 const {
@@ -16,6 +17,7 @@ const {
   listAnnouncements,
   getBasicStats,
   getEmergencyOverview,
+  getEmergencyHistory,
 } = require('../../../../src/modules/admin/repository');
 
 beforeEach(() => {
@@ -67,5 +69,27 @@ describe('admin service', () => {
     expect(getEmergencyOverview).toHaveBeenCalledTimes(1);
     expect(getEmergencyOverview).toHaveBeenCalledWith({ includeRegionSummary: true });
     expect(result).toEqual({ totals: { totalEmergencies: 3 } });
+  });
+
+  test('getEmergencyHistoryForAdmin delegates to repository', async () => {
+    getEmergencyHistory.mockResolvedValue({ history: [], total: 0 });
+
+    const result = await getEmergencyHistoryForAdmin({
+      statuses: ['RESOLVED'],
+      cities: ['ankara'],
+      needTypes: ['water'],
+      urgencies: ['HIGH'],
+      limit: 20,
+    });
+
+    expect(getEmergencyHistory).toHaveBeenCalledTimes(1);
+    expect(getEmergencyHistory).toHaveBeenCalledWith({
+      statuses: ['RESOLVED'],
+      cities: ['ankara'],
+      needTypes: ['water'],
+      urgencies: ['HIGH'],
+      limit: 20,
+    });
+    expect(result).toEqual({ history: [], total: 0 });
   });
 });

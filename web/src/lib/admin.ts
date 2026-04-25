@@ -51,6 +51,37 @@ type EmergencyOverviewResponse = {
     overview: EmergencyOverview;
 };
 
+export type EmergencyHistoryItem = {
+    requestId: string;
+    needType: string | null;
+    description: string;
+    status: "RESOLVED" | "CANCELLED";
+    createdAt: string;
+    resolvedAt: string | null;
+    cancelledAt: string | null;
+    closedAt: string;
+    location: {
+        country: string;
+        city: string;
+        district: string;
+    };
+    affectedPeopleCount: number;
+    urgencyLevel: "LOW" | "MEDIUM" | "HIGH";
+    riskFlags: string[];
+};
+
+export type EmergencyHistoryResponse = {
+    history: EmergencyHistoryItem[];
+    total: number;
+    filters: {
+        status: string[];
+        city: string[];
+        type: string[];
+        limit: number;
+        offset: number;
+    };
+};
+
 export async function fetchAdminEmergencyOverview(
     token: string,
     options: { includeRegionSummary?: boolean } = {}
@@ -64,4 +95,41 @@ export async function fetchAdminEmergencyOverview(
     );
 
     return response.overview;
+}
+
+export async function fetchAdminEmergencyHistory(
+    token: string,
+    options: {
+        status?: string;
+        city?: string;
+        type?: string;
+        urgency?: string;
+        limit?: number;
+        offset?: number;
+    } = {}
+) {
+    const params = new URLSearchParams();
+    if (options.status && options.status.trim()) {
+        params.set("status", options.status.trim());
+    }
+    if (options.city && options.city.trim()) {
+        params.set("city", options.city.trim());
+    }
+    if (options.type && options.type.trim()) {
+        params.set("type", options.type.trim());
+    }
+    if (options.urgency && options.urgency.trim()) {
+        params.set("urgency", options.urgency.trim());
+    }
+    if (typeof options.limit === "number") {
+        params.set("limit", String(options.limit));
+    }
+    if (typeof options.offset === "number") {
+        params.set("offset", String(options.offset));
+    }
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return apiRequest<EmergencyHistoryResponse>(`/admin/emergency-history${query}`, {
+        token: token.trim(),
+    });
 }

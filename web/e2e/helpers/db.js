@@ -88,6 +88,8 @@ async function seedEmergencyOverviewRecord({
   requestId = `e2e_req_${Date.now()}`,
   status = 'PENDING',
   city = 'istanbul',
+  needType = 'first_aid',
+  description = 'E2E seeded request',
   createdAtHoursAgo = 2,
   affectedPeopleCount = 2,
   riskFlags = ['injury'],
@@ -119,13 +121,13 @@ async function seedEmergencyOverviewRecord({
         VALUES (
           $1,
           NULL,
-          ARRAY['first_aid']::TEXT[],
+          ARRAY[$6]::TEXT[],
           '',
           $4::int,
           $5::TEXT[],
           ARRAY[]::TEXT[],
-          'first_aid',
-          'E2E seeded request',
+          $6,
+          $7,
           NULL,
           'E2E Contact',
           5551112233,
@@ -146,7 +148,7 @@ async function seedEmergencyOverviewRecord({
           FALSE
         )
       `,
-      [requestId, status, String(createdAtHoursAgo), affectedPeopleCount, riskFlags]
+      [requestId, status, String(createdAtHoursAgo), affectedPeopleCount, riskFlags, needType, description]
     );
 
     await client.query(
