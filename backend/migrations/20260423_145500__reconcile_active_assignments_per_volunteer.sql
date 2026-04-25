@@ -23,9 +23,9 @@ SET status = CASE
   WHEN hr.status = 'IN_PROGRESS' THEN 'IN_PROGRESS'::request_status
   WHEN EXISTS (
     SELECT 1
-    FROM assignments a
-    WHERE a.request_id = hr.request_id
-      AND a.is_cancelled = FALSE
+    FROM ranked_active_assignments ranked
+    WHERE ranked.request_id = hr.request_id
+      AND ranked.volunteer_rank = 1
   ) THEN 'ASSIGNED'::request_status
   ELSE 'PENDING'::request_status
 END
