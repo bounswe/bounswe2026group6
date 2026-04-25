@@ -28,6 +28,11 @@ deleted_assignments AS (
     AND ranked.volunteer_rank > 1
   RETURNING a.request_id
 ),
+surviving_active_requests AS (
+  SELECT DISTINCT ranked.request_id
+  FROM ranked_active_assignments ranked
+  WHERE ranked.volunteer_rank = 1
+),
 affected_requests AS (
   SELECT request_id FROM deleted_closed_request_assignments
   UNION
@@ -38,9 +43,8 @@ SET status = CASE
   WHEN hr.status = 'IN_PROGRESS' THEN 'IN_PROGRESS'::request_status
   WHEN EXISTS (
     SELECT 1
-    FROM assignments a
-    WHERE a.request_id = hr.request_id
-      AND a.is_cancelled = FALSE
+    FROM surviving_active_requests sar
+    WHERE sar.request_id = hr.request_id
   ) THEN 'ASSIGNED'::request_status
   ELSE 'PENDING'::request_status
 END
