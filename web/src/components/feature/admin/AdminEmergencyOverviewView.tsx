@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 import { getAccessToken, clearAccessToken } from "@/lib/auth";
 import { fetchAdminEmergencyOverview, type EmergencyOverview } from "@/lib/admin";
+import { formatOperationalLabel } from "@/lib/formatters";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
@@ -38,19 +39,6 @@ function formatDateTime(value: string | null) {
     }
 
     return date.toLocaleString();
-}
-
-function formatTitleCase(value: string | null | undefined) {
-    if (!value) {
-        return "-";
-    }
-
-    return String(value)
-        .trim()
-        .toLocaleLowerCase("tr-TR")
-        .split(/\s+/)
-        .map((word) => (word ? word[0].toLocaleUpperCase("tr-TR") + word.slice(1) : word))
-        .join(" ");
 }
 
 export default function AdminEmergencyOverviewView() {
@@ -320,12 +308,12 @@ export default function AdminEmergencyOverviewView() {
                                 {overview.activeOperational.map((item) => (
                                     <tr key={item.requestId}>
                                         <td>{formatDateTime(item.openedAt)}</td>
-                                        <td>{formatTitleCase(item.status)}</td>
-                                        <td>{formatTitleCase(item.needType)}</td>
-                                        <td>{formatTitleCase(item.urgencyLevel)}</td>
-                                        <td>{formatTitleCase(item.priorityLevel)}</td>
+                                        <td>{formatOperationalLabel(item.status)}</td>
+                                        <td>{formatOperationalLabel(item.needType)}</td>
+                                        <td>{formatOperationalLabel(item.urgencyLevel)}</td>
+                                        <td>{formatOperationalLabel(item.priorityLevel)}</td>
                                         <td>{item.openDurationMinutes}</td>
-                                        <td>{formatTitleCase(item.location.city)}</td>
+                                        <td>{formatOperationalLabel(item.location.city)}</td>
                                     </tr>
                                 ))}
                             </tbody>

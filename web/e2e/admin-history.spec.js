@@ -32,7 +32,7 @@ test('admin can review closed emergency history records', async ({ page }) => {
     requestId: 'e2e_hist_resolved_recent',
     status: 'RESOLVED',
     city: 'ankara',
-    needType: 'water',
+    needType: 'first_aid',
     description: 'History resolved recent',
     createdAtHoursAgo: 2,
   });
@@ -68,6 +68,12 @@ test('admin can review closed emergency history records', async ({ page }) => {
   await expect(historyTable).toContainText('History resolved recent');
   await expect(historyTable).toContainText('History cancelled old');
   await expect(historyTable).not.toContainText('History pending should not show');
+  await expect(historyTable).toContainText('First Aid');
+  await expect(historyTable).not.toContainText('first_aid');
+  await expect(historyTable).not.toContainText('First_aid');
+  await expect(historyTable).toContainText('Resolved');
+  await expect(historyTable).toContainText('Cancelled');
+  await expect(historyTable.locator('tbody tr').first().locator('td').nth(6)).toHaveText(/^[0-9]+$/);
   await expect(page.getByText('Showing 2 of 2 closed emergencies.')).toBeVisible();
 });
 

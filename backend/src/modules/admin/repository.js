@@ -182,7 +182,19 @@ async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
           LIMIT 1
         ) rl ON TRUE
         WHERE hr.status IN ('PENDING', 'ASSIGNED', 'IN_PROGRESS')
-        ORDER BY hr.created_at ASC
+        ORDER BY
+          CASE ${prioritySql}
+            WHEN 'HIGH' THEN 3
+            WHEN 'MEDIUM' THEN 2
+            ELSE 1
+          END DESC,
+          CASE ${urgencySql}
+            WHEN 'HIGH' THEN 3
+            WHEN 'MEDIUM' THEN 2
+            ELSE 1
+          END DESC,
+          open_duration_minutes DESC,
+          hr.created_at ASC
         LIMIT 15
       `,
     ),
@@ -325,7 +337,7 @@ async function getEmergencyHistory({
         hr.created_at AS opened_at,
         FLOOR(
           EXTRACT(
-            EPOCH FROM (COALESCE(hr.cancelled_at, hr.resolved_at, CURRENT_TIMESTAMP) - hr.created_at)
+            EPOCH FROM (COALESCE(hr.cancelled_at, hr.resolved_at, hr.created_at) - hr.created_at)
           ) / 60
         )::int AS open_duration_minutes,
         CASE

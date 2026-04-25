@@ -262,22 +262,6 @@ describe('GET /api/admin/emergency-overview', () => {
     expect(response.body.overview.activeOperational).toHaveLength(2);
     expect(response.body.overview.activeOperational[0]).toEqual(
       expect.objectContaining({
-        requestId: 'req_in_progress',
-        status: 'IN_PROGRESS',
-        urgencyLevel: 'MEDIUM',
-        priorityLevel: 'MEDIUM',
-        closedAt: null,
-        closedState: null,
-        location: {
-          city: 'istanbul',
-          district: 'besiktas',
-        },
-      }),
-    );
-    expect(response.body.overview.activeOperational[0].openedAt).toEqual(expect.any(String));
-    expect(response.body.overview.activeOperational[0].openDurationMinutes).toEqual(expect.any(Number));
-    expect(response.body.overview.activeOperational[1]).toEqual(
-      expect.objectContaining({
         requestId: 'req_pending',
         status: 'PENDING',
         urgencyLevel: 'HIGH',
@@ -287,6 +271,22 @@ describe('GET /api/admin/emergency-overview', () => {
         location: {
           city: 'ankara',
           district: 'cankaya',
+        },
+      }),
+    );
+    expect(response.body.overview.activeOperational[0].openedAt).toEqual(expect.any(String));
+    expect(response.body.overview.activeOperational[0].openDurationMinutes).toEqual(expect.any(Number));
+    expect(response.body.overview.activeOperational[1]).toEqual(
+      expect.objectContaining({
+        requestId: 'req_in_progress',
+        status: 'IN_PROGRESS',
+        urgencyLevel: 'MEDIUM',
+        priorityLevel: 'MEDIUM',
+        closedAt: null,
+        closedState: null,
+        location: {
+          city: 'istanbul',
+          district: 'besiktas',
         },
       }),
     );
