@@ -39,11 +39,28 @@ export type EmergencyOverviewRegionItem = {
     cancelled: number;
 };
 
+export type EmergencyOperationalItem = {
+    requestId: string;
+    needType: string | null;
+    status: "PENDING" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "CANCELLED";
+    urgencyLevel: "LOW" | "MEDIUM" | "HIGH";
+    priorityLevel: "LOW" | "MEDIUM" | "HIGH";
+    openedAt: string;
+    openDurationMinutes: number;
+    closedAt: string | null;
+    closedState: "RESOLVED" | "CANCELLED" | null;
+    location: {
+        city: string;
+        district: string;
+    };
+};
+
 export type EmergencyOverview = {
     totals: EmergencyOverviewTotals;
     statusBreakdown: EmergencyOverviewStatusBreakdown;
     urgencyBreakdown: EmergencyOverviewUrgencyBreakdown;
     recentActivity: EmergencyOverviewRecentActivity;
+    activeOperational: EmergencyOperationalItem[];
     regionSummary?: EmergencyOverviewRegionItem[];
 };
 
@@ -57,6 +74,9 @@ export type EmergencyHistoryItem = {
     description: string;
     status: "RESOLVED" | "CANCELLED";
     createdAt: string;
+    openedAt: string;
+    openDurationMinutes: number;
+    closedState: "RESOLVED" | "CANCELLED" | null;
     resolvedAt: string | null;
     cancelledAt: string | null;
     closedAt: string;
@@ -67,6 +87,7 @@ export type EmergencyHistoryItem = {
     };
     affectedPeopleCount: number;
     urgencyLevel: "LOW" | "MEDIUM" | "HIGH";
+    priorityLevel: "LOW" | "MEDIUM" | "HIGH";
     riskFlags: string[];
 };
 

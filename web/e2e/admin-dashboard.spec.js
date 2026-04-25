@@ -205,6 +205,25 @@ test('aggregate metrics reflect mixed status and urgency records', async ({ page
     urgencyMedium: 2,
     urgencyHigh: 1,
   });
+
+  const activeOperationalTable = page
+    .locator('section', {
+      has: page.getByRole('heading', { name: 'Active Operational Snapshot' }),
+    })
+    .locator('table');
+
+  await expect(activeOperationalTable).toContainText('In Progress');
+  await expect(activeOperationalTable).toContainText('First Aid');
+  await expect(activeOperationalTable).not.toContainText('IN_PROGRESS');
+  await expect(activeOperationalTable).not.toContainText('In_progress');
+  await expect(activeOperationalTable).not.toContainText('first_aid');
+  await expect(activeOperationalTable).not.toContainText('First_aid');
+
+  const activeRows = activeOperationalTable.locator('tbody tr');
+  await expect(activeRows.first()).toContainText('In Progress');
+  await expect(activeRows.first()).toContainText('High');
+  await expect(activeRows.nth(1)).toContainText('Pending');
+  await expect(activeRows.nth(1)).toContainText('Low');
 });
 
 test('navbar admin link visibility is role-aware', async ({ page }) => {

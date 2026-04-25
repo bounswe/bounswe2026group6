@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const { pool, query } = require('../../db/pool');
+const { deriveOperationalLevels } = require('./operational');
 
 function mapStatus(row) {
   if (row.status === 'RESOLVED') {
@@ -75,6 +76,14 @@ function mapHelper(row) {
 }
 
 function mapHelpRequest(row) {
+  const derivedOperational = deriveOperationalLevels({
+    affectedPeopleCount: row.affected_people_count,
+    riskFlags: row.risk_flags,
+  });
+  const urgencyLevel = row.urgency_level || derivedOperational.urgencyLevel;
+  const priorityLevel = row.priority_level || derivedOperational.priorityLevel;
+  const closedAt = row.closed_at || row.cancelled_at || row.resolved_at || null;
+
   return {
     id: row.request_id,
     userId: row.user_id,
@@ -91,6 +100,17 @@ function mapHelpRequest(row) {
     needType: row.need_type,
     status: mapStatus(row),
     internalStatus: row.status,
+    urgencyLevel,
+    priorityLevel,
+    openedAt: row.created_at,
+    closedAt,
+    openDurationMinutes: row.open_duration_minutes,
+    closedState:
+      row.status === 'RESOLVED'
+        ? 'RESOLVED'
+        : row.status === 'CANCELLED'
+          ? 'CANCELLED'
+          : null,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
     cancelledAt: row.cancelled_at,
@@ -117,9 +137,17 @@ function buildSelectQuery() {
       hr.contact_alternative_phone,
       hr.consent_given,
       hr.status,
+      hr.urgency_level,
+      hr.priority_level,
       hr.created_at,
       hr.resolved_at,
       hr.cancelled_at,
+      COALESCE(hr.cancelled_at, hr.resolved_at) AS closed_at,
+      FLOOR(
+        EXTRACT(
+          EPOCH FROM (COALESCE(hr.cancelled_at, hr.resolved_at, CURRENT_TIMESTAMP) - hr.created_at)
+        ) / 60
+      )::int AS open_duration_minutes,
       hr.is_saved_locally,
       rl.location_id,
       rl.country,
@@ -162,6 +190,10 @@ async function createHelpRequest(input) {
     await client.query('BEGIN');
 
     const requestId = crypto.randomUUID();
+    const operationalLevels = deriveOperationalLevels({
+      affectedPeopleCount: input.affectedPeopleCount,
+      riskFlags: input.riskFlags,
+    });
 
     const requestResult = await client.query(
       `
@@ -180,9 +212,11 @@ async function createHelpRequest(input) {
           contact_phone,
           contact_alternative_phone,
           consent_given,
+          urgency_level,
+          priority_level,
           is_saved_locally
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING
           request_id,
           user_id,
@@ -199,9 +233,17 @@ async function createHelpRequest(input) {
           contact_alternative_phone,
           consent_given,
           status,
+          urgency_level,
+          priority_level,
           created_at,
           resolved_at,
           cancelled_at,
+          COALESCE(cancelled_at, resolved_at) AS closed_at,
+          FLOOR(
+            EXTRACT(
+              EPOCH FROM (COALESCE(cancelled_at, resolved_at, CURRENT_TIMESTAMP) - created_at)
+            ) / 60
+          )::int AS open_duration_minutes,
           is_saved_locally
       `,
       [
@@ -219,6 +261,8 @@ async function createHelpRequest(input) {
         input.contact.phone,
         input.contact.alternativePhone ?? null,
         input.consentGiven,
+        operationalLevels.urgencyLevel,
+        operationalLevels.priorityLevel,
         input.isSavedLocally,
       ],
     );

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 import { getAccessToken, clearAccessToken } from "@/lib/auth";
 import { fetchAdminEmergencyOverview, type EmergencyOverview } from "@/lib/admin";
+import { formatOperationalLabel } from "@/lib/formatters";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
@@ -25,6 +26,19 @@ function MetricTile({
             <p className="admin-metric-value">{value}</p>
         </article>
     );
+}
+
+function formatDateTime(value: string | null) {
+    if (!value) {
+        return "-";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString();
 }
 
 export default function AdminEmergencyOverviewView() {
@@ -269,6 +283,45 @@ export default function AdminEmergencyOverviewView() {
                         <p className="admin-recent-line">Last 7d: {overview.recentActivity.cancelledLast7Days}</p>
                     </div>
                 </div>
+            </SectionCard>
+
+            <SectionCard>
+                <SectionHeader
+                    title="Active Operational Snapshot"
+                    subtitle="Live operational details for active emergencies."
+                />
+                {overview.activeOperational.length > 0 ? (
+                    <div className="admin-region-table-wrap">
+                        <table className="admin-region-table admin-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Opened At</th>
+                                    <th>Status</th>
+                                    <th>Type</th>
+                                    <th>Urgency</th>
+                                    <th>Priority</th>
+                                    <th>Open (min)</th>
+                                    <th>Region</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {overview.activeOperational.map((item) => (
+                                    <tr key={item.requestId}>
+                                        <td>{formatDateTime(item.openedAt)}</td>
+                                        <td>{formatOperationalLabel(item.status)}</td>
+                                        <td>{formatOperationalLabel(item.needType)}</td>
+                                        <td>{formatOperationalLabel(item.urgencyLevel)}</td>
+                                        <td>{formatOperationalLabel(item.priorityLevel)}</td>
+                                        <td>{item.openDurationMinutes}</td>
+                                        <td>{formatOperationalLabel(item.location.city)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <p className="admin-subtle">No active emergencies to display.</p>
+                )}
             </SectionCard>
 
             <SectionCard>

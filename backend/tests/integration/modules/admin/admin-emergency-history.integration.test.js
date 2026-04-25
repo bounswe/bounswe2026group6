@@ -243,6 +243,77 @@ describe('GET /api/admin/emergency-history', () => {
     expect(response.body.code).toBe('FORBIDDEN');
   });
 
+    test('uses consistent fallback for closedAt and openDurationMinutes on dirty closed rows', async () => {
+      await seedBaseUsers();
+
+      await query(
+        `
+          INSERT INTO help_requests (
+            request_id,
+            user_id,
+            help_types,
+            other_help_text,
+            affected_people_count,
+            risk_flags,
+            vulnerable_groups,
+            need_type,
+            description,
+            blood_type,
+            contact_full_name,
+            contact_phone,
+            consent_given,
+            status,
+            created_at,
+            resolved_at,
+            cancelled_at,
+            is_saved_locally
+          )
+          VALUES (
+            'req_dirty_closed',
+            'normal_user',
+            ARRAY['first_aid']::TEXT[],
+            '',
+            1,
+            ARRAY[]::TEXT[],
+            ARRAY[]::TEXT[],
+            'first_aid',
+            'Dirty closed row',
+            NULL,
+            'Z User',
+            5556667788,
+            TRUE,
+            'RESOLVED',
+            NOW() - INTERVAL '8 hours',
+            NULL,
+            NULL,
+            FALSE
+          )
+        `,
+      );
+
+      const app = createTestApp();
+      const adminToken = buildAuthToken({ userId: 'admin_user', isAdmin: true });
+
+      const response = await request(app)
+        .get('/api/admin/emergency-history?status=resolved&type=first_aid')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.history).toHaveLength(1);
+      expect(response.body.history[0]).toEqual(
+        expect.objectContaining({
+          requestId: 'req_dirty_closed',
+          status: 'RESOLVED',
+          closedState: 'RESOLVED',
+          openDurationMinutes: 0,
+        }),
+      );
+
+      const openedAt = new Date(response.body.history[0].openedAt).getTime();
+      const closedAt = new Date(response.body.history[0].closedAt).getTime();
+      expect(closedAt).toBe(openedAt);
+    });
+
   test('returns only resolved/cancelled history sorted by closed time', async () => {
     await seedBaseUsers();
     await seedHelpRequests();
@@ -268,6 +339,36 @@ describe('GET /api/admin/emergency-history', () => {
       'CANCELLED',
       'RESOLVED',
     ]);
+    expect(response.body.history[0]).toEqual(
+      expect.objectContaining({
+        requestId: 'req_resolved_new',
+        closedState: 'RESOLVED',
+        urgencyLevel: 'LOW',
+        priorityLevel: 'LOW',
+      }),
+    );
+    expect(response.body.history[0].openedAt).toEqual(expect.any(String));
+    expect(response.body.history[0].openDurationMinutes).toEqual(expect.any(Number));
+
+    expect(response.body.history[1]).toEqual(
+      expect.objectContaining({
+        requestId: 'req_cancelled_mid',
+        closedState: 'CANCELLED',
+        urgencyLevel: 'MEDIUM',
+        priorityLevel: 'MEDIUM',
+      }),
+    );
+    expect(response.body.history[1].openedAt).toEqual(expect.any(String));
+    expect(response.body.history[1].openDurationMinutes).toEqual(expect.any(Number));
+
+    expect(response.body.history[3]).toEqual(
+      expect.objectContaining({
+        requestId: 'req_resolved_old',
+        closedState: 'RESOLVED',
+        urgencyLevel: 'HIGH',
+        priorityLevel: 'HIGH',
+      }),
+    );
     expect(response.body.history.some((item) => item.requestId === 'req_pending_active')).toBe(false);
   });
 

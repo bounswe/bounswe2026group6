@@ -1,5 +1,25 @@
 const { query } = require('../../db/pool');
 
+function getDerivedUrgencySql() {
+  return `
+    CASE
+      WHEN COALESCE(array_length(hr.risk_flags, 1), 0) >= 2 OR hr.affected_people_count >= 5 THEN 'HIGH'
+      WHEN COALESCE(array_length(hr.risk_flags, 1), 0) = 1 OR hr.affected_people_count BETWEEN 3 AND 4 THEN 'MEDIUM'
+      ELSE 'LOW'
+    END
+  `;
+}
+
+function getUrgencySql() {
+  const derivedUrgencySql = getDerivedUrgencySql();
+  return `COALESCE(hr.urgency_level, (${derivedUrgencySql}))`;
+}
+
+function getPrioritySql() {
+  const urgencySql = getUrgencySql();
+  return `COALESCE(hr.priority_level, (${urgencySql}))`;
+}
+
 async function listUsers() {
   const result = await query(
     `
@@ -79,6 +99,8 @@ async function getBasicStats() {
 }
 
 async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
+  const urgencySql = getUrgencySql();
+  const prioritySql = getPrioritySql();
   const overviewQueries = [
     query(
       `
@@ -100,12 +122,8 @@ async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
           COUNT(*) FILTER (WHERE urgency_level = 'HIGH')::int AS high_count
         FROM (
           SELECT
-            CASE
-              WHEN COALESCE(array_length(risk_flags, 1), 0) >= 2 OR affected_people_count >= 5 THEN 'HIGH'
-              WHEN COALESCE(array_length(risk_flags, 1), 0) = 1 OR affected_people_count BETWEEN 3 AND 4 THEN 'MEDIUM'
-              ELSE 'LOW'
-            END AS urgency_level
-          FROM help_requests
+            ${urgencySql} AS urgency_level
+          FROM help_requests hr
         ) urgency_map
       `,
     ),
@@ -131,6 +149,53 @@ async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
             AND cancelled_at >= NOW() - INTERVAL '7 days'
           )::int AS cancelled_last_7d
         FROM help_requests
+      `,
+    ),
+    query(
+      `
+        SELECT
+          hr.request_id,
+          hr.need_type,
+          hr.status,
+          ${urgencySql} AS urgency_level,
+          ${prioritySql} AS priority_level,
+          hr.created_at AS opened_at,
+          FLOOR(
+            EXTRACT(
+              EPOCH FROM (COALESCE(hr.cancelled_at, hr.resolved_at, CURRENT_TIMESTAMP) - hr.created_at)
+            ) / 60
+          )::int AS open_duration_minutes,
+          COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown') AS city,
+          COALESCE(NULLIF(TRIM(rl.district), ''), 'unknown') AS district,
+          COALESCE(hr.cancelled_at, hr.resolved_at) AS closed_at,
+          CASE
+            WHEN hr.status = 'RESOLVED' THEN 'RESOLVED'
+            WHEN hr.status = 'CANCELLED' THEN 'CANCELLED'
+            ELSE NULL
+          END AS closed_state
+        FROM help_requests hr
+        LEFT JOIN LATERAL (
+          SELECT city, district
+          FROM request_locations loc
+          WHERE loc.request_id = hr.request_id
+          ORDER BY loc.captured_at DESC, loc.location_id DESC
+          LIMIT 1
+        ) rl ON TRUE
+        WHERE hr.status IN ('PENDING', 'ASSIGNED', 'IN_PROGRESS')
+        ORDER BY
+          CASE ${prioritySql}
+            WHEN 'HIGH' THEN 3
+            WHEN 'MEDIUM' THEN 2
+            ELSE 1
+          END DESC,
+          CASE ${urgencySql}
+            WHEN 'HIGH' THEN 3
+            WHEN 'MEDIUM' THEN 2
+            ELSE 1
+          END DESC,
+          open_duration_minutes DESC,
+          hr.created_at ASC
+        LIMIT 15
       `,
     ),
   ];
@@ -163,7 +228,7 @@ async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
     );
   }
 
-  const [statusResult, urgencyResult, recentActivityResult, regionResult] = await Promise.all(overviewQueries);
+  const [statusResult, urgencyResult, recentActivityResult, activeOperationalResult, regionResult] = await Promise.all(overviewQueries);
 
   const status = statusResult.rows[0];
   const urgency = urgencyResult.rows[0];
@@ -195,6 +260,21 @@ async function getEmergencyOverview({ includeRegionSummary = false } = {}) {
       cancelledLast24Hours: recent.cancelled_last_24h,
       cancelledLast7Days: recent.cancelled_last_7d,
     },
+    activeOperational: activeOperationalResult.rows.map((row) => ({
+      requestId: row.request_id,
+      needType: row.need_type,
+      status: row.status,
+      urgencyLevel: row.urgency_level,
+      priorityLevel: row.priority_level,
+      openedAt: row.opened_at,
+      openDurationMinutes: row.open_duration_minutes,
+      closedAt: row.closed_at,
+      closedState: row.closed_state,
+      location: {
+        city: row.city,
+        district: row.district,
+      },
+    })),
   };
 
   if (includeRegionSummary) {
@@ -220,13 +300,8 @@ async function getEmergencyHistory({
   limit = 50,
   offset = 0,
 } = {}) {
-  const urgencySql = `
-    CASE
-      WHEN COALESCE(array_length(hr.risk_flags, 1), 0) >= 2 OR hr.affected_people_count >= 5 THEN 'HIGH'
-      WHEN COALESCE(array_length(hr.risk_flags, 1), 0) = 1 OR hr.affected_people_count BETWEEN 3 AND 4 THEN 'MEDIUM'
-      ELSE 'LOW'
-    END
-  `;
+  const urgencySql = getUrgencySql();
+  const prioritySql = getPrioritySql();
 
   const [countResult, rowsResult] = await Promise.all([
     query(
@@ -259,12 +334,24 @@ async function getEmergencyHistory({
         hr.resolved_at,
         hr.cancelled_at,
         COALESCE(hr.cancelled_at, hr.resolved_at, hr.created_at) AS closed_at,
+        hr.created_at AS opened_at,
+        FLOOR(
+          EXTRACT(
+            EPOCH FROM (COALESCE(hr.cancelled_at, hr.resolved_at, hr.created_at) - hr.created_at)
+          ) / 60
+        )::int AS open_duration_minutes,
+        CASE
+          WHEN hr.status = 'RESOLVED' THEN 'RESOLVED'
+          WHEN hr.status = 'CANCELLED' THEN 'CANCELLED'
+          ELSE NULL
+        END AS closed_state,
         hr.affected_people_count,
         hr.risk_flags,
         COALESCE(NULLIF(TRIM(rl.country), ''), 'unknown') AS country,
         COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown') AS city,
         COALESCE(NULLIF(TRIM(rl.district), ''), 'unknown') AS district,
-        ${urgencySql} AS urgency_level
+        ${urgencySql} AS urgency_level,
+        ${prioritySql} AS priority_level
       FROM help_requests hr
       LEFT JOIN LATERAL (
         SELECT country, city, district
@@ -294,6 +381,9 @@ async function getEmergencyHistory({
     resolvedAt: row.resolved_at,
     cancelledAt: row.cancelled_at,
     closedAt: row.closed_at,
+    openedAt: row.opened_at,
+    openDurationMinutes: row.open_duration_minutes,
+    closedState: row.closed_state,
     location: {
       country: row.country,
       city: row.city,
@@ -301,6 +391,7 @@ async function getEmergencyHistory({
     },
     affectedPeopleCount: row.affected_people_count,
     urgencyLevel: row.urgency_level,
+    priorityLevel: row.priority_level,
     riskFlags: row.risk_flags || [],
   }));
 
