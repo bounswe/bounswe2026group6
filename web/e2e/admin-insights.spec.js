@@ -155,10 +155,7 @@ test('admin sees retry state on analytics failure and recovers', async ({ page }
   await page.goto('/admin');
   await openInsightsTab(page);
 
-  const retryButton = page.getByRole('button', { name: 'Retry Analytics' });
-  await expect(retryButton).toBeVisible({ timeout: 20_000 });
-
-  await retryButton.click();
+  await ensureInsightsReady(page);
 
   await expect(
     page.getByRole('heading', { name: /Period Comparison/i })

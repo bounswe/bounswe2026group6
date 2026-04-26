@@ -103,13 +103,16 @@ test('profile save blocks first-time share enable until Use Current Location is 
 
   const locationToggle = page.getByRole('button', { name: 'Share Current Location' });
   await locationToggle.click();
+  await expect(locationToggle).toHaveAttribute('aria-pressed', 'true');
 
   await page.locator('#height').fill('180');
   await page.locator('#extraAddress').fill('Updated Address 42');
 
   await page.getByRole('button', { name: 'Save Changes' }).click();
 
-  await expect(page.getByText('To enable Share Current Location, click Use Current Location first so we can save a fresh device location.')).toBeVisible();
+  await expect(
+    page.getByText(/To enable Share Current Location, click Use Current Location first/i)
+  ).toBeVisible();
 });
 
 test('persists real current-device metadata when sharing is enabled after fresh capture', async ({ page }) => {
