@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.RowScope.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +39,7 @@ import com.neph.core.network.ApiException
 import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.myhelprequests.data.buildMyHelpRequestsOverview
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
 import com.neph.navigation.Routes
@@ -66,7 +70,7 @@ fun MyHelpRequestsScreen(
 
     val requests by MyHelpRequestsRepository.observeHelpRequests(isAuthenticated)
         .collectAsState(initial = emptyList())
-    var actionInProgressRequestId by remember { mutableStateOf<String?>(null) }
+    var actionInProgress by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf("") }
     var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
 
@@ -120,26 +124,36 @@ fun MyHelpRequestsScreen(
             }
 
             else -> {
-                val activeRequest = requests.firstOrNull { it.isActive }
-                val requestHistory = requests.filterNot { it.isActive }
+                val overview = buildMyHelpRequestsOverview(requests)
+                val currentActiveRequest = overview.activeRequests.firstOrNull()
+                val requestHistory = overview.historyRequests
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg),
                     contentPadding = PaddingValues(vertical = spacing.sm)
                 ) {
-                    item {
-                        SectionHeader(
-                            title = "Current Request",
-                            subtitle = if (isAuthenticated) {
-                                "Your latest active help request is shown first."
-                            } else {
-                                "Your latest guest help request is shown first."
-                            }
-                        )
+                    if (overview.hasMultipleRequestContext) {
+                        item {
+                            RequestsOverviewCard(
+                                overview = overview,
+                                isAuthenticated = isAuthenticated
+                            )
+                        }
                     }
 
-                    if (activeRequest == null) {
+                        item {
+                            SectionHeader(
+                                title = "Current Request",
+                                subtitle = if (isAuthenticated) {
+                                    "Your latest active help request is shown first."
+                                } else {
+                                    "Your latest guest help request is shown first."
+                                }
+                            )
+                        }
+
+                    if (currentActiveRequest == null) {
                         item {
                             SectionCard {
                                 Text(
@@ -150,53 +164,53 @@ fun MyHelpRequestsScreen(
                             }
                         }
                     } else {
-                        item {
+                        item(key = currentActiveRequest.id) {
                             MyHelpRequestCard(
-                                request = activeRequest,
-                                titleOverride = activeRequest.helpTypeSummary,
-                                subtitleOverride = activeRequest.createdAt?.let { "Opened: $it" }
+                                request = currentActiveRequest,
+                                titleOverride = currentActiveRequest.helpTypeSummary,
+                                subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
                                     ?: "Opened time unavailable",
                                 actionMessage = actionMessage,
                                 onResolve = if (isAuthenticated && token.isNotBlank()) {
                                     {
                                         actionMessage = ""
-                                        actionInProgressRequestId = activeRequest.id
+                                        actionInProgress = true
                                         scope.launch {
                                             try {
                                                 MyHelpRequestsRepository.markRequestAsResolved(
                                                     token = token,
-                                                    requestId = activeRequest.id
+                                                    requestId = currentActiveRequest.id
                                                 )
                                                 actionMessage = "Request marked resolved locally and queued for sync."
                                             } catch (_: Exception) {
                                                 actionMessage = "Could not save the status change locally."
                                             } finally {
-                                                actionInProgressRequestId = null
+                                                actionInProgress = false
                                             }
                                         }
                                     }
-                                } else if (!isAuthenticated && activeRequest.guestAccessToken != null) {
+                                } else if (!isAuthenticated && currentActiveRequest.guestAccessToken != null) {
                                     {
                                         actionMessage = ""
-                                        actionInProgressRequestId = activeRequest.id
+                                        actionInProgress = true
                                         scope.launch {
                                             try {
                                                 MyHelpRequestsRepository.markGuestRequestAsResolved(
-                                                    requestId = activeRequest.id,
-                                                    guestAccessToken = activeRequest.guestAccessToken
+                                                    requestId = currentActiveRequest.id,
+                                                    guestAccessToken = currentActiveRequest.guestAccessToken
                                                 )
                                                 actionMessage = "Request marked resolved locally and queued for sync."
                                             } catch (_: Exception) {
                                                 actionMessage = "Could not save the status change locally."
                                             } finally {
-                                                actionInProgressRequestId = null
+                                                actionInProgress = false
                                             }
                                         }
                                     }
                                 } else {
                                     null
                                 },
-                                resolveLoading = actionInProgressRequestId == activeRequest.id
+                                resolveLoading = actionInProgress
                             )
                         }
                     }
@@ -220,6 +234,105 @@ fun MyHelpRequestsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RequestsOverviewCard(
+    overview: com.neph.features.myhelprequests.data.MyHelpRequestsOverviewUiModel,
+    isAuthenticated: Boolean
+) {
+    val spacing = LocalNephSpacing.current
+
+    SectionCard {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            SectionHeader(
+                title = "Overview",
+                subtitle = if (isAuthenticated) {
+                    "See your current and previous requests together."
+                } else {
+                    "See the requests tracked from this device together."
+                }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                OverviewMetric(
+                    label = "Tracked",
+                    value = overview.totalRequests.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewMetric(
+                    label = "Current",
+                    value = if (overview.activeCount > 0) "Yes" else "No",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                OverviewMetric(
+                    label = "Resolved",
+                    value = overview.resolvedCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewMetric(
+                    label = "Cancelled",
+                    value = overview.cancelledCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            val responderSummary = when {
+                overview.activeCount > 0 && overview.assignedResponderCount > 0 -> {
+                    "Your current request includes assigned responder details below."
+                }
+
+                overview.historyCount > 0 -> {
+                    "${overview.historyCount} previous request${if (overview.historyCount == 1) "" else "s"} kept in history for quick context."
+                }
+
+                else -> {
+                    "Open and closed requests stay grouped so the flow remains easy to scan."
+                }
+            }
+
+            Text(
+                text = responderSummary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverviewMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    val spacing = LocalNephSpacing.current
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(spacing.xs)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

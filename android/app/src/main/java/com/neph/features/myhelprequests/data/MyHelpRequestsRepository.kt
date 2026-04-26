@@ -59,6 +59,24 @@ data class MyHelpRequestUiModel(
         get() = syncStatus == SyncStatus.FAILED || syncStatus == SyncStatus.CONFLICTED
 }
 
+data class MyHelpRequestsOverviewUiModel(
+    val totalRequests: Int,
+    val activeRequests: List<MyHelpRequestUiModel>,
+    val historyRequests: List<MyHelpRequestUiModel>,
+    val resolvedCount: Int,
+    val cancelledCount: Int,
+    val assignedResponderCount: Int
+) {
+    val activeCount: Int
+        get() = activeRequests.size
+
+    val historyCount: Int
+        get() = historyRequests.size
+
+    val hasMultipleRequestContext: Boolean
+        get() = totalRequests > 1 || historyCount > 0
+}
+
 data class AssignedResponderUiModel(
     val firstName: String?,
     val lastName: String?,
@@ -183,6 +201,22 @@ object MyHelpRequestsRepository {
             now = System.currentTimeMillis()
         ).toUiModel()
     }
+}
+
+internal fun buildMyHelpRequestsOverview(
+    requests: List<MyHelpRequestUiModel>
+): MyHelpRequestsOverviewUiModel {
+    val activeRequests = requests.filter { it.isActive }
+    val historyRequests = requests.filterNot { it.isActive }
+
+    return MyHelpRequestsOverviewUiModel(
+        totalRequests = requests.size,
+        activeRequests = activeRequests,
+        historyRequests = historyRequests,
+        resolvedCount = requests.count { it.status.trim().uppercase() == "RESOLVED" },
+        cancelledCount = requests.count { it.status.trim().uppercase() == "CANCELLED" },
+        assignedResponderCount = activeRequests.sumOf { request -> request.responders.size }
+    )
 }
 
 internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {

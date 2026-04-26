@@ -102,14 +102,45 @@ class MyHelpRequestsRepositoryMappingTest {
             isDeleted = false
         ).toUiModel()
 
-        val matchedModel = cancelledModel.copy(
-            id = "req_matched",
+        val matchedModel = HelpRequestEntity(
+            localId = "local_matched",
+            remoteId = "req_matched",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            guestAccessToken = null,
+            helpTypesJson = "[\"medical\"]",
+            otherHelpText = "",
+            affectedPeopleCount = 1,
+            riskFlagsJson = "[]",
+            vulnerableGroupsJson = "[]",
+            description = "Need first aid support",
+            bloodType = "",
+            country = "Turkey",
+            city = "Istanbul",
+            district = "Sisli",
+            neighborhood = "Bomonti",
+            extraAddress = "Building D",
+            contactFullName = "Ayse Yilmaz",
+            contactPhone = "5551234567",
+            contactAlternativePhone = null,
             status = "MATCHED",
-            statusLabel = "Responder assigned",
-            isActive = true,
-            closedAtLabel = null,
-            closedStateLabel = null
-        )
+            urgencyLevel = null,
+            priorityLevel = null,
+            resolvedAt = null,
+            cancelledAt = null,
+            helperFirstName = null,
+            helperLastName = null,
+            helperPhone = null,
+            helperProfession = null,
+            helperExpertise = null,
+            helpersJson = "[]",
+            syncStatus = SyncStatus.SYNCED,
+            pendingError = null,
+            createdAtEpochMillis = 0L,
+            updatedAtEpochMillis = 0L,
+            lastSyncedAtEpochMillis = null,
+            serverCreatedAt = "2026-04-26T11:00:00.000Z",
+            isDeleted = false
+        ).toUiModel()
 
         assertFalse(cancelledModel.isActive)
         assertEquals("Cancelled", cancelledModel.statusLabel)
@@ -120,5 +151,79 @@ class MyHelpRequestsRepositoryMappingTest {
         assertEquals("MATCHED", matchedModel.status)
         assertTrue(matchedModel.isActive)
         assertEquals("Responder assigned", matchedModel.statusLabel)
+    }
+
+    @Test
+    fun buildOverviewSummarizesCurrentAndHistoryContext() {
+        val currentActive = HelpRequestEntity(
+            localId = "local_active_1",
+            remoteId = "req_active_1",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            guestAccessToken = null,
+            helpTypesJson = "[\"food\"]",
+            otherHelpText = "",
+            affectedPeopleCount = 1,
+            riskFlagsJson = "[]",
+            vulnerableGroupsJson = "[]",
+            description = "Need food support",
+            bloodType = "",
+            country = "Turkey",
+            city = "Istanbul",
+            district = "Kadikoy",
+            neighborhood = "Moda",
+            extraAddress = "Street 1",
+            contactFullName = "Ayse",
+            contactPhone = "5550000001",
+            contactAlternativePhone = null,
+            status = "MATCHED",
+            urgencyLevel = "HIGH",
+            priorityLevel = "HIGH",
+            resolvedAt = null,
+            cancelledAt = null,
+            helperFirstName = null,
+            helperLastName = null,
+            helperPhone = null,
+            helperProfession = null,
+            helperExpertise = null,
+            helpersJson = "[{\"firstName\":\"Ece\"}]",
+            syncStatus = SyncStatus.SYNCED,
+            pendingError = null,
+            createdAtEpochMillis = 1L,
+            updatedAtEpochMillis = 1L,
+            lastSyncedAtEpochMillis = null,
+            serverCreatedAt = "2026-04-26T10:00:00.000Z",
+            isDeleted = false
+        ).toUiModel()
+
+        val cancelled = currentActive.copy(
+            id = "req_cancelled_2",
+            status = "CANCELLED",
+            statusLabel = "Cancelled",
+            isActive = false,
+            responders = emptyList(),
+            closedAtLabel = "2026-04-26 12:30:00",
+            closedStateLabel = "Cancelled"
+        )
+
+        val resolved = currentActive.copy(
+            id = "req_resolved_1",
+            status = "RESOLVED",
+            statusLabel = "Resolved",
+            isActive = false,
+            responders = emptyList(),
+            closedAtLabel = "2026-04-26 13:30:00",
+            closedStateLabel = "Resolved"
+        )
+
+        val overview = buildMyHelpRequestsOverview(listOf(currentActive, cancelled, resolved))
+
+        assertEquals(3, overview.totalRequests)
+        assertEquals(1, overview.activeCount)
+        assertEquals(listOf(currentActive.id), overview.activeRequests.map { it.id })
+        assertEquals(listOf(cancelled.id, resolved.id), overview.historyRequests.map { it.id })
+        assertEquals(1, overview.cancelledCount)
+        assertEquals(1, overview.resolvedCount)
+        assertEquals(1, overview.assignedResponderCount)
+        assertTrue(overview.hasMultipleRequestContext)
     }
 }
