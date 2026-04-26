@@ -8,6 +8,7 @@ const {
   getAdminEmergencyOverview,
   getAdminEmergencyHistory,
   getAdminEmergencyAnalytics,
+  getAdminDeploymentMonitoring,
 } = require('./controller');
 
 const adminRouter = express.Router();
@@ -19,6 +20,7 @@ adminRouter.get('/stats', requireAuth, requireAdmin, getAdminStats);
 adminRouter.get('/emergency-overview', requireAuth, requireAdmin, getAdminEmergencyOverview);
 adminRouter.get('/emergency-history', requireAuth, requireAdmin, getAdminEmergencyHistory);
 adminRouter.get('/emergency-analytics', requireAuth, requireAdmin, getAdminEmergencyAnalytics);
+adminRouter.get('/deployment-monitoring', requireAuth, requireAdmin, getAdminDeploymentMonitoring);
 
 module.exports = {
   adminRouter,

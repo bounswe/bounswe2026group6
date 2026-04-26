@@ -235,3 +235,95 @@ export async function fetchAdminEmergencyAnalytics(
 
     return response.analytics;
 }
+
+export type DeploymentMonitoringStatus =
+    | "PENDING"
+    | "ASSIGNED"
+    | "IN_PROGRESS"
+    | "RESOLVED"
+    | "CANCELLED";
+
+export type DeploymentMonitoringItem = {
+    requestId: string;
+    needType: string | null;
+    status: DeploymentMonitoringStatus;
+    urgencyLevel: "LOW" | "MEDIUM" | "HIGH";
+    priorityLevel: "LOW" | "MEDIUM" | "HIGH";
+    createdAt: string;
+    ageHours: number;
+    assignedAt: string | null;
+    assignedHoursAgo: number | null;
+    volunteerId: string | null;
+    location: {
+        city: string;
+        district: string;
+    };
+};
+
+export type DeploymentMonitoringConflictGroup = {
+    groupKey: {
+        city: string;
+        needType: string;
+        contactKey: string;
+    };
+    duplicateCount: number;
+    items: DeploymentMonitoringItem[];
+};
+
+export type DeploymentMonitoringSummary = {
+    unassigned: number;
+    longWaiting: number;
+    inProgress: number;
+    neglected: number;
+    conflicts: number;
+};
+
+export type DeploymentMonitoringThresholds = {
+    waitThresholdHours: number;
+    neglectThresholdHours: number;
+    listLimit: number;
+};
+
+export type DeploymentMonitoring = {
+    thresholds: DeploymentMonitoringThresholds;
+    summary: DeploymentMonitoringSummary;
+    unassigned: DeploymentMonitoringItem[];
+    longWaiting: DeploymentMonitoringItem[];
+    inProgress: DeploymentMonitoringItem[];
+    neglected: DeploymentMonitoringItem[];
+    conflicts: DeploymentMonitoringConflictGroup[];
+};
+
+type DeploymentMonitoringResponse = {
+    monitoring: DeploymentMonitoring;
+};
+
+export async function fetchAdminDeploymentMonitoring(
+    token: string,
+    options: {
+        waitThresholdHours?: number;
+        neglectThresholdHours?: number;
+        listLimit?: number;
+    } = {}
+) {
+    const params = new URLSearchParams();
+    if (typeof options.waitThresholdHours === "number") {
+        params.set("waitThresholdHours", String(options.waitThresholdHours));
+    }
+    if (typeof options.neglectThresholdHours === "number") {
+        params.set("neglectThresholdHours", String(options.neglectThresholdHours));
+    }
+    if (typeof options.listLimit === "number") {
+        params.set("listLimit", String(options.listLimit));
+    }
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const response = await apiRequest<DeploymentMonitoringResponse>(
+        `/admin/deployment-monitoring${query}`,
+        {
+            token: token.trim(),
+        }
+    );
+
+    return response.monitoring;
+}

@@ -6,6 +6,7 @@ const {
   getEmergencyOverviewForAdmin,
   getEmergencyHistoryForAdmin,
   getEmergencyAnalyticsForAdmin,
+  getDeploymentMonitoringForAdmin,
 } = require('./service');
 
 const ALLOWED_HISTORY_STATUSES = new Set(['RESOLVED', 'CANCELLED']);
@@ -224,6 +225,59 @@ async function getAdminEmergencyAnalytics(req, res) {
   }
 }
 
+async function getAdminDeploymentMonitoring(req, res) {
+  try {
+    const waitThresholdHours = parsePositiveIntQuery(req.query?.waitThresholdHours, {
+      min: 1,
+      max: 72,
+      defaultValue: 6,
+    });
+    if (waitThresholdHours.error) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: '`waitThresholdHours` must be an integer between 1 and 72.',
+      });
+    }
+
+    const neglectThresholdHours = parsePositiveIntQuery(req.query?.neglectThresholdHours, {
+      min: 1,
+      max: 168,
+      defaultValue: 12,
+    });
+    if (neglectThresholdHours.error) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: '`neglectThresholdHours` must be an integer between 1 and 168.',
+      });
+    }
+
+    const listLimit = parsePositiveIntQuery(req.query?.listLimit, {
+      min: 1,
+      max: 50,
+      defaultValue: 10,
+    });
+    if (listLimit.error) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: '`listLimit` must be an integer between 1 and 50.',
+      });
+    }
+
+    const monitoring = await getDeploymentMonitoringForAdmin({
+      waitThresholdHours: waitThresholdHours.value,
+      neglectThresholdHours: neglectThresholdHours.value,
+      listLimit: listLimit.value,
+    });
+
+    return res.status(200).json({ monitoring });
+  } catch (_error) {
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
 module.exports = {
   getAdminUsers,
   getAdminHelpRequests,
@@ -232,4 +286,5 @@ module.exports = {
   getAdminEmergencyOverview,
   getAdminEmergencyHistory,
   getAdminEmergencyAnalytics,
+  getAdminDeploymentMonitoring,
 };
