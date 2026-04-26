@@ -78,24 +78,47 @@ function parseHelpers(value) {
   return [];
 }
 
+function normalizeHelperText(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized || null;
+}
+
 function mapHelperValue(value) {
   if (!value || typeof value !== 'object') {
     return null;
   }
 
   return {
-    firstName: value.firstName || null,
-    lastName: value.lastName || null,
+    firstName: normalizeHelperText(value.firstName),
+    lastName: normalizeHelperText(value.lastName),
     phone: value.phone ? Number(value.phone) : null,
-    profession: value.profession || null,
-    expertise: value.expertise || null,
+    profession: normalizeHelperText(value.profession),
+    expertise: normalizeHelperText(value.expertise),
   };
+}
+
+function hasVisibleHelperField(helper) {
+  return Boolean(
+    helper
+    && (
+      helper.firstName
+      || helper.lastName
+      || helper.phone != null
+      || helper.profession
+      || helper.expertise
+    )
+  );
 }
 
 function mapHelpRequest(row) {
   const helpers = parseHelpers(row.helpers)
     .map(mapHelperValue)
     .filter(Boolean);
+  const helper = helpers.find(hasVisibleHelperField) || null;
   const derivedOperational = deriveOperationalLevels({
     affectedPeopleCount: row.affected_people_count,
     riskFlags: row.risk_flags,
@@ -135,7 +158,7 @@ function mapHelpRequest(row) {
     resolvedAt: row.resolved_at,
     cancelledAt: row.cancelled_at,
     isSavedLocally: row.is_saved_locally,
-    helper: helpers[0] || null,
+    helper,
     helpers,
   };
 }
