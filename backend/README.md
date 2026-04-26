@@ -226,6 +226,9 @@ Push env:
 - `NOTIFICATION_AVAILABILITY_REMINDER_MINUTES=120` reminder threshold for available volunteers
 - `NOTIFICATION_AVAILABILITY_REMINDER_COOLDOWN_MINUTES=180` minimum time between reminder notifications
 - `NOTIFICATION_PENDING_REQUEST_TTL_HOURS=72` auto-cancels stale pending help requests
+- `HELP_REQUEST_GUEST_CREATE_ENABLED=true` allows guest help-request creation without auth
+- `HELP_REQUEST_GUEST_MATCHING_ENABLED=false` keeps guest-created requests out of auto-matching (recommended)
+- `HELP_REQUEST_GUEST_TOKEN_TTL=2h` controls guest access token expiry for guest request read/update
 
 Cleanup job:
 

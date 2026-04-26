@@ -1,6 +1,7 @@
 const { query } = require('../../db/pool');
 const { randomUUID } = require('crypto');
 const { deriveOperationalLevels } = require('../help-requests/operational');
+const { env } = require('../../config/env');
 
 const DEFAULT_MAX_MATCH_DISTANCE_METERS = 1000;
 const FIRST_AID_HELP_TYPES = new Set(['first_aid', 'medical']);
@@ -206,6 +207,18 @@ function buildRequestMatchContext(requestRow) {
     assignment_phase_rank: activeAssignmentCount === 0 ? 0 : 1,
     priority,
   };
+}
+
+function isRequestEligibleForMatching(requestRow) {
+  if (!requestRow) {
+    return false;
+  }
+
+  if (requestRow.user_id) {
+    return true;
+  }
+
+  return env.helpRequests.guestMatchingEnabled;
 }
 
 function canVolunteerMatchRequest(volunteerContext, requestContext) {
@@ -501,6 +514,7 @@ async function findOpenRequestsForMatching() {
 
 function selectBestRequestForVolunteer(volunteer, requestRows) {
   return requestRows
+    .filter(isRequestEligibleForMatching)
     .filter((requestRow) => requestRow.user_id === null || requestRow.user_id !== volunteer.user_id)
     .filter((requestRow) => !requestRow.is_internally_fulfilled)
     .map((requestRow) => buildRequestCandidateForVolunteer(volunteer, requestRow))
@@ -510,6 +524,10 @@ function selectBestRequestForVolunteer(volunteer, requestRows) {
 }
 
 function selectBestVolunteerForRequest(requestRow, volunteerRows) {
+  if (!isRequestEligibleForMatching(requestRow)) {
+    return null;
+  }
+
   if (requestRow.is_internally_fulfilled) {
     return null;
   }

@@ -12,6 +12,7 @@ const {
   validateCreateHelpRequest,
   validateHelpRequestStatusUpdate,
 } = require('./validators');
+const { env } = require('../../config/env');
 
 function sendError(response, status, code, message, details) {
   const payload = { code, message };
@@ -40,7 +41,9 @@ function readGuestAccessToken(request) {
 async function createHelpRequest(request, response) {
   const userId = readUserId(request);
 
-  // userId may be null for guest submissions — that is allowed
+  if (!userId && !env.helpRequests.guestCreateEnabled) {
+    return sendError(response, 403, 'GUEST_HELP_REQUESTS_DISABLED', 'Guest help request submission is disabled');
+  }
 
   const { errors, warnings, value } = validateCreateHelpRequest(request.body || {});
 

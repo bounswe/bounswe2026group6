@@ -18,7 +18,19 @@ const { createNotification } = require('../notifications/service');
 
 const JWT_SECRET = env.jwt.secret;
 const GUEST_HELP_REQUEST_SCOPE = 'help_request_guest_read';
-const GUEST_HELP_REQUEST_TOKEN_TTL = '30d';
+const GUEST_HELP_REQUEST_TOKEN_TTL = env.helpRequests.guestTokenTtl;
+
+function redactGuestRequestDetails(helpRequest) {
+  if (!helpRequest) {
+    return helpRequest;
+  }
+
+  return {
+    ...helpRequest,
+    helper: null,
+    helpers: [],
+  };
+}
 
 async function createMyHelpRequest(userId, input) {
   try {
@@ -49,11 +61,13 @@ async function createMyHelpRequest(userId, input) {
       }
     }
 
-    // Try to auto-assign a volunteer
-    await tryToAssignRequest(helpRequest.id);
+    // Only authenticated requests can trigger immediate matching.
+    if (userId) {
+      await tryToAssignRequest(helpRequest.id);
+      return await findHelpRequestById(helpRequest.id);
+    }
 
-    // Return the request (it might have been updated to ASSIGNED status)
-    return await findHelpRequestById(helpRequest.id);
+    return redactGuestRequestDetails(helpRequest);
   } catch (error) {
     if (error.code === '23503') {
       const wrappedError = new Error('The provided user does not exist in the database yet.');
@@ -139,7 +153,7 @@ async function getGuestHelpRequest(requestId, guestAccessToken) {
     );
   }
 
-  return helpRequest;
+  return redactGuestRequestDetails(helpRequest);
 }
 
 function buildInvalidTransitionError(message) {
@@ -238,7 +252,7 @@ async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessTo
     return null;
   }
 
-  return applyStatusTransition(currentRequest, nextStatus, {
+  const updatedRequest = await applyStatusTransition(currentRequest, nextStatus, {
     sync: () => markHelpRequestAsSyncedByRequestId(requestId),
     resolve: async () => {
       const resolvedRequest = await markHelpRequestAsResolvedByRequestId(requestId);
@@ -251,6 +265,8 @@ async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessTo
       return cancelledRequest;
     },
   });
+
+  return redactGuestRequestDetails(updatedRequest);
 }
 
 module.exports = {

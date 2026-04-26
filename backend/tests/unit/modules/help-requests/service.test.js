@@ -111,6 +111,28 @@ describe('help-requests service', () => {
 				.rejects
 				.toThrow('connection lost');
 		});
+
+		test('does not auto-assign guest-created requests and redacts helper fields', async () => {
+			const createdGuestRequest = {
+				id: 'req_guest_1',
+				userId: null,
+				status: 'SYNCED',
+				helper: { firstName: 'Test', phone: 5300000000 },
+				helpers: [{ firstName: 'Test', phone: 5300000000 }],
+			};
+			repository.createHelpRequest.mockResolvedValueOnce(createdGuestRequest);
+
+			const result = await createMyHelpRequest(null, { helpTypes: ['first_aid'] });
+
+			expect(availabilityService.tryToAssignRequest).not.toHaveBeenCalled();
+			expect(repository.findHelpRequestById).not.toHaveBeenCalled();
+			expect(result).toMatchObject({
+				id: 'req_guest_1',
+				userId: null,
+				helper: null,
+				helpers: [],
+			});
+		});
 	});
 
 	describe('listMyHelpRequests', () => {
@@ -163,7 +185,11 @@ describe('help-requests service', () => {
 			const result = await getGuestHelpRequest('req_guest_2', token);
 
 			expect(repository.findHelpRequestById).toHaveBeenCalledWith('req_guest_2');
-			expect(result).toEqual(requestRow);
+			expect(result).toEqual({
+				...requestRow,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('returns null when guest-token request does not exist', async () => {
@@ -334,7 +360,11 @@ describe('help-requests service', () => {
 			const result = await updateGuestHelpRequestStatus('req_guest_sync', 'SYNCED', token);
 
 			expect(repository.markHelpRequestAsSyncedByRequestId).toHaveBeenCalledWith('req_guest_sync');
-			expect(result).toEqual(updated);
+			expect(result).toEqual({
+				...updated,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('marks guest request as resolved', async () => {
@@ -351,7 +381,11 @@ describe('help-requests service', () => {
 
 			expect(repository.markHelpRequestAsResolvedByRequestId).toHaveBeenCalledWith('req_guest_resolve');
 			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_guest_resolve');
-			expect(result).toEqual(updated);
+			expect(result).toEqual({
+				...updated,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('persists RESOLVED before freeing volunteers for guest requests', async () => {
@@ -386,7 +420,11 @@ describe('help-requests service', () => {
 
 			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_guest_cancel');
 			expect(repository.markHelpRequestAsCancelledByRequestId).toHaveBeenCalledWith('req_guest_cancel');
-			expect(result).toEqual(updated);
+			expect(result).toEqual({
+				...updated,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('persists CANCELLED before freeing volunteers for guest requests', async () => {
@@ -419,7 +457,11 @@ describe('help-requests service', () => {
 			const result = await updateGuestHelpRequestStatus('req_guest_done', 'RESOLVED', token);
 
 			expect(repository.markHelpRequestAsResolvedByRequestId).not.toHaveBeenCalled();
-			expect(result).toEqual(current);
+			expect(result).toEqual({
+				...current,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('throws INVALID_STATUS_TRANSITION when moving guest CANCELLED request to RESOLVED', async () => {

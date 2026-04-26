@@ -18,6 +18,7 @@ jest.mock('../../../../src/modules/help-requests/validators', () => ({
 
 const service = require('../../../../src/modules/help-requests/service');
 const validators = require('../../../../src/modules/help-requests/validators');
+const { env } = require('../../../../src/config/env');
 const {
 	createHelpRequest,
 	listHelpRequests,
@@ -34,6 +35,24 @@ function buildResponse() {
 
 describe('help-requests controller', () => {
 	describe('createHelpRequest', () => {
+		test('returns 403 when guest submission is disabled by config', async () => {
+			const previousValue = env.helpRequests.guestCreateEnabled;
+			env.helpRequests.guestCreateEnabled = false;
+			validators.readUserId.mockReturnValueOnce(null);
+			const response = buildResponse();
+
+			try {
+				await createHelpRequest({ body: {} }, response);
+			} finally {
+				env.helpRequests.guestCreateEnabled = previousValue;
+			}
+
+			expect(response.status).toHaveBeenCalledWith(403);
+			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({
+				code: 'GUEST_HELP_REQUESTS_DISABLED',
+			}));
+		});
+
 		test('proceeds to validation even when user is not authenticated (guest)', async () => {
 			validators.readUserId.mockReturnValueOnce(null);
 			validators.validateCreateHelpRequest.mockReturnValueOnce({

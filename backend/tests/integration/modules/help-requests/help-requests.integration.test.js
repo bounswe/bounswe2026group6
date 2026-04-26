@@ -191,7 +191,7 @@ describe('help-requests integration', () => {
 		expect(response.body.request.openDurationMinutes).toEqual(expect.any(Number));
 	});
 
-	test('guest-created request is visible in helper assignment endpoints', async () => {
+	test('guest-created request is not matched to volunteers by default', async () => {
 		const app = createTestApp();
 		const helperId = 'user_hr_guest_helper';
 		await seedActiveUser(helperId, 'guesthelper@example.com');
@@ -210,18 +210,14 @@ describe('help-requests integration', () => {
 			.send({ isAvailable: true });
 
 		expect(toggleRes.status).toBe(200);
-		expect(toggleRes.body.assignment).toBeTruthy();
-		expect(toggleRes.body.assignment.request_id).toBe(createRes.body.request.id);
-		expect(toggleRes.body.assignment.requester_email).toBeNull();
+		expect(toggleRes.body.assignment).toBeNull();
 
 		const assignmentRes = await request(app)
 			.get('/api/availability/my-assignment')
 			.set('Authorization', `Bearer ${helperToken}`);
 
 		expect(assignmentRes.status).toBe(200);
-		expect(assignmentRes.body.assignment).toBeTruthy();
-		expect(assignmentRes.body.assignment.request_id).toBe(createRes.body.request.id);
-		expect(assignmentRes.body.assignment.requester_email).toBeNull();
+		expect(assignmentRes.body.assignment).toBeNull();
 	});
 
 	test('POST /api/help-requests creates request with the new payload shape', async () => {
@@ -501,6 +497,47 @@ describe('help-requests integration', () => {
 		expect(response.body.request.id).toBe(requestId);
 		expect(response.body.request.userId).toBeNull();
 		expect(response.body.request.description).toBe('guest can read this');
+		expect(response.body.request.helper).toBeNull();
+		expect(response.body.request.helpers).toEqual([]);
+	});
+
+	test('GET /api/help-requests/:requestId redacts helper details for guest token even if assignment exists', async () => {
+		const app = createTestApp();
+		const helperUserId = 'user_hr_guest_redact_helper_1';
+		const helperVolunteerId = 'vol_hr_guest_redact_helper_1';
+		await seedActiveUser(helperUserId, 'guestredacthelper@example.com');
+		await seedVolunteer({ volunteerId: helperVolunteerId, userId: helperUserId, isAvailable: false });
+		await query(
+			`INSERT INTO user_profiles (profile_id, user_id, first_name, last_name, phone_number)
+			 VALUES ('prf_hr_guest_redact_helper_1', $1, 'Helper', 'One', '5301234567')`,
+			[helperUserId],
+		);
+		await query(
+			`INSERT INTO expertise (expertise_id, profile_id, profession, expertise_area, is_verified)
+			 VALUES ('exp_hr_guest_redact_helper_1', 'prf_hr_guest_redact_helper_1', 'Volunteer', 'First Aid', TRUE)`,
+		);
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest request for redaction check' }));
+
+		const requestId = createResponse.body.request.id;
+		const guestAccessToken = createResponse.body.guestAccessToken;
+
+		await query(`UPDATE help_requests SET status = 'ASSIGNED' WHERE request_id = $1`, [requestId]);
+		await query(
+			`INSERT INTO assignments (assignment_id, volunteer_id, request_id, assigned_at, is_cancelled)
+			 VALUES ('asg_hr_guest_redact_helper_1', $1, $2, CURRENT_TIMESTAMP, FALSE)`,
+			[helperVolunteerId, requestId],
+		);
+
+		const response = await request(app)
+			.get(`/api/help-requests/${requestId}`)
+			.set('x-help-request-access-token', guestAccessToken);
+
+		expect(response.status).toBe(200);
+		expect(response.body.request.helper).toBeNull();
+		expect(response.body.request.helpers).toEqual([]);
 	});
 
 	test('GET /api/help-requests/:requestId returns 403 with mismatched guest token', async () => {
@@ -591,11 +628,13 @@ describe('help-requests integration', () => {
 		expect(getResponse.body.request.closedAt).toBeTruthy();
 	});
 
-	test('PATCH /:id/status guest resolve clears active assignments and frees volunteers for future matches', async () => {
+	test('PATCH /:id/status guest resolve clears pre-existing assignments and frees volunteers', async () => {
 		const app = createTestApp();
 		const helperOneId = 'user_hr_guest_resolve_helper_1';
+		const helperVolunteerId = 'vol_hr_guest_resolve_helper_1';
 		await seedActiveUser(helperOneId, 'guestresolvehelper1@example.com');
 		const helperOneToken = buildAuthToken(helperOneId);
+		await seedVolunteer({ volunteerId: helperVolunteerId, userId: helperOneId, isAvailable: false });
 
 		const firstCreate = await request(app)
 			.post('/api/help-requests')
@@ -603,13 +642,15 @@ describe('help-requests integration', () => {
 
 		const firstRequestId = firstCreate.body.request.id;
 
-		const firstToggle = await request(app)
-			.post('/api/availability/toggle')
-			.set('Authorization', `Bearer ${helperOneToken}`)
-			.send({ isAvailable: true });
-
-		expect(firstToggle.status).toBe(200);
-		expect(firstToggle.body.assignment.request_id).toBe(firstRequestId);
+		await query(
+			`UPDATE help_requests SET status = 'ASSIGNED' WHERE request_id = $1`,
+			[firstRequestId],
+		);
+		await query(
+			`INSERT INTO assignments (assignment_id, volunteer_id, request_id, assigned_at, is_cancelled)
+			 VALUES ('asg_hr_guest_resolve_helper_1', $1, $2, CURRENT_TIMESTAMP, FALSE)`,
+			[helperVolunteerId, firstRequestId],
+		);
 
 		const resolveResponse = await request(app)
 			.patch(`/api/help-requests/${firstRequestId}/status`)
@@ -631,36 +672,6 @@ describe('help-requests integration', () => {
 
 		expect(helperOneStatus.status).toBe(200);
 		expect(helperOneStatus.body.assignment).toBeNull();
-
-		const secondCreate = await request(app)
-			.post('/api/help-requests')
-			.send(buildCreatePayload({ description: 'guest request after resolve cleanup' }));
-
-		const secondRequestId = secondCreate.body.request.id;
-
-		const helperOneOff = await request(app)
-			.post('/api/availability/toggle')
-			.set('Authorization', `Bearer ${helperOneToken}`)
-			.send({ isAvailable: false });
-
-		expect(helperOneOff.status).toBe(200);
-
-		const helperOneBackOn = await request(app)
-			.post('/api/availability/toggle')
-			.set('Authorization', `Bearer ${helperOneToken}`)
-			.send({ isAvailable: true });
-
-		expect(helperOneBackOn.status).toBe(200);
-		expect(helperOneBackOn.body.assignment).toBeTruthy();
-		expect(helperOneBackOn.body.assignment.request_id).toBe(secondRequestId);
-
-		const helperOneAssignmentAfterRetry = await request(app)
-			.get('/api/availability/my-assignment')
-			.set('Authorization', `Bearer ${helperOneToken}`);
-
-		expect(helperOneAssignmentAfterRetry.status).toBe(200);
-		expect(helperOneAssignmentAfterRetry.body.assignment).toBeTruthy();
-		expect(helperOneAssignmentAfterRetry.body.assignment.request_id).toBe(secondRequestId);
 	});
 
 	test('PATCH /:id/status returns 401 for guest request when token is missing', async () => {
@@ -792,6 +803,7 @@ describe('help-requests integration', () => {
 
 		const secondCreate = await request(app)
 			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
 			.send(buildCreatePayload({ description: 'second request after requester resolve cleanup' }));
 
 		const secondRequestId = secondCreate.body.request.id;
