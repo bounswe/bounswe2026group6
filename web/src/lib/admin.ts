@@ -154,3 +154,84 @@ export async function fetchAdminEmergencyHistory(
         token: token.trim(),
     });
 }
+
+export type EmergencyAnalyticsRegionItem = {
+    city: string;
+    total: number;
+    active: number;
+    pending: number;
+    inProgress: number;
+    resolved: number;
+    cancelled: number;
+};
+
+export type EmergencyAnalyticsTypeItem = {
+    needType: string;
+    total: number;
+    active: number;
+    resolved: number;
+    cancelled: number;
+    percentage: number;
+};
+
+export type EmergencyAnalyticsTrendItem = {
+    date: string;
+    created: number;
+    resolved: number;
+    cancelled: number;
+};
+
+export type EmergencyAnalyticsComparisonMetric = {
+    current: number;
+    previous: number;
+    delta: number;
+    percentChange: number | null;
+};
+
+export type EmergencyAnalyticsPeriodComparison = {
+    windowDays: number;
+    created: EmergencyAnalyticsComparisonMetric;
+    resolved: EmergencyAnalyticsComparisonMetric;
+    cancelled: EmergencyAnalyticsComparisonMetric;
+};
+
+export type EmergencyAnalytics = {
+    regionBreakdown: EmergencyAnalyticsRegionItem[];
+    typeBreakdown: EmergencyAnalyticsTypeItem[];
+    dailyTrend: EmergencyAnalyticsTrendItem[];
+    periodComparison: EmergencyAnalyticsPeriodComparison;
+};
+
+type EmergencyAnalyticsResponse = {
+    analytics: EmergencyAnalytics;
+};
+
+export async function fetchAdminEmergencyAnalytics(
+    token: string,
+    options: {
+        regionLimit?: number;
+        trendDays?: number;
+        comparisonWindowDays?: number;
+    } = {}
+) {
+    const params = new URLSearchParams();
+    if (typeof options.regionLimit === "number") {
+        params.set("regionLimit", String(options.regionLimit));
+    }
+    if (typeof options.trendDays === "number") {
+        params.set("trendDays", String(options.trendDays));
+    }
+    if (typeof options.comparisonWindowDays === "number") {
+        params.set("comparisonWindowDays", String(options.comparisonWindowDays));
+    }
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const response = await apiRequest<EmergencyAnalyticsResponse>(
+        `/admin/emergency-analytics${query}`,
+        {
+            token: token.trim(),
+        }
+    );
+
+    return response.analytics;
+}

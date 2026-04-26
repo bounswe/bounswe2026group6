@@ -7,6 +7,7 @@ const {
   getAdminStats,
   getAdminEmergencyOverview,
   getAdminEmergencyHistory,
+  getAdminEmergencyAnalytics,
 } = require('./controller');
 
 const adminRouter = express.Router();
@@ -17,6 +18,7 @@ adminRouter.get('/announcements', requireAuth, requireAdmin, getAdminAnnouncemen
 adminRouter.get('/stats', requireAuth, requireAdmin, getAdminStats);
 adminRouter.get('/emergency-overview', requireAuth, requireAdmin, getAdminEmergencyOverview);
 adminRouter.get('/emergency-history', requireAuth, requireAdmin, getAdminEmergencyHistory);
+adminRouter.get('/emergency-analytics', requireAuth, requireAdmin, getAdminEmergencyAnalytics);
 
 module.exports = {
   adminRouter,

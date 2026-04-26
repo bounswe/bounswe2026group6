@@ -1147,6 +1147,23 @@ textarea::placeholder {
     color: var(--text-primary);
 }
 
+.admin-insights-bar {
+    position: relative;
+    width: 100%;
+    min-width: 80px;
+    height: 8px;
+    background: var(--border-subtle);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.admin-insights-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--primary-500);
+    border-radius: 999px;
+}
+
 .admin-empty-state {
     margin-top: 16px;
     display: flex;

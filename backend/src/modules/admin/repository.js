@@ -401,6 +401,161 @@ async function getEmergencyHistory({
   };
 }
 
+async function getEmergencyAnalytics({
+  regionLimit = 10,
+  trendDays = 14,
+  comparisonWindowDays = 7,
+} = {}) {
+  const [regionResult, typeResult, trendResult, comparisonResult] = await Promise.all([
+    query(
+      `
+        SELECT
+          COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown') AS city,
+          COUNT(*)::int AS total_count,
+          COUNT(*) FILTER (WHERE hr.status IN ('PENDING', 'ASSIGNED', 'IN_PROGRESS'))::int AS active_count,
+          COUNT(*) FILTER (WHERE hr.status = 'PENDING')::int AS pending_count,
+          COUNT(*) FILTER (WHERE hr.status IN ('ASSIGNED', 'IN_PROGRESS'))::int AS in_progress_count,
+          COUNT(*) FILTER (WHERE hr.status = 'RESOLVED')::int AS resolved_count,
+          COUNT(*) FILTER (WHERE hr.status = 'CANCELLED')::int AS cancelled_count
+        FROM help_requests hr
+        LEFT JOIN LATERAL (
+          SELECT city
+          FROM request_locations loc
+          WHERE loc.request_id = hr.request_id
+          ORDER BY loc.captured_at DESC, loc.location_id DESC
+          LIMIT 1
+        ) rl ON TRUE
+        GROUP BY city
+        ORDER BY total_count DESC, city ASC
+        LIMIT $1::int
+      `,
+      [regionLimit],
+    ),
+    query(
+      `
+        SELECT
+          COALESCE(NULLIF(TRIM(hr.need_type), ''), 'unknown') AS need_type,
+          COUNT(*)::int AS total_count,
+          COUNT(*) FILTER (WHERE hr.status IN ('PENDING', 'ASSIGNED', 'IN_PROGRESS'))::int AS active_count,
+          COUNT(*) FILTER (WHERE hr.status = 'RESOLVED')::int AS resolved_count,
+          COUNT(*) FILTER (WHERE hr.status = 'CANCELLED')::int AS cancelled_count
+        FROM help_requests hr
+        GROUP BY need_type
+        ORDER BY total_count DESC, need_type ASC
+      `,
+    ),
+    query(
+      `
+        WITH day_series AS (
+          SELECT generate_series(
+            (CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day')::date,
+            CURRENT_DATE,
+            INTERVAL '1 day'
+          )::date AS day
+        )
+        SELECT
+          ds.day AS day,
+          COALESCE(SUM(CASE WHEN hr.created_at::date = ds.day THEN 1 ELSE 0 END), 0)::int AS created_count,
+          COALESCE(SUM(CASE WHEN hr.resolved_at IS NOT NULL AND hr.resolved_at::date = ds.day THEN 1 ELSE 0 END), 0)::int AS resolved_count,
+          COALESCE(SUM(CASE WHEN hr.cancelled_at IS NOT NULL AND hr.cancelled_at::date = ds.day THEN 1 ELSE 0 END), 0)::int AS cancelled_count
+        FROM day_series ds
+        LEFT JOIN help_requests hr
+          ON hr.created_at::date = ds.day
+          OR hr.resolved_at::date = ds.day
+          OR hr.cancelled_at::date = ds.day
+        GROUP BY ds.day
+        ORDER BY ds.day ASC
+      `,
+      [trendDays],
+    ),
+    query(
+      `
+        WITH windows AS (
+          SELECT
+            (NOW() - ($1::int * INTERVAL '1 day')) AS current_start,
+            (NOW() - (2 * $1::int * INTERVAL '1 day')) AS previous_start,
+            (NOW() - ($1::int * INTERVAL '1 day')) AS previous_end
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE hr.created_at >= w.current_start)::int AS current_created,
+          COUNT(*) FILTER (
+            WHERE hr.created_at >= w.previous_start AND hr.created_at < w.previous_end
+          )::int AS previous_created,
+          COUNT(*) FILTER (
+            WHERE hr.resolved_at IS NOT NULL AND hr.resolved_at >= w.current_start
+          )::int AS current_resolved,
+          COUNT(*) FILTER (
+            WHERE hr.resolved_at IS NOT NULL
+              AND hr.resolved_at >= w.previous_start
+              AND hr.resolved_at < w.previous_end
+          )::int AS previous_resolved,
+          COUNT(*) FILTER (
+            WHERE hr.cancelled_at IS NOT NULL AND hr.cancelled_at >= w.current_start
+          )::int AS current_cancelled,
+          COUNT(*) FILTER (
+            WHERE hr.cancelled_at IS NOT NULL
+              AND hr.cancelled_at >= w.previous_start
+              AND hr.cancelled_at < w.previous_end
+          )::int AS previous_cancelled
+        FROM help_requests hr
+        CROSS JOIN windows w
+      `,
+      [comparisonWindowDays],
+    ),
+  ]);
+
+  const typeRows = typeResult.rows;
+  const typeTotal = typeRows.reduce((sum, row) => sum + row.total_count, 0);
+
+  const buildComparison = (current, previous) => {
+    const delta = current - previous;
+    let percentChange = null;
+    if (previous > 0) {
+      percentChange = Math.round((delta / previous) * 1000) / 10;
+    } else if (current > 0) {
+      percentChange = null;
+    } else {
+      percentChange = 0;
+    }
+    return { current, previous, delta, percentChange };
+  };
+
+  const cmp = comparisonResult.rows[0] || {};
+
+  return {
+    regionBreakdown: regionResult.rows.map((row) => ({
+      city: row.city,
+      total: row.total_count,
+      active: row.active_count,
+      pending: row.pending_count,
+      inProgress: row.in_progress_count,
+      resolved: row.resolved_count,
+      cancelled: row.cancelled_count,
+    })),
+    typeBreakdown: typeRows.map((row) => ({
+      needType: row.need_type,
+      total: row.total_count,
+      active: row.active_count,
+      resolved: row.resolved_count,
+      cancelled: row.cancelled_count,
+      percentage:
+        typeTotal > 0 ? Math.round((row.total_count / typeTotal) * 1000) / 10 : 0,
+    })),
+    dailyTrend: trendResult.rows.map((row) => ({
+      date: row.day instanceof Date ? row.day.toISOString().slice(0, 10) : row.day,
+      created: row.created_count,
+      resolved: row.resolved_count,
+      cancelled: row.cancelled_count,
+    })),
+    periodComparison: {
+      windowDays: comparisonWindowDays,
+      created: buildComparison(cmp.current_created || 0, cmp.previous_created || 0),
+      resolved: buildComparison(cmp.current_resolved || 0, cmp.previous_resolved || 0),
+      cancelled: buildComparison(cmp.current_cancelled || 0, cmp.previous_cancelled || 0),
+    },
+  };
+}
+
 module.exports = {
   listUsers,
   listHelpRequests,
@@ -408,4 +563,5 @@ module.exports = {
   getBasicStats,
   getEmergencyOverview,
   getEmergencyHistory,
+  getEmergencyAnalytics,
 };

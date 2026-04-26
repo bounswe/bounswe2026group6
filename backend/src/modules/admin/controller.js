@@ -5,6 +5,7 @@ const {
   getStatsForAdmin,
   getEmergencyOverviewForAdmin,
   getEmergencyHistoryForAdmin,
+  getEmergencyAnalyticsForAdmin,
 } = require('./service');
 
 const ALLOWED_HISTORY_STATUSES = new Set(['RESOLVED', 'CANCELLED']);
@@ -159,6 +160,70 @@ async function getAdminEmergencyHistory(req, res) {
   }
 }
 
+function parsePositiveIntQuery(value, { min, max, defaultValue }) {
+  if (value === undefined) {
+    return { value: defaultValue };
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    return { error: true, parsed };
+  }
+  return { value: parsed };
+}
+
+async function getAdminEmergencyAnalytics(req, res) {
+  try {
+    const regionLimit = parsePositiveIntQuery(req.query?.regionLimit, {
+      min: 1,
+      max: 50,
+      defaultValue: 10,
+    });
+    if (regionLimit.error) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: '`regionLimit` must be an integer between 1 and 50.',
+      });
+    }
+
+    const trendDays = parsePositiveIntQuery(req.query?.trendDays, {
+      min: 1,
+      max: 90,
+      defaultValue: 14,
+    });
+    if (trendDays.error) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: '`trendDays` must be an integer between 1 and 90.',
+      });
+    }
+
+    const comparisonWindowDays = parsePositiveIntQuery(req.query?.comparisonWindowDays, {
+      min: 1,
+      max: 30,
+      defaultValue: 7,
+    });
+    if (comparisonWindowDays.error) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: '`comparisonWindowDays` must be an integer between 1 and 30.',
+      });
+    }
+
+    const analytics = await getEmergencyAnalyticsForAdmin({
+      regionLimit: regionLimit.value,
+      trendDays: trendDays.value,
+      comparisonWindowDays: comparisonWindowDays.value,
+    });
+
+    return res.status(200).json({ analytics });
+  } catch (_error) {
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
 module.exports = {
   getAdminUsers,
   getAdminHelpRequests,
@@ -166,4 +231,5 @@ module.exports = {
   getAdminStats,
   getAdminEmergencyOverview,
   getAdminEmergencyHistory,
+  getAdminEmergencyAnalytics,
 };

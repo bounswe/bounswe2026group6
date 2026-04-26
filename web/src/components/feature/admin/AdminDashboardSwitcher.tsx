@@ -3,12 +3,14 @@
 import * as React from "react";
 import AdminEmergencyOverviewView from "@/components/feature/admin/AdminEmergencyOverviewView";
 import AdminEmergencyHistoryView from "@/components/feature/admin/AdminEmergencyHistoryView";
+import AdminEmergencyInsightsView from "@/components/feature/admin/AdminEmergencyInsightsView";
 
-type AdminSectionKey = "overview" | "history";
+type AdminSectionKey = "overview" | "history" | "insights";
 
 const SECTIONS: Array<{ key: AdminSectionKey; label: string }> = [
     { key: "overview", label: "Emergency Overview" },
     { key: "history", label: "Emergency History" },
+    { key: "insights", label: "Emergency Insights" },
 ];
 
 export default function AdminDashboardSwitcher() {
@@ -60,13 +62,21 @@ export default function AdminDashboardSwitcher() {
                 >
                     <AdminEmergencyOverviewView />
                 </div>
-            ) : (
+            ) : activeSection === "history" ? (
                 <div
                     id="admin-panel-history"
                     role="tabpanel"
                     aria-labelledby="admin-tab-history"
                 >
                     <AdminEmergencyHistoryView />
+                </div>
+            ) : (
+                <div
+                    id="admin-panel-insights"
+                    role="tabpanel"
+                    aria-labelledby="admin-tab-insights"
+                >
+                    <AdminEmergencyInsightsView />
                 </div>
             )}
         </div>
