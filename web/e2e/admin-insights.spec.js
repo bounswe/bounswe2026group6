@@ -143,6 +143,16 @@ test('admin sees retry state on analytics failure and recovers', async ({ page }
   const dbUser = await waitForUserByEmail(email);
   await promoteUserToAdmin({ userId: dbUser.user_id });
 
+  // Seed at least one emergency so the recovered analytics has period activity
+  // and the "Period Comparison" section actually renders (not the empty state).
+  await seedEmergencyOverviewRecord({
+    requestId: 'e2e_insights_retry_seed',
+    status: 'PENDING',
+    city: 'istanbul',
+    needType: 'first_aid',
+    createdAtHoursAgo: 2,
+  });
+
   let failNext = true;
   await page.route('**/api/admin/emergency-analytics**', async (route) => {
     if (failNext) {
