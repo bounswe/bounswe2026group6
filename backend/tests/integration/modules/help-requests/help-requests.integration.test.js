@@ -444,6 +444,67 @@ describe('help-requests integration', () => {
 		expect(response2.body.requests).toHaveLength(1);
 	});
 
+	test('GET /api/help-requests keeps active and closed requests visible in requester history', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_history_1';
+		await seedActiveUser(userId, 'hrhistory1@example.com');
+		const token = buildAuthToken(userId);
+
+		const activeCreate = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({ helpTypes: ['food'], description: 'active request' }));
+
+		const resolvedCreate = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({ helpTypes: ['water'], description: 'resolved request' }));
+
+		const cancelledCreate = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({ helpTypes: ['shelter'], description: 'cancelled request' }));
+
+		await request(app)
+			.patch(`/api/help-requests/${resolvedCreate.body.request.id}/status`)
+			.set('Authorization', `Bearer ${token}`)
+			.send({ status: 'RESOLVED' })
+			.expect(200);
+
+		await request(app)
+			.patch(`/api/help-requests/${cancelledCreate.body.request.id}/status`)
+			.set('Authorization', `Bearer ${token}`)
+			.send({ status: 'CANCELLED' })
+			.expect(200);
+
+		const listResponse = await request(app)
+			.get('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`);
+
+		expect(listResponse.status).toBe(200);
+		expect(listResponse.body.requests).toHaveLength(3);
+
+		const requestById = Object.fromEntries(
+			listResponse.body.requests.map((item) => [item.id, item]),
+		);
+
+		expect(requestById[activeCreate.body.request.id]).toMatchObject({
+			status: 'SYNCED',
+			closedAt: null,
+			closedState: null,
+		});
+		expect(requestById[resolvedCreate.body.request.id]).toMatchObject({
+			status: 'RESOLVED',
+			closedState: 'RESOLVED',
+		});
+		expect(requestById[resolvedCreate.body.request.id].closedAt).toEqual(expect.any(String));
+		expect(requestById[cancelledCreate.body.request.id]).toMatchObject({
+			status: 'CANCELLED',
+			closedState: 'CANCELLED',
+		});
+		expect(requestById[cancelledCreate.body.request.id].closedAt).toEqual(expect.any(String));
+	});
+
 	test('GET /api/help-requests/:requestId returns single request', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_7';
