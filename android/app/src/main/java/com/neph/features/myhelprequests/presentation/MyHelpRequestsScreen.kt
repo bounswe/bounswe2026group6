@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +39,7 @@ import com.neph.core.network.ApiException
 import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.myhelprequests.data.buildMyHelpRequestsOverview
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
 import com.neph.navigation.Routes
@@ -67,6 +71,7 @@ fun MyHelpRequestsScreen(
     val requests by MyHelpRequestsRepository.observeHelpRequests(isAuthenticated)
         .collectAsState(initial = emptyList())
     var actionInProgressRequestId by remember { mutableStateOf<String?>(null) }
+    var actionMessageRequestId by remember { mutableStateOf<String?>(null) }
     var actionMessage by remember { mutableStateOf("") }
     var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
 
@@ -120,26 +125,48 @@ fun MyHelpRequestsScreen(
             }
 
             else -> {
-                val activeRequest = requests.firstOrNull { it.isActive }
-                val requestHistory = requests.filterNot { it.isActive }
+                val overview = buildMyHelpRequestsOverview(requests)
+                val activeRequests = overview.activeRequests
+                val requestHistory = overview.historyRequests
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg),
                     contentPadding = PaddingValues(vertical = spacing.sm)
                 ) {
+                    if (overview.hasMultipleRequestContext) {
+                        item {
+                            RequestsOverviewCard(
+                                overview = overview,
+                                isAuthenticated = isAuthenticated
+                            )
+                        }
+                    }
+
                     item {
                         SectionHeader(
-                            title = "Current Request",
-                            subtitle = if (isAuthenticated) {
-                                "Your latest active help request is shown first."
+                            title = if (activeRequests.size > 1) {
+                                "Current Requests"
                             } else {
-                                "Your latest guest help request is shown first."
+                                "Current Request"
+                            },
+                            subtitle = if (isAuthenticated) {
+                                if (activeRequests.size > 1) {
+                                    "Your active help requests are shown together first."
+                                } else {
+                                    "Your latest active help request is shown first."
+                                }
+                            } else {
+                                if (activeRequests.size > 1) {
+                                    "Your active guest help requests are shown together first."
+                                } else {
+                                    "Your latest guest help request is shown first."
+                                }
                             }
                         )
                     }
 
-                    if (activeRequest == null) {
+                    if (activeRequests.isEmpty()) {
                         item {
                             SectionCard {
                                 Text(
@@ -150,15 +177,20 @@ fun MyHelpRequestsScreen(
                             }
                         }
                     } else {
-                        item {
+                        items(activeRequests, key = { it.id }) { activeRequest ->
                             MyHelpRequestCard(
                                 request = activeRequest,
                                 titleOverride = activeRequest.helpTypeSummary,
                                 subtitleOverride = activeRequest.createdAt?.let { "Opened: $it" }
                                     ?: "Opened time unavailable",
-                                actionMessage = actionMessage,
+                                actionMessage = if (actionMessageRequestId == activeRequest.id) {
+                                    actionMessage
+                                } else {
+                                    ""
+                                },
                                 onResolve = if (isAuthenticated && token.isNotBlank()) {
                                     {
+                                        actionMessageRequestId = activeRequest.id
                                         actionMessage = ""
                                         actionInProgressRequestId = activeRequest.id
                                         scope.launch {
@@ -177,6 +209,7 @@ fun MyHelpRequestsScreen(
                                     }
                                 } else if (!isAuthenticated && activeRequest.guestAccessToken != null) {
                                     {
+                                        actionMessageRequestId = activeRequest.id
                                         actionMessage = ""
                                         actionInProgressRequestId = activeRequest.id
                                         scope.launch {
@@ -220,6 +253,105 @@ fun MyHelpRequestsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RequestsOverviewCard(
+    overview: com.neph.features.myhelprequests.data.MyHelpRequestsOverviewUiModel,
+    isAuthenticated: Boolean
+) {
+    val spacing = LocalNephSpacing.current
+
+    SectionCard {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            SectionHeader(
+                title = "Overview",
+                subtitle = if (isAuthenticated) {
+                    "See your current and previous requests together."
+                } else {
+                    "See the requests tracked from this device together."
+                }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                OverviewMetric(
+                    label = "Tracked",
+                    value = overview.totalRequests.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewMetric(
+                    label = "Open Now",
+                    value = overview.activeCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                OverviewMetric(
+                    label = "Resolved",
+                    value = overview.resolvedCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewMetric(
+                    label = "Cancelled",
+                    value = overview.cancelledCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            val responderSummary = when {
+                overview.assignedResponderCount > 0 -> {
+                    "Responders currently assigned across open requests: ${overview.assignedResponderCount}."
+                }
+
+                overview.historyCount > 0 -> {
+                    "${overview.historyCount} previous request${if (overview.historyCount == 1) "" else "s"} kept in history for quick context."
+                }
+
+                else -> {
+                    "Open and closed requests stay grouped so the flow remains easy to scan."
+                }
+            }
+
+            Text(
+                text = responderSummary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverviewMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    val spacing = LocalNephSpacing.current
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(spacing.xs)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
