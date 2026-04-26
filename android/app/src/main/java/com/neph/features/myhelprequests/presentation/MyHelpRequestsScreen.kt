@@ -363,48 +363,69 @@ private fun MyHelpRequestCard(
                 )
             }
 
-            if (
-                request.helperFullName != null ||
-                request.helperPhone != null ||
-                request.helperProfession != null ||
-                request.helperExpertise != null
-            ) {
+            if (request.responders.isNotEmpty()) {
                 SectionHeader(
-                    title = "Assigned Helper Details",
-                    subtitle = "Name, phone, profession, and expertise of your assigned helper."
+                    title = if (request.responders.size == 1) "Assigned Helper Details" else "Assigned Responders",
+                    subtitle = if (request.responders.size == 1) {
+                        "Name, phone, profession, and expertise of your assigned helper."
+                    } else {
+                        "Name, phone, profession, and expertise of active responders assigned to this request."
+                    }
                 )
 
-                request.helperFullName?.let {
-                    Text(
-                        text = "Name: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                    request.responders.forEachIndexed { index, responder ->
+                        Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                            if (request.responders.size > 1) {
+                                Text(
+                                    text = "Responder ${index + 1}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
 
-                request.helperPhone?.let {
-                    Text(
-                        text = "Phone: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { openDialer(it) }
-                    )
-                }
+                            responder.fullName?.let {
+                                Text(
+                                    text = "Name: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
-                request.helperProfession?.let {
-                    Text(
-                        text = "Profession: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                            responder.phone?.let {
+                                Text(
+                                    text = "Phone: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable { openDialer(it) }
+                                )
+                            }
 
-                request.helperExpertise?.let {
-                    Text(
-                        text = "Expertise: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                            responder.profession?.let {
+                                Text(
+                                    text = "Profession: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            responder.expertise?.let {
+                                Text(
+                                    text = "Expertise: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (!responder.hasVisibleDetails) {
+                                Text(
+                                    text = "Responder details unavailable.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

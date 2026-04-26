@@ -32,6 +32,7 @@ data class MyHelpRequestUiModel(
     val contactName: String?,
     val contactPhone: String?,
     val alternativePhone: String?,
+    val responders: List<AssignedResponderUiModel>,
     val helperFirstName: String?,
     val helperLastName: String?,
     val helperPhone: String?,
@@ -48,6 +49,20 @@ data class MyHelpRequestUiModel(
 
     val isFailedSync: Boolean
         get() = syncStatus == SyncStatus.FAILED || syncStatus == SyncStatus.CONFLICTED
+}
+
+data class AssignedResponderUiModel(
+    val firstName: String?,
+    val lastName: String?,
+    val phone: String?,
+    val profession: String?,
+    val expertise: String?
+) {
+    val fullName: String?
+        get() = listOfNotNull(firstName, lastName).joinToString(" ").trim().takeIf { it.isNotBlank() }
+
+    val hasVisibleDetails: Boolean
+        get() = fullName != null || phone != null || profession != null || expertise != null
 }
 
 object MyHelpRequestsRepository {
@@ -174,6 +189,29 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
     val displayId = remoteId ?: localId
     val created = serverCreatedAt?.let(::formatTimestamp)
         ?: formatEpochMillis(createdAtEpochMillis)
+    val responders = helpersJson.jsonArrayToAssignedResponderList()
+        .ifEmpty {
+            buildList {
+                if (
+                    helperFirstName != null ||
+                    helperLastName != null ||
+                    helperPhone != null ||
+                    helperProfession != null ||
+                    helperExpertise != null
+                ) {
+                    add(
+                        AssignedResponderUiModel(
+                            firstName = helperFirstName,
+                            lastName = helperLastName,
+                            phone = helperPhone,
+                            profession = helperProfession,
+                            expertise = helperExpertise
+                        )
+                    )
+                }
+            }
+        }
+    val primaryResponder = responders.firstOrNull()
 
     return MyHelpRequestUiModel(
         id = displayId,
@@ -189,19 +227,41 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
         contactName = contactFullName.takeIf { it.isNotBlank() },
         contactPhone = contactPhone.takeIf { it.isNotBlank() },
         alternativePhone = contactAlternativePhone,
-        helperFirstName = helperFirstName,
-        helperLastName = helperLastName,
-        helperPhone = helperPhone,
-        helperProfession = helperProfession,
-        helperExpertise = helperExpertise,
-        helperFullName = listOfNotNull(helperFirstName, helperLastName)
-            .joinToString(" ")
-            .trim()
-            .takeIf { it.isNotBlank() },
+        responders = responders,
+        helperFirstName = primaryResponder?.firstName,
+        helperLastName = primaryResponder?.lastName,
+        helperPhone = primaryResponder?.phone,
+        helperProfession = primaryResponder?.profession,
+        helperExpertise = primaryResponder?.expertise,
+        helperFullName = primaryResponder?.fullName,
         createdAt = created,
         syncStatus = syncStatus,
         pendingError = pendingError,
         lastSyncedAt = lastSyncedAtEpochMillis?.let(::formatEpochMillis)
+    )
+}
+
+private fun String.jsonArrayToAssignedResponderList(): List<AssignedResponderUiModel> {
+    return runCatching { JSONArray(this) }
+        .getOrNull()
+        ?.let { json ->
+            buildList {
+                for (index in 0 until json.length()) {
+                    val value = json.optJSONObject(index)?.toAssignedResponderUiModel() ?: continue
+                    add(value)
+                }
+            }
+        }
+        ?: emptyList()
+}
+
+private fun org.json.JSONObject.toAssignedResponderUiModel(): AssignedResponderUiModel {
+    return AssignedResponderUiModel(
+        firstName = optString("firstName").trim().takeIf { it.isNotBlank() },
+        lastName = optString("lastName").trim().takeIf { it.isNotBlank() },
+        phone = opt("phone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
+        profession = optString("profession").trim().takeIf { it.isNotBlank() },
+        expertise = optString("expertise").trim().takeIf { it.isNotBlank() }
     )
 }
 

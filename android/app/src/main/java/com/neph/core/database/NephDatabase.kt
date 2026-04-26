@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.neph.BuildConfig
 
 @Database(
@@ -14,7 +16,7 @@ import com.neph.BuildConfig
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -28,6 +30,13 @@ abstract class NephDatabase : RoomDatabase() {
 object NephDatabaseProvider {
     @Volatile private var instance: NephDatabase? = null
     private const val DatabaseName = "neph-offline.db"
+    private val Migration1To2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE help_requests ADD COLUMN helpersJson TEXT NOT NULL DEFAULT '[]'"
+            )
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -39,7 +48,9 @@ object NephDatabaseProvider {
                 context.applicationContext,
                 NephDatabase::class.java,
                 DatabaseName
-            ).build().also { instance = it }
+            ).addMigrations(Migration1To2)
+                .build()
+                .also { instance = it }
         }
     }
 

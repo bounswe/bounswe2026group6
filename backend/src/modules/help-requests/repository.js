@@ -61,21 +61,41 @@ function mapContact(row) {
   };
 }
 
-function mapHelper(row) {
-  if (!row.helper_first_name && !row.helper_last_name && !row.helper_phone_number) {
+function parseHelpers(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function mapHelperValue(value) {
+  if (!value || typeof value !== 'object') {
     return null;
   }
 
   return {
-    firstName: row.helper_first_name || null,
-    lastName: row.helper_last_name || null,
-    phone: row.helper_phone_number ? Number(row.helper_phone_number) : null,
-    profession: row.helper_profession || null,
-    expertise: row.helper_expertise_area || null,
+    firstName: value.firstName || null,
+    lastName: value.lastName || null,
+    phone: value.phone ? Number(value.phone) : null,
+    profession: value.profession || null,
+    expertise: value.expertise || null,
   };
 }
 
 function mapHelpRequest(row) {
+  const helpers = parseHelpers(row.helpers)
+    .map(mapHelperValue)
+    .filter(Boolean);
   const derivedOperational = deriveOperationalLevels({
     affectedPeopleCount: row.affected_people_count,
     riskFlags: row.risk_flags,
@@ -115,7 +135,8 @@ function mapHelpRequest(row) {
     resolvedAt: row.resolved_at,
     cancelledAt: row.cancelled_at,
     isSavedLocally: row.is_saved_locally,
-    helper: mapHelper(row),
+    helper: helpers[0] || null,
+    helpers,
   };
 }
 
@@ -160,31 +181,39 @@ function buildSelectQuery() {
       rl.is_gps_location,
       rl.is_last_known,
       rl.captured_at,
-      helper_profile.first_name AS helper_first_name,
-      helper_profile.last_name AS helper_last_name,
-      helper_profile.phone_number AS helper_phone_number,
-      helper_expertise.profession AS helper_profession,
-      helper_expertise.expertise_area AS helper_expertise_area
+      helper_assignments.helpers AS helpers
     FROM help_requests hr
     LEFT JOIN request_locations rl ON rl.request_id = hr.request_id
     LEFT JOIN LATERAL (
-      SELECT a.volunteer_id
-      FROM assignments a
-      WHERE a.request_id = hr.request_id
-        AND a.is_cancelled = FALSE
-      ORDER BY a.assigned_at ASC, a.assignment_id ASC
-      LIMIT 1
-    ) primary_assignment ON TRUE
-    LEFT JOIN volunteers vol ON vol.volunteer_id = primary_assignment.volunteer_id
-    LEFT JOIN users helper_user ON helper_user.user_id = vol.user_id
-    LEFT JOIN user_profiles helper_profile ON helper_profile.user_id = vol.user_id
-    LEFT JOIN LATERAL (
-      SELECT e.profession, e.expertise_area
-      FROM expertise e
-      WHERE e.profile_id = helper_profile.profile_id
-      ORDER BY e.is_verified DESC, e.expertise_id ASC
-      LIMIT 1
-    ) helper_expertise ON TRUE
+      SELECT COALESCE(
+        json_agg(
+          json_build_object(
+            'firstName', helper_profile.first_name,
+            'lastName', helper_profile.last_name,
+            'phone', helper_profile.phone_number,
+            'profession', helper_expertise.profession,
+            'expertise', helper_expertise.expertise_area
+          )
+          ORDER BY assignment_rows.assigned_at ASC, assignment_rows.assignment_id ASC
+        ) FILTER (WHERE assignment_rows.assignment_id IS NOT NULL),
+        '[]'::json
+      ) AS helpers
+      FROM (
+        SELECT a.assignment_id, a.assigned_at, vol.user_id
+        FROM assignments a
+        JOIN volunteers vol ON vol.volunteer_id = a.volunteer_id
+        WHERE a.request_id = hr.request_id
+          AND a.is_cancelled = FALSE
+      ) assignment_rows
+      LEFT JOIN user_profiles helper_profile ON helper_profile.user_id = assignment_rows.user_id
+      LEFT JOIN LATERAL (
+        SELECT e.profession, e.expertise_area
+        FROM expertise e
+        WHERE e.profile_id = helper_profile.profile_id
+        ORDER BY e.is_verified DESC, e.expertise_id ASC
+        LIMIT 1
+      ) helper_expertise ON TRUE
+    ) helper_assignments ON TRUE
   `;
 }
 

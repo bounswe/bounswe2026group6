@@ -41,6 +41,7 @@ data class HelpRequestEntity(
     val helperPhone: String?,
     val helperProfession: String?,
     val helperExpertise: String?,
+    val helpersJson: String,
     val syncStatus: String = SyncStatus.SYNCED,
     val pendingError: String? = null,
     val createdAtEpochMillis: Long,

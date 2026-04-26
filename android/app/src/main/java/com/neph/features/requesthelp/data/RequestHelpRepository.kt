@@ -23,6 +23,14 @@ import java.net.URLEncoder
 import java.util.Locale
 import java.util.UUID
 
+internal data class AssignedResponderSnapshot(
+    val firstName: String?,
+    val lastName: String?,
+    val phone: String?,
+    val profession: String?,
+    val expertise: String?
+)
+
 private const val PendingHelpRequestStatus = "PENDING_SYNC"
 private const val ReverseGeocodeTimeoutMillis = 7000L
 
@@ -482,6 +490,7 @@ internal fun RequestHelpSubmission.toEntity(
         helperPhone = null,
         helperProfession = null,
         helperExpertise = null,
+        helpersJson = JSONArray().toString(),
         syncStatus = syncStatus,
         pendingError = null,
         createdAtEpochMillis = now,
@@ -501,7 +510,14 @@ internal fun JSONObject.toHelpRequestEntity(
     val remoteId = optString("id").takeIf { it.isNotBlank() }
     val location = optJSONObject("location") ?: JSONObject()
     val contact = optJSONObject("contact") ?: JSONObject()
-    val helper = optJSONObject("helper")
+    val helpers = optJSONArray("helpers")
+        ?.toAssignedResponderSnapshots()
+        ?.takeIf { it.isNotEmpty() }
+        ?: optJSONObject("helper")
+            ?.toAssignedResponderSnapshot()
+            ?.let(::listOf)
+        ?: emptyList()
+    val primaryHelper = helpers.firstOrNull()
 
     return HelpRequestEntity(
         localId = existing?.localId ?: remoteId ?: "remote_${UUID.randomUUID()}",
@@ -524,11 +540,12 @@ internal fun JSONObject.toHelpRequestEntity(
         contactPhone = contact.opt("phone")?.toString().orEmpty(),
         contactAlternativePhone = contact.opt("alternativePhone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
         status = optString("status").ifBlank { existing?.status ?: "SYNCED" },
-        helperFirstName = helper?.optString("firstName")?.takeIf { it.isNotBlank() },
-        helperLastName = helper?.optString("lastName")?.takeIf { it.isNotBlank() },
-        helperPhone = helper?.opt("phone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
-        helperProfession = helper?.optString("profession")?.takeIf { it.isNotBlank() },
-        helperExpertise = helper?.optString("expertise")?.takeIf { it.isNotBlank() },
+        helperFirstName = primaryHelper?.firstName,
+        helperLastName = primaryHelper?.lastName,
+        helperPhone = primaryHelper?.phone,
+        helperProfession = primaryHelper?.profession,
+        helperExpertise = primaryHelper?.expertise,
+        helpersJson = helpers.toJsonArrayString(),
         syncStatus = SyncStatus.SYNCED,
         pendingError = null,
         createdAtEpochMillis = existing?.createdAtEpochMillis ?: now,
@@ -540,6 +557,42 @@ internal fun JSONObject.toHelpRequestEntity(
 }
 
 internal fun JSONArray?.orEmptyJsonArrayString(): String = (this ?: JSONArray()).toString()
+
+internal fun JSONArray.toAssignedResponderSnapshots(): List<AssignedResponderSnapshot> {
+    return buildList {
+        for (index in 0 until length()) {
+            optJSONObject(index)
+                ?.toAssignedResponderSnapshot()
+                ?.let(::add)
+        }
+    }
+}
+
+internal fun JSONObject.toAssignedResponderSnapshot(): AssignedResponderSnapshot {
+    return AssignedResponderSnapshot(
+        firstName = optString("firstName").trim().takeIf { it.isNotBlank() },
+        lastName = optString("lastName").trim().takeIf { it.isNotBlank() },
+        phone = opt("phone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
+        profession = optString("profession").trim().takeIf { it.isNotBlank() },
+        expertise = optString("expertise").trim().takeIf { it.isNotBlank() }
+    )
+}
+
+internal fun List<AssignedResponderSnapshot>.toJsonArrayString(): String {
+    return JSONArray().apply {
+        this@toJsonArrayString.forEach { helper ->
+            put(
+                JSONObject().apply {
+                    put("firstName", helper.firstName)
+                    put("lastName", helper.lastName)
+                    put("phone", helper.phone)
+                    put("profession", helper.profession)
+                    put("expertise", helper.expertise)
+                }
+            )
+        }
+    }.toString()
+}
 
 internal fun String.jsonArrayToStringList(): List<String> {
     val json = runCatching { JSONArray(this) }.getOrNull() ?: return emptyList()

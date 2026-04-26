@@ -1019,6 +1019,7 @@ describe('help-requests integration', () => {
 
 		// Initially, no helper assigned
 		expect(createRes.body.request.helper).toBeNull();
+		expect(createRes.body.request.helpers).toEqual([]);
 
 		// Helper toggles availability → gets assigned
 		const toggleRes = await request(app)
@@ -1036,6 +1037,8 @@ describe('help-requests integration', () => {
 
 		expect(getRes.status).toBe(200);
 		expect(getRes.body.request.helper).toBeTruthy();
+		expect(getRes.body.request.helpers).toHaveLength(1);
+		expect(getRes.body.request.helpers[0].firstName).toBe('Mehmet');
 		expect(getRes.body.request.helper.firstName).toBe('Mehmet');
 		expect(getRes.body.request.helper.lastName).toBe('Kaya');
 		expect(getRes.body.request.helper.phone).toBe(5301234567);
@@ -1090,10 +1093,11 @@ describe('help-requests integration', () => {
 		expect(listRes.body.requests).toHaveLength(1);
 		expect(listRes.body.requests[0].id).toBe(requestId);
 		expect(listRes.body.requests[0].helper).toBeTruthy();
+		expect(listRes.body.requests[0].helpers).toHaveLength(1);
 		expect(listRes.body.requests[0].helper.expertise).toBe('Medical');
 	});
 
-	test('request reads keep a single deterministic helper when multiple active assignments exist', async () => {
+	test('request reads expose deterministic ordered helpers while preserving single-helper compatibility', async () => {
 		const app = createTestApp();
 		const requesterId = 'user_hr_multi_helper_requester';
 		const firstHelperId = 'user_hr_multi_helper_first';
@@ -1154,8 +1158,13 @@ describe('help-requests integration', () => {
 		expect(detailRes.status).toBe(200);
 		expect(detailRes.body.request.status).toBe('MATCHED');
 		expect(detailRes.body.request.helper).toBeTruthy();
+		expect(detailRes.body.request.helpers).toHaveLength(2);
 		expect(detailRes.body.request.helper.firstName).toBe('Ece');
 		expect(detailRes.body.request.helper.phone).toBe(5301111111);
+		expect(detailRes.body.request.helpers[0].firstName).toBe('Ece');
+		expect(detailRes.body.request.helpers[0].phone).toBe(5301111111);
+		expect(detailRes.body.request.helpers[1].firstName).toBe('Kerem');
+		expect(detailRes.body.request.helpers[1].phone).toBe(5302222222);
 
 		const listRes = await request(app)
 			.get('/api/help-requests')
@@ -1164,7 +1173,9 @@ describe('help-requests integration', () => {
 		expect(listRes.status).toBe(200);
 		expect(listRes.body.requests).toHaveLength(1);
 		expect(listRes.body.requests[0].id).toBe(requestId);
+		expect(listRes.body.requests[0].helpers).toHaveLength(2);
 		expect(listRes.body.requests[0].helper.firstName).toBe('Ece');
+		expect(listRes.body.requests[0].helpers[1].firstName).toBe('Kerem');
 	});
 
 	test('help request without assignment has null helper', async () => {
@@ -1186,6 +1197,7 @@ describe('help-requests integration', () => {
 
 		expect(getRes.status).toBe(200);
 		expect(getRes.body.request.helper).toBeNull();
+		expect(getRes.body.request.helpers).toEqual([]);
 	});
 
 	test('POST /api/help-requests auto-assigns to already available volunteer', async () => {
