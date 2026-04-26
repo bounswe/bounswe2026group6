@@ -103,7 +103,7 @@ test('profile save blocks first-time share enable until Use Current Location is 
 
   const locationToggle = page.getByRole('button', { name: 'Share Current Location' });
   await locationToggle.click();
-  await expect(locationToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => locationToggle.getAttribute('aria-pressed')).toBe('true');
 
   await page.locator('#height').fill('180');
   await page.locator('#extraAddress').fill('Updated Address 42');

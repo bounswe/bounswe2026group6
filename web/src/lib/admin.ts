@@ -264,6 +264,7 @@ export type DeploymentMonitoringConflictGroup = {
     groupKey: {
         city: string;
         needType: string;
+        contactKey: string;
     };
     duplicateCount: number;
     items: DeploymentMonitoringItem[];

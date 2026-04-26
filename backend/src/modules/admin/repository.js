@@ -582,7 +582,8 @@ async function getDeploymentMonitoring({
       END AS assigned_hours_ago,
       a.volunteer_id AS volunteer_id,
       COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown') AS city,
-      COALESCE(NULLIF(TRIM(rl.district), ''), 'unknown') AS district
+      COALESCE(NULLIF(TRIM(rl.district), ''), 'unknown') AS district,
+      hr.contact_phone AS contact_phone
     FROM help_requests hr
     LEFT JOIN LATERAL (
       SELECT city, district
@@ -667,12 +668,13 @@ async function getDeploymentMonitoring({
             LOWER(COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown')),
             hr.contact_phone
           HAVING COUNT(*) > 1
-          ORDER BY dup_count DESC, city_key ASC, need_type_key ASC
+          ORDER BY dup_count DESC, city_key ASC, need_type_key ASC, contact_phone ASC
           LIMIT $1::int
         )
         SELECT
           dg.need_type_key,
           dg.city_key,
+          dg.contact_phone,
           dg.dup_count,
           hr.request_id,
           hr.need_type,
@@ -705,7 +707,12 @@ async function getDeploymentMonitoring({
         LEFT JOIN assignments a
           ON a.request_id = hr.request_id AND a.is_cancelled = FALSE
         WHERE LOWER(COALESCE(NULLIF(TRIM(rl.city), ''), 'unknown')) = dg.city_key
-        ORDER BY dg.dup_count DESC, dg.city_key ASC, dg.need_type_key ASC, hr.created_at ASC
+        ORDER BY
+          dg.dup_count DESC,
+          dg.city_key ASC,
+          dg.need_type_key ASC,
+          dg.contact_phone ASC,
+          hr.created_at ASC
       `,
       [listLimit],
     ),
@@ -781,16 +788,28 @@ async function getDeploymentMonitoring({
     },
   });
 
-  // Group conflicts by (city, needType) duplicate group. The SQL keeps rows
-  // ordered so the first time we see a key it is the highest-priority group.
+  const maskContactKey = (contactPhone) => {
+    const digits = String(contactPhone ?? '').replace(/\D/g, '');
+    if (digits.length >= 4) {
+      return `***${digits.slice(-4)}`;
+    }
+    if (digits.length > 0) {
+      return `***${digits}`;
+    }
+    return 'unknown';
+  };
+
+  // Group conflicts by (city, needType, contact) to avoid merging unrelated
+  // duplicate groups that share only city/type.
   const conflictsByKey = new Map();
   for (const row of conflictsResult.rows) {
-    const key = `${row.city_key}::${row.need_type_key}`;
+    const key = `${row.city_key}::${row.need_type_key}::${String(row.contact_phone ?? '')}`;
     if (!conflictsByKey.has(key)) {
       conflictsByKey.set(key, {
         groupKey: {
           city: row.city_key,
           needType: row.need_type_key,
+          contactKey: maskContactKey(row.contact_phone),
         },
         duplicateCount: row.dup_count,
         items: [],

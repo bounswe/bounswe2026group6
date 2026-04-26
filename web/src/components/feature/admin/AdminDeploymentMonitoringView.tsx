@@ -104,6 +104,7 @@ function ConflictGroupCard({ group }: { group: DeploymentMonitoringConflictGroup
                     {formatCity(group.groupKey.city)} ·{" "}
                     {formatOperationalLabel(group.groupKey.needType)}
                 </strong>{" "}
+                · Contact {group.groupKey.contactKey}{" "}
                 · {group.duplicateCount} duplicate reports
             </p>
             <ItemsTable
@@ -479,7 +480,7 @@ export default function AdminDeploymentMonitoringView() {
                             <div className="admin-conflict-list">
                                 {conflicts.map((group) => (
                                     <ConflictGroupCard
-                                        key={`${group.groupKey.city}-${group.groupKey.needType}`}
+                                        key={`${group.groupKey.city}-${group.groupKey.needType}-${group.groupKey.contactKey}`}
                                         group={group}
                                     />
                                 ))}

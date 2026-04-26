@@ -307,14 +307,102 @@ describe('GET /api/admin/deployment-monitoring', () => {
       expect(row.assignedHoursAgo).toBeGreaterThanOrEqual(12);
     });
 
-    // Conflicts grouped by (city, needType) duplicate group
+    // Conflicts grouped by (city, needType, contact) duplicate group
     expect(conflicts).toHaveLength(1);
-    expect(conflicts[0].groupKey).toEqual({ city: 'ankara', needType: 'first_aid' });
+    expect(conflicts[0].groupKey).toEqual({
+      city: 'ankara',
+      needType: 'first_aid',
+      contactKey: '***8877',
+    });
     expect(conflicts[0].duplicateCount).toBe(2);
     const conflictRequestIds = conflicts[0].items.map((row) => row.requestId);
     expect(conflictRequestIds).toEqual(
       expect.arrayContaining(['req_dup_a', 'req_dup_b']),
     );
+  });
+
+  test('does not merge conflict groups with same city/type but different contacts', async () => {
+    await seedBaseUsers();
+    await seedHelpRequests();
+
+    await query(
+      `
+        INSERT INTO help_requests (
+          request_id,
+          user_id,
+          help_types,
+          other_help_text,
+          affected_people_count,
+          risk_flags,
+          vulnerable_groups,
+          need_type,
+          description,
+          blood_type,
+          contact_full_name,
+          contact_phone,
+          consent_given,
+          status,
+          created_at,
+          resolved_at,
+          cancelled_at,
+          is_saved_locally
+        )
+        VALUES
+          (
+            'req_dup_c', 'normal_user', ARRAY['first_aid']::TEXT[], '', 1,
+            ARRAY[]::TEXT[], ARRAY[]::TEXT[],
+            'first_aid', 'Duplicate report C', NULL, 'Dup2', 5554441100, TRUE,
+            'PENDING', NOW() - INTERVAL '80 minutes', NULL, NULL, FALSE
+          ),
+          (
+            'req_dup_d', 'normal_user', ARRAY['first_aid']::TEXT[], '', 1,
+            ARRAY[]::TEXT[], ARRAY[]::TEXT[],
+            'first_aid', 'Duplicate report D', NULL, 'Dup2', 5554441100, TRUE,
+            'PENDING', NOW() - INTERVAL '20 minutes', NULL, NULL, FALSE
+          )
+      `,
+    );
+
+    await query(
+      `
+        INSERT INTO request_locations (
+          location_id,
+          request_id,
+          country,
+          city,
+          district,
+          neighborhood,
+          extra_address
+        )
+        VALUES
+          ('loc_dup_c', 'req_dup_c', 'turkiye', 'ankara', 'cankaya', 'kizilay', ''),
+          ('loc_dup_d', 'req_dup_d', 'turkiye', 'ankara', 'cankaya', 'kizilay', '')
+      `,
+    );
+
+    const app = createTestApp();
+    const adminToken = buildAuthToken({ userId: 'admin_user', isAdmin: true });
+
+    const response = await request(app)
+      .get('/api/admin/deployment-monitoring')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+
+    const { summary, conflicts } = response.body.monitoring;
+    expect(summary.conflicts).toBe(2);
+    expect(conflicts).toHaveLength(2);
+
+    const groupKeys = conflicts.map((group) => `${group.groupKey.city}:${group.groupKey.needType}:${group.groupKey.contactKey}`);
+    expect(groupKeys).toEqual(expect.arrayContaining([
+      'ankara:first_aid:***8877',
+      'ankara:first_aid:***1100',
+    ]));
+
+    conflicts.forEach((group) => {
+      expect(group.duplicateCount).toBe(2);
+      expect(group.items).toHaveLength(2);
+    });
   });
 
   test('respects waitThresholdHours and neglectThresholdHours query params', async () => {

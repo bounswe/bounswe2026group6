@@ -263,28 +263,26 @@ export default function ProfileView() {
 
                 setEmptyStateAction(null);
 
-                void (async () => {
-                    try {
-                        const treeResponse = await fetchLocationTree("TR");
-                        const nextLocationTree = {
-                            [treeResponse.countryCode.toLowerCase()]: treeResponse.tree,
-                        };
+                try {
+                    const treeResponse = await fetchLocationTree("TR");
+                    const nextLocationTree = {
+                        [treeResponse.countryCode.toLowerCase()]: treeResponse.tree,
+                    };
 
-                        setLocationTree(nextLocationTree);
-                        setLocationTreeError("");
+                    setLocationTree(nextLocationTree);
+                    setLocationTreeError("");
 
-                        // Rehydrate picker+form location state after the tree is available
-                        // so district/neighborhood keys are resolved consistently.
-                        await refreshProfileFromBackend(token, nextLocationTree);
-                    } catch (treeError) {
-                        setLocationTree({});
-                        setLocationTreeError(
-                            treeError instanceof Error
-                                ? treeError.message
-                                : "Could not load location tree."
-                        );
-                    }
-                })();
+                    // Rehydrate picker+form location state after the tree is available
+                    // so district/neighborhood keys are resolved consistently.
+                    await refreshProfileFromBackend(token, nextLocationTree);
+                } catch (treeError) {
+                    setLocationTree({});
+                    setLocationTreeError(
+                        treeError instanceof Error
+                            ? treeError.message
+                            : "Could not load location tree."
+                    );
+                }
             } catch (err) {
                 if (err instanceof ApiError && err.status === 401) {
                     clearAccessToken();
