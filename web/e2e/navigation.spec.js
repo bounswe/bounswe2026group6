@@ -25,7 +25,7 @@ test('guest can browse public pages and is redirected away from protected pages'
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Profile' })).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'News' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'News' }).click();
   await expect(page).toHaveURL(/\/news$/);
   await expect(page.getByRole('heading', { name: 'News', exact: true }).first()).toBeVisible();
 
