@@ -112,12 +112,33 @@ describe('help-requests validators', () => {
 
 			expect(errors).toEqual(expect.arrayContaining([
 				expect.stringContaining('`helpTypes` is required'),
-				expect.stringContaining('`affectedPeopleCount`'),
-				expect.stringContaining('`description` is required'),
 				expect.stringContaining('`location` is required'),
 				expect.stringContaining('`contact` is required'),
 				expect.stringContaining('`consentGiven`'),
 			]));
+		});
+
+		test('accepts payload with missing optional fields', () => {
+			const payload = {
+				helpTypes: ['first_aid'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+				},
+				contact: {
+					phone: 5052318546,
+				},
+				consentGiven: true,
+			};
+
+			const { errors, value } = validateCreateHelpRequest(payload);
+
+			expect(errors).toHaveLength(0);
+			expect(value.affectedPeopleCount).toBe(1);
+			expect(value.description).toBe('');
+			expect(value.location.neighborhood).toBe('');
+			expect(value.contact.fullName).toBe('');
 		});
 
 		test('rejects empty helpTypes', () => {
