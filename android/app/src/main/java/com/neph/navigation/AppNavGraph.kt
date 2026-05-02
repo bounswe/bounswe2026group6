@@ -167,7 +167,13 @@ fun AppNavGraph(
             val authenticated = isAuthenticated()
             val profileBadgeText = resolveProfileBadgeText(authenticated)
             MyHelpRequestsScreen(
-                onNavigateToRoute = ::navigateToDrawerRoute,
+                onNavigateToRoute = { route ->
+                    if (route.startsWith(Routes.RequestHelp.route)) {
+                        navController.navigate(route)
+                    } else {
+                        navigateToDrawerRoute(route)
+                    }
+                },
                 onOpenSettings = if (authenticated) {
                     { navigateToDrawerRoute(Routes.Settings.route) }
                 } else {
