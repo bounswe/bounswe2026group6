@@ -560,6 +560,11 @@ private fun JSONObject.optTrimmedString(key: String): String? {
     return optString(key).trim().takeIf { it.isNotBlank() }
 }
 
+private fun String.isUsefulBackendValue(): Boolean {
+    val value = trim()
+    return value.isNotBlank() && value != "null"
+}
+
 internal fun RequestHelpSubmission.toJson(): JSONObject {
     return JSONObject().apply {
         put("helpTypes", JSONArray(helpTypes))
@@ -751,8 +756,8 @@ internal fun JSONObject.toHelpRequestEntity(
         status = optString("status").ifBlank { existing?.status ?: "SYNCED" },
         urgencyLevel = optString("urgencyLevel").takeIf { it.isNotBlank() } ?: existing?.urgencyLevel,
         priorityLevel = optString("priorityLevel").takeIf { it.isNotBlank() } ?: existing?.priorityLevel,
-        resolvedAt = optString("resolvedAt").takeIf { it.isNotBlank() } ?: existing?.resolvedAt,
-        cancelledAt = optString("cancelledAt").takeIf { it.isNotBlank() } ?: existing?.cancelledAt,
+        resolvedAt = optString("resolvedAt").takeIf { it.isUsefulBackendValue() } ?: existing?.resolvedAt,
+        cancelledAt = optString("cancelledAt").takeIf { it.isUsefulBackendValue() } ?: existing?.cancelledAt,
         helperFirstName = primaryHelper?.firstName,
         helperLastName = primaryHelper?.lastName,
         helperPhone = primaryHelper?.phone,
