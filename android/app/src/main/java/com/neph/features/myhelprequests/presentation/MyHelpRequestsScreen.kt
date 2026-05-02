@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,10 +22,13 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,7 +38,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -62,6 +64,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyHelpRequestsScreen(
     onNavigateToRoute: (String) -> Unit,
@@ -83,9 +86,12 @@ fun MyHelpRequestsScreen(
     var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
     var reconnectRefreshInProgress by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<PendingRequestAction?>(null) }
-    val pullRefreshThreshold = 96.dp
+    val pullToRefreshState = rememberPullToRefreshState()
 
     fun refreshRequests(showFullPageLoading: Boolean) {
+        if (!showFullPageLoading && (initialRefreshInProgress || reconnectRefreshInProgress)) return
+        if (showFullPageLoading && reconnectRefreshInProgress) return
+
         scope.launch {
             if (showFullPageLoading) {
                 initialRefreshInProgress = true
@@ -188,69 +194,60 @@ fun MyHelpRequestsScreen(
             refreshRequests(showFullPageLoading = true)
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(initialRefreshInProgress, reconnectRefreshInProgress, requests.size) {
-                    var pullDistance = 0f
-                    detectVerticalDragGestures(
-                        onDragEnd = { pullDistance = 0f },
-                        onDragCancel = { pullDistance = 0f },
-                        onVerticalDrag = { change, dragAmount ->
-                            val isAtTop = requests.isEmpty() || (
-                                listState.firstVisibleItemIndex == 0 &&
-                                    listState.firstVisibleItemScrollOffset == 0
-                                )
-                            if (dragAmount > 0 && isAtTop && !initialRefreshInProgress && !reconnectRefreshInProgress) {
-                                pullDistance += dragAmount
-                                change.consume()
-                                if (pullDistance >= pullRefreshThreshold.toPx()) {
-                                    pullDistance = 0f
-                                    refreshRequests(showFullPageLoading = false)
-                                }
-                            } else if (dragAmount < 0) {
-                                pullDistance = 0f
-                            }
-                        }
-                    )
-                }
+        PullToRefreshBox(
+            isRefreshing = reconnectRefreshInProgress,
+            onRefresh = { refreshRequests(showFullPageLoading = false) },
+            state = pullToRefreshState,
+            modifier = Modifier.fillMaxSize()
         ) {
-            when {
-                initialRefreshInProgress && requests.isEmpty() -> {
-                    LoadingStateView()
+            val overview = buildMyHelpRequestsOverview(requests)
+            val currentActiveRequest = overview.activeRequests.firstOrNull()
+            val requestHistory = overview.historyRequests
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(spacing.lg),
+                contentPadding = PaddingValues(vertical = spacing.sm)
+            ) {
+                if (reconnectRefreshInProgress) {
+                    item {
+                        ReconnectRefreshIndicator()
+                    }
                 }
 
-                requests.isEmpty() -> {
-                    EmptyStateView(
-                        onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) }
-                    )
-                }
-
-                else -> {
-                    val overview = buildMyHelpRequestsOverview(requests)
-                    val currentActiveRequest = overview.activeRequests.firstOrNull()
-                    val requestHistory = overview.historyRequests
-
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(spacing.lg),
-                        contentPadding = PaddingValues(vertical = spacing.sm)
-                    ) {
-                        if (reconnectRefreshInProgress) {
-                            item {
-                                ReconnectRefreshIndicator()
-                            }
-                        }
-
-                    if (overview.hasMultipleRequestContext) {
+                when {
+                    initialRefreshInProgress && requests.isEmpty() -> {
                         item {
-                            RequestsOverviewCard(
-                                overview = overview,
-                                isAuthenticated = isAuthenticated
+                            LoadingStateView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 520.dp)
                             )
                         }
                     }
+
+                    requests.isEmpty() -> {
+                        item {
+                            EmptyStateView(
+                                onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 520.dp)
+                            )
+                        }
+                    }
+
+                    else -> {
+
+                        if (overview.hasMultipleRequestContext) {
+                            item {
+                                RequestsOverviewCard(
+                                    overview = overview,
+                                    isAuthenticated = isAuthenticated
+                                )
+                            }
+                        }
 
                         item {
                             SectionHeader(
@@ -263,64 +260,58 @@ fun MyHelpRequestsScreen(
                             )
                         }
 
-                    if (currentActiveRequest == null) {
-                        item {
-                            SectionCard {
-                                Text(
-                                    text = "No active help request right now.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (currentActiveRequest == null) {
+                            item {
+                                SectionCard {
+                                    Text(
+                                        text = "No active help request right now.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = currentActiveRequest.id) {
+                                MyHelpRequestCard(
+                                    request = currentActiveRequest,
+                                    titleOverride = currentActiveRequest.helpTypeSummary,
+                                    subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
+                                        ?: "Opened time unavailable",
+                                    actionMessage = actionMessage,
+                                    onEdit = { pendingAction = PendingRequestAction.Edit(currentActiveRequest) },
+                                    onCancel = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                        { pendingAction = PendingRequestAction.Cancel(currentActiveRequest) }
+                                    } else {
+                                        null
+                                    },
+                                    onResolve = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                        { pendingAction = PendingRequestAction.Resolve(currentActiveRequest) }
+                                    } else {
+                                        null
+                                    },
+                                    actionLoading = actionInProgress
                                 )
                             }
                         }
-                    } else {
-                        item(key = currentActiveRequest.id) {
-                            MyHelpRequestCard(
-                                request = currentActiveRequest,
-                                titleOverride = currentActiveRequest.helpTypeSummary,
-                                subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
-                                    ?: "Opened time unavailable",
-                                actionMessage = actionMessage,
-                                onEdit = { pendingAction = PendingRequestAction.Edit(currentActiveRequest) },
-                                onCancel = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
-                                    { pendingAction = PendingRequestAction.Cancel(currentActiveRequest) }
-                                } else {
-                                    null
-                                },
-                                onResolve = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
-                                    { pendingAction = PendingRequestAction.Resolve(currentActiveRequest) }
-                                } else {
-                                    null
-                                },
-                                actionLoading = actionInProgress
-                            )
-                        }
-                    }
 
-                    if (requestHistory.isNotEmpty()) {
-                        item {
-                            SectionHeader(
-                                title = "Request History",
-                                subtitle = if (isAuthenticated) {
-                                    "Previous requests from your account."
-                                } else {
-                                    "Previous guest requests created from this device."
-                                }
-                            )
-                        }
+                        if (requestHistory.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Request History",
+                                    subtitle = if (isAuthenticated) {
+                                        "Previous requests from your account."
+                                    } else {
+                                        "Previous guest requests created from this device."
+                                    }
+                                )
+                            }
 
-                        items(requestHistory, key = { it.id }) { request ->
-                            MyHelpRequestCard(request = request)
+                            items(requestHistory, key = { it.id }) { request ->
+                                MyHelpRequestCard(request = request)
+                            }
                         }
-                    }
                     }
                 }
-            }
-
-            if (reconnectRefreshInProgress && requests.isEmpty()) {
-                ReconnectRefreshIndicator(
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
             }
         }
 
@@ -523,11 +514,11 @@ private fun OverviewMetric(
 }
 
 @Composable
-private fun LoadingStateView() {
+private fun LoadingStateView(modifier: Modifier = Modifier) {
     val spacing = LocalNephSpacing.current
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -547,12 +538,13 @@ private fun LoadingStateView() {
 
 @Composable
 private fun EmptyStateView(
-    onRequestHelp: () -> Unit
+    onRequestHelp: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
