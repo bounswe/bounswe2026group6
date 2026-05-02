@@ -31,7 +31,7 @@ object OfflineSyncScheduler {
 
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             OneTimeSyncName,
-            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
             request
         )
     }
