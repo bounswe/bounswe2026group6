@@ -628,7 +628,7 @@ private fun buildEmergencyDraftSubmission(
         helpTypes = listOf("other"),
         otherHelpText = "Emergency assistance requested from mobile app",
         affectedPeopleCount = 1,
-        description = "",
+        description = "Emergency assistance requested from mobile app. Details pending.",
         riskFlags = emptyList(),
         vulnerableGroups = emptyList(),
         bloodType = profile.bloodType.orEmpty(),
