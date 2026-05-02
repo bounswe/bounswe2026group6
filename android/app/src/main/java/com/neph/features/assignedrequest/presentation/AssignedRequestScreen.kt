@@ -26,6 +26,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.assignedrequest.data.AssignedRequestRepository
+import com.neph.features.assignedrequest.data.AssignmentRouteUiModel
 import com.neph.features.assignedrequest.data.AssignedRequestUiModel
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.navigation.Routes
@@ -57,6 +58,9 @@ fun AssignedRequestScreen(
     var infoMessage by remember { mutableStateOf("") }
     var refreshVersion by remember { mutableStateOf(0) }
     var cancelling by remember { mutableStateOf(false) }
+    var routeInfo by remember { mutableStateOf<AssignmentRouteUiModel?>(null) }
+    var routeLoading by remember { mutableStateOf(false) }
+    var routeMessage by remember { mutableStateOf("") }
 
     DisposableEffect(lifecycleOwner, token) {
         val observer = LifecycleEventObserver { _, event ->
@@ -97,6 +101,47 @@ fun AssignedRequestScreen(
         } catch (_: Exception) {
             error = "Could not save the assignment update locally."
         }
+    }
+
+    suspend fun loadRouteInfo(assignmentId: String) {
+        if (token.isBlank()) {
+            routeInfo = null
+            routeMessage = ""
+            return
+        }
+
+        routeLoading = true
+        routeMessage = ""
+
+        try {
+            val result = AssignedRequestRepository.fetchAssignmentRoute(
+                token = token,
+                assignmentId = assignmentId
+            )
+            routeInfo = result
+            routeMessage = if (result == null) {
+                "Route is unavailable until both locations are available."
+            } else {
+                ""
+            }
+        } catch (_: Exception) {
+            routeInfo = null
+            routeMessage = "Route information is unavailable right now."
+        } finally {
+            routeLoading = false
+        }
+    }
+
+    LaunchedEffect(currentRequest?.assignmentId, token, refreshVersion) {
+        val assignmentId = currentRequest?.assignmentId
+        if (assignmentId.isNullOrBlank()) {
+            routeInfo = null
+            routeMessage = ""
+            routeLoading = false
+            return@LaunchedEffect
+        }
+
+        loadRouteInfo(assignmentId)
     }
 
     AppDrawerScaffold(
@@ -287,6 +332,34 @@ fun AssignedRequestScreen(
                             )
 
                             DetailLine(label = "Location", value = request.locationLabel)
+
+                            when {
+                                routeLoading -> {
+                                    HelperText(text = "Loading route information...")
+                                }
+
+                                routeInfo != null -> {
+                                    val route = routeInfo!!
+                                    DetailLine(
+                                        label = "Distance",
+                                        value = formatRouteDistance(route.distanceKm)
+                                    )
+                                    route.estimatedTimeMin?.let {
+                                        DetailLine(
+                                            label = "Estimated travel time",
+                                            value = "$it min"
+                                        )
+                                    }
+                                    DetailLine(
+                                        label = "Route source",
+                                        value = formatRouteSource(route.source)
+                                    )
+                                }
+
+                                routeMessage.isNotBlank() -> {
+                                    HelperText(text = routeMessage)
+                                }
+                            }
                         }
                     }
 
@@ -399,6 +472,22 @@ private fun DetailLine(label: String, value: String, onClick: (() -> Unit)? = nu
                     }
                 )
         )
+    }
+}
+
+private fun formatRouteDistance(distanceKm: Double): String {
+    return if (distanceKm < 1.0) {
+        "${(distanceKm * 1000).toInt()} m"
+    } else {
+        String.format(java.util.Locale.US, "%.1f km", distanceKm)
+    }
+}
+
+private fun formatRouteSource(source: String): String {
+    return when (source.trim().lowercase()) {
+        "routing" -> "Routing provider"
+        "fallback" -> "Straight-line estimate"
+        else -> "Estimate"
     }
 }
 
