@@ -17,10 +17,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.auth.data.AuthRepository
@@ -44,6 +47,7 @@ import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.buttons.TextActionButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
@@ -72,6 +76,57 @@ fun MyHelpRequestsScreen(
     var actionInProgress by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf("") }
     var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
+    var pendingAction by remember { mutableStateOf<PendingRequestAction?>(null) }
+
+    fun resolveCurrentRequest(currentActiveRequest: MyHelpRequestUiModel) {
+        actionMessage = ""
+        actionInProgress = true
+        scope.launch {
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.markRequestAsResolved(
+                        token = token,
+                        requestId = currentActiveRequest.id
+                    )
+                } else {
+                    MyHelpRequestsRepository.markGuestRequestAsResolved(
+                        requestId = currentActiveRequest.id,
+                        guestAccessToken = currentActiveRequest.guestAccessToken
+                    )
+                }
+                actionMessage = "Request marked resolved."
+            } catch (_: Exception) {
+                actionMessage = "Could not update request status."
+            } finally {
+                actionInProgress = false
+            }
+        }
+    }
+
+    fun cancelCurrentRequest(currentActiveRequest: MyHelpRequestUiModel) {
+        actionMessage = ""
+        actionInProgress = true
+        scope.launch {
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.markRequestAsCancelled(
+                        token = token,
+                        requestId = currentActiveRequest.id
+                    )
+                } else {
+                    MyHelpRequestsRepository.markGuestRequestAsCancelled(
+                        requestId = currentActiveRequest.id,
+                        guestAccessToken = currentActiveRequest.guestAccessToken
+                    )
+                }
+                actionMessage = "Request cancelled."
+            } catch (_: Exception) {
+                actionMessage = "Could not cancel request."
+            } finally {
+                actionInProgress = false
+            }
+        }
+    }
 
     AppDrawerScaffold(
         title = "My Help Requests",
@@ -170,46 +225,18 @@ fun MyHelpRequestsScreen(
                                 subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
                                     ?: "Opened time unavailable",
                                 actionMessage = actionMessage,
-                                onResolve = if (isAuthenticated && token.isNotBlank()) {
-                                    {
-                                        actionMessage = ""
-                                        actionInProgress = true
-                                        scope.launch {
-                                            try {
-                                                MyHelpRequestsRepository.markRequestAsResolved(
-                                                    token = token,
-                                                    requestId = currentActiveRequest.id
-                                                )
-                                                actionMessage = "Request marked resolved locally and queued for sync."
-                                            } catch (_: Exception) {
-                                                actionMessage = "Could not save the status change locally."
-                                            } finally {
-                                                actionInProgress = false
-                                            }
-                                        }
-                                    }
-                                } else if (!isAuthenticated && currentActiveRequest.guestAccessToken != null) {
-                                    {
-                                        actionMessage = ""
-                                        actionInProgress = true
-                                        scope.launch {
-                                            try {
-                                                MyHelpRequestsRepository.markGuestRequestAsResolved(
-                                                    requestId = currentActiveRequest.id,
-                                                    guestAccessToken = currentActiveRequest.guestAccessToken
-                                                )
-                                                actionMessage = "Request marked resolved locally and queued for sync."
-                                            } catch (_: Exception) {
-                                                actionMessage = "Could not save the status change locally."
-                                            } finally {
-                                                actionInProgress = false
-                                            }
-                                        }
-                                    }
+                                onEdit = { pendingAction = PendingRequestAction.Edit(currentActiveRequest) },
+                                onCancel = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                    { pendingAction = PendingRequestAction.Cancel(currentActiveRequest) }
                                 } else {
                                     null
                                 },
-                                resolveLoading = actionInProgress
+                                onResolve = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                    { pendingAction = PendingRequestAction.Resolve(currentActiveRequest) }
+                                } else {
+                                    null
+                                },
+                                actionLoading = actionInProgress
                             )
                         }
                     }
@@ -233,7 +260,67 @@ fun MyHelpRequestsScreen(
                 }
             }
         }
+
+        pendingAction?.let { action ->
+            ConfirmRequestActionDialog(
+                action = action,
+                onDismiss = { pendingAction = null },
+                onConfirm = {
+                    pendingAction = null
+                    when (action) {
+                        is PendingRequestAction.Edit -> onNavigateToRoute(Routes.requestHelpWithDraft(action.request.localId))
+                        is PendingRequestAction.Cancel -> cancelCurrentRequest(action.request)
+                        is PendingRequestAction.Resolve -> resolveCurrentRequest(action.request)
+                    }
+                }
+            )
+        }
     }
+}
+
+private sealed class PendingRequestAction(open val request: MyHelpRequestUiModel) {
+    data class Edit(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+    data class Cancel(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+    data class Resolve(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+}
+
+@Composable
+private fun ConfirmRequestActionDialog(
+    action: PendingRequestAction,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val title = when (action) {
+        is PendingRequestAction.Edit -> "Edit help request?"
+        is PendingRequestAction.Cancel -> "Cancel help request?"
+        is PendingRequestAction.Resolve -> "Mark request resolved?"
+    }
+    val text = when (action) {
+        is PendingRequestAction.Edit -> "You will return to the request form and update this same request."
+        is PendingRequestAction.Cancel -> "This closes the request as cancelled."
+        is PendingRequestAction.Resolve -> "This closes the request as resolved."
+    }
+    val confirm = when (action) {
+        is PendingRequestAction.Edit -> "Edit"
+        is PendingRequestAction.Cancel -> "Cancel request"
+        is PendingRequestAction.Resolve -> "Mark resolved"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title) },
+        text = { Text(text = text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirm)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Keep current")
+            }
+        }
+    )
 }
 
 @Composable
@@ -418,7 +505,9 @@ private fun MyHelpRequestCard(
     subtitleOverride: String? = null,
     actionMessage: String = "",
     onResolve: (() -> Unit)? = null,
-    resolveLoading: Boolean = false
+    onEdit: (() -> Unit)? = null,
+    onCancel: (() -> Unit)? = null,
+    actionLoading: Boolean = false
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
@@ -583,16 +672,44 @@ private fun MyHelpRequestCard(
                 )
             }
 
-            if (request.isActive && onResolve != null) {
+            if (request.isActive) {
                 if (actionMessage.isNotBlank()) {
                     HelperText(text = actionMessage)
                 }
 
                 PrimaryButton(
-                    text = "Mark Request As Resolved",
-                    onClick = onResolve,
-                    loading = resolveLoading
+                    text = "Edit Request",
+                    onClick = onEdit ?: {},
+                    enabled = onEdit != null && !actionLoading
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+                ) {
+                    SecondaryButton(
+                        text = "Cancel",
+                        onClick = onCancel ?: {},
+                        modifier = Modifier.weight(1f),
+                        enabled = onCancel != null && !actionLoading
+                    )
+
+                    TextActionButton(
+                        text = "Mark Resolved",
+                        onClick = onResolve ?: {},
+                        modifier = Modifier.weight(1f),
+                        enabled = onResolve != null && !actionLoading
+                    )
+                }
+
+                if (actionLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .align(Alignment.CenterHorizontally),
+                        strokeWidth = 2.dp
+                    )
+                }
             }
         }
     }

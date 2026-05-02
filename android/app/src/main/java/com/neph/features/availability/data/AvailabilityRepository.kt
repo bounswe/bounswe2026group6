@@ -169,6 +169,37 @@ object AvailabilityRepository {
         return nextState
     }
 
+    suspend fun rollbackAvailabilityAfterFailedSync(
+        previousState: AvailabilityState,
+        message: String
+    ) {
+        ensureInitialized()
+        database.syncOperationDao().deleteOperations(
+            entityType = SyncEntityType.AVAILABILITY,
+            entityId = AvailabilityEntity.CURRENT_KEY,
+            operationType = SyncOperationType.SET_AVAILABILITY
+        )
+        saveAvailabilityState(
+            previousState.copy(
+                syncStatus = SyncStatus.FAILED,
+                pendingError = message
+            ).toEntity(syncStatus = SyncStatus.FAILED)
+        )
+    }
+
+    suspend fun syncPendingAvailabilityNow(token: String?) {
+        ensureInitialized()
+        val operations = database.syncOperationDao()
+            .getPendingOperations()
+            .filter { it.operationType == SyncOperationType.SET_AVAILABILITY }
+
+        if (operations.isEmpty()) {
+            return
+        }
+
+        pushAvailabilityOperations(operations, token)
+    }
+
     internal suspend fun pushAvailabilityOperations(
         operations: List<SyncOperationEntity>,
         token: String?

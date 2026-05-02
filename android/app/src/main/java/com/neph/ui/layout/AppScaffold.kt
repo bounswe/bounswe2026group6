@@ -52,19 +52,21 @@ fun AppScaffold(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(spacing.xl)
                 ) {
-                    if (topBar == null && onNavigateBack != null) {
-                        TextActionButton(
-                            text = "Back",
-                            onClick = onNavigateBack,
-                            modifier = Modifier.align(Alignment.Start)
+                    if (topBar == null) {
+                        if (onNavigateBack != null) {
+                            TextActionButton(
+                                text = "Back",
+                                onClick = onNavigateBack,
+                                modifier = Modifier.align(Alignment.Start)
+                            )
+                        }
+
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
-
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
 
                     content()
                 }

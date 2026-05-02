@@ -20,6 +20,7 @@ import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.normalizePhoneParts
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -171,6 +172,11 @@ object RequestHelpRepository {
     suspend fun getLocalHelpRequest(localId: String): HelpRequestEntity? {
         ensureInitialized()
         return database.helpRequestDao().getByLocalId(localId)
+    }
+
+    fun observeLocalHelpRequest(localId: String): Flow<HelpRequestEntity?> {
+        ensureInitialized()
+        return database.helpRequestDao().observeByLocalId(localId)
     }
 
     suspend fun updateHelpRequest(
@@ -617,7 +623,7 @@ private fun buildEmergencyDraftSubmission(
         helpTypes = listOf("other"),
         otherHelpText = "Emergency assistance requested from mobile app",
         affectedPeopleCount = 1,
-        description = "Emergency help request created from the mobile emergency button. Details are pending.",
+        description = "",
         riskFlags = emptyList(),
         vulnerableGroups = emptyList(),
         bloodType = profile.bloodType.orEmpty(),

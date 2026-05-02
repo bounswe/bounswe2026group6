@@ -25,6 +25,7 @@ import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
+import com.neph.features.availability.presentation.AvailabilitySyncIndicator
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.requesthelp.data.RequestHelpRepository
@@ -38,6 +39,7 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -63,6 +65,7 @@ fun HomeScreen(
     var availabilityLoading by remember { mutableStateOf(false) }
     var availabilityError by remember { mutableStateOf("") }
     var availabilityInfo by remember { mutableStateOf("") }
+    var availabilitySyncIndicator by remember { mutableStateOf(AvailabilitySyncIndicator.NONE) }
     var requestHelpLoading by remember { mutableStateOf(false) }
     var requestHelpError by remember { mutableStateOf("") }
     var markSafeLoading by remember { mutableStateOf(false) }
@@ -72,9 +75,11 @@ fun HomeScreen(
     fun handleAvailabilityChange(nextValue: Boolean) {
         availabilityError = ""
         availabilityInfo = ""
+        availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
 
         if (!AvailabilityAccessPolicy.canAccess(sessionToken)) {
             availabilityError = "Please log in to manage your availability."
+            availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
             if (AvailabilityAccessPolicy.shouldRedirectToLogin()) {
                 onNavigateToLogin()
             }
@@ -84,20 +89,33 @@ fun HomeScreen(
         availabilityLoading = true
 
         scope.launch {
+            val previousState = availabilityState
             try {
-                val recordedState = AvailabilityRepository.setAvailability(
+                availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCING
+                AvailabilityRepository.setAvailability(
                     isAvailable = nextValue,
                     token = sessionToken
                 )
-                availabilityInfo = if (recordedState.isAvailable) {
-                    "Availability saved locally and will sync when connected."
-                } else {
-                    "Unavailable status saved locally and will sync when connected."
-                }
+                AvailabilityRepository.syncPendingAvailabilityNow(sessionToken)
+                availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCED
+                delay(1400)
+                availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    availabilityError = "Session expired. Please log in again."
+                    onNavigateToLogin()
+                } else {
+                    availabilityError = "Could not sync. Check internet."
+                    AvailabilityRepository.rollbackAvailabilityAfterFailedSync(previousState, availabilityError)
+                }
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
             } catch (_: Exception) {
-                availabilityError = "Could not save your availability locally. Please try again."
+                availabilityError = "Could not sync. Check internet."
+                AvailabilityRepository.rollbackAvailabilityAfterFailedSync(previousState, availabilityError)
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
             } finally {
                 availabilityLoading = false
             }
@@ -139,11 +157,6 @@ fun HomeScreen(
                         currentLocation = currentLocation,
                         reverseLocation = null
                     )
-                    emergencyInfo = if (currentLocation != null) {
-                        "Help request draft created with your current location and queued for sync."
-                    } else {
-                        "Help request draft created with your saved location and queued for sync."
-                    }
                     onRequestHelp(draft.requestId)
                 }
             } catch (error: ApiException) {
@@ -238,10 +251,11 @@ fun HomeScreen(
                     errorMessage = availabilityError.ifBlank { availabilityState.pendingError.orEmpty() },
                     infoMessage = availabilityInfo,
                     syncMessage = when {
-                        availabilityState.isPendingSync -> "Pending sync — your latest availability is saved on this device."
-                        availabilityState.isFailedSync -> "Sync failed — use Retry from a connected network."
+                        availabilityState.isPendingSync -> ""
+                        availabilityState.isFailedSync -> availabilityState.pendingError.orEmpty()
                         else -> ""
                     },
+                    syncIndicator = availabilitySyncIndicator,
                     onAvailabilityChange = ::handleAvailabilityChange
                 )
             }

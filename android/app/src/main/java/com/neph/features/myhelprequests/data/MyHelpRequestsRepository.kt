@@ -23,6 +23,7 @@ import org.json.JSONObject
 
 data class MyHelpRequestUiModel(
     val id: String,
+    val localId: String,
     val guestAccessToken: String? = null,
     val helpTypes: List<String>,
     val helpTypeSummary: String,
@@ -127,12 +128,32 @@ object MyHelpRequestsRepository {
 
     suspend fun markGuestRequestAsResolved(
         requestId: String,
-        guestAccessToken: String
+        guestAccessToken: String? = null
     ): MyHelpRequestUiModel? {
         return markLocalRequestStatus(
             requestId = requestId,
             ownerType = LocalOwnerType.GUEST,
             nextStatus = "RESOLVED",
+            guestAccessToken = guestAccessToken
+        )
+    }
+
+    suspend fun markRequestAsCancelled(token: String, requestId: String): MyHelpRequestUiModel? {
+        return markLocalRequestStatus(
+            requestId = requestId,
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            nextStatus = "CANCELLED"
+        )
+    }
+
+    suspend fun markGuestRequestAsCancelled(
+        requestId: String,
+        guestAccessToken: String? = null
+    ): MyHelpRequestUiModel? {
+        return markLocalRequestStatus(
+            requestId = requestId,
+            ownerType = LocalOwnerType.GUEST,
+            nextStatus = "CANCELLED",
             guestAccessToken = guestAccessToken
         )
     }
@@ -263,6 +284,7 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
 
     return MyHelpRequestUiModel(
         id = displayId,
+        localId = localId,
         guestAccessToken = guestAccessToken,
         helpTypes = helpTypes,
         helpTypeSummary = buildHelpTypeSummary(helpTypes),
