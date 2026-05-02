@@ -165,7 +165,9 @@ dependencies {
     implementation 'com.google.android.gms:play-services-location:21.3.0'
     implementation 'androidx.room:room-runtime:2.8.4'
     implementation 'androidx.room:room-ktx:2.8.4'
+    implementation 'androidx.startup:startup-runtime:1.2.0'
     implementation 'androidx.work:work-runtime-ktx:2.11.2'
+    implementation 'com.squareup.okio:okio:3.16.2'
     implementation platform('com.google.firebase:firebase-bom:34.4.0')
     implementation 'com.google.firebase:firebase-messaging'
     ksp 'androidx.room:room-compiler:2.8.4'
@@ -177,7 +179,10 @@ dependencies {
     androidTestImplementation 'androidx.test:runner:1.7.0'
     androidTestImplementation 'androidx.test:monitor:1.8.0'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+    androidTestImplementation platform('com.squareup.okhttp3:okhttp-bom:5.3.0')
+    androidTestImplementation 'com.squareup.okhttp3:okhttp'
     androidTestImplementation 'com.squareup.okhttp3:mockwebserver3:5.3.0'
+    androidTestImplementation 'com.squareup.okio:okio:3.16.2'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'

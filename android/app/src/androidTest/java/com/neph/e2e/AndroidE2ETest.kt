@@ -33,8 +33,8 @@ class AndroidE2ETest {
         waitForClickable("Continue as Guest")
         clickableNode("Continue as Guest").performClick()
 
-        waitForText("Request Help")
-        composeRule.onNodeWithText("Request Help").assertIsDisplayed()
+        waitForText("Create Help Request")
+        composeRule.onNodeWithText("Create Help Request").assertIsDisplayed()
     }
 
     @Test
@@ -42,20 +42,20 @@ class AndroidE2ETest {
         waitForClickable("Continue as Guest")
         clickableNode("Continue as Guest").performClick()
 
-        waitForText("Request Help")
+        waitForText("Create Help Request")
         composeRule.onAllNodesWithContentDescription("Open menu")[0].performClick()
         waitForClickable("Help Request Map")
         clickableNode("Help Request Map").performClick()
 
         waitForText("Showing waiting help requests by type and priority.")
         composeRule.onAllNodesWithText("Help Request Map")[0].assertIsDisplayed()
-        composeRule.onAllNodesWithText("First Aid")[0].assertIsDisplayed()
-        composeRule.onAllNodesWithText("Shelter")[0].assertIsDisplayed()
-        composeRule.onAllNodesWithText("Priority: High")[0].assertIsDisplayed()
-        composeRule.onAllNodesWithText("Waiting Requests")[0].assertIsDisplayed()
 
         composeRule.waitUntil(5_000) {
             contentDescriptionNodeCount("Crisis marker") == 2 &&
+                textNodeCount("First Aid") > 0 &&
+                textNodeCount("Shelter") > 0 &&
+                textNodeCount("Priority: High") > 0 &&
+                textNodeCount("Waiting Requests") > 0 &&
                 textNodeCount("Search and Rescue") == 0 &&
                 textNodeCount("sariyer") == 0
         }
