@@ -80,6 +80,118 @@ class ActiveHelpRequestsRepositoryTest {
     }
 
     @Test
+    fun parseActiveHelpRequestsResponse_skipsMalformedMapRowsAndCountsHiddenEntries() {
+        val response = JSONObject()
+            .put(
+                "requests",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("requestId", "req-valid")
+                            .put("type", "shelter")
+                            .put("status", "PENDING")
+                            .put("urgencyLevel", "MEDIUM")
+                            .put("createdAt", "2026-05-01T10:15:00.000Z")
+                            .put("assignmentState", "UNASSIGNED")
+                            .put(
+                                "location",
+                                JSONObject()
+                                    .put("latitude", 41.066)
+                                    .put("longitude", 28.993)
+                                    .put("city", "istanbul")
+                                    .put("district", "sisli")
+                            )
+                    )
+                    .put(
+                        JSONObject()
+                            .put("requestId", "req-missing-location")
+                            .put("type", "first_aid")
+                            .put("status", "PENDING")
+                            .put("urgencyLevel", "HIGH")
+                            .put("assignmentState", "UNASSIGNED")
+                    )
+                    .put(
+                        JSONObject()
+                            .put("requestId", "req-invalid-latitude")
+                            .put("type", "first_aid")
+                            .put("status", "PENDING")
+                            .put("urgencyLevel", "HIGH")
+                            .put("assignmentState", "UNASSIGNED")
+                            .put(
+                                "location",
+                                JSONObject()
+                                    .put("latitude", 141.0)
+                                    .put("longitude", 29.009)
+                                    .put("city", "istanbul")
+                                    .put("district", "besiktas")
+                            )
+                    )
+                    .put(
+                        JSONObject()
+                            .put("type", "food_water")
+                            .put("status", "PENDING")
+                            .put("urgencyLevel", "LOW")
+                            .put("assignmentState", "UNASSIGNED")
+                            .put(
+                                "location",
+                                JSONObject()
+                                    .put("latitude", 41.043)
+                                    .put("longitude", 29.009)
+                                    .put("city", "istanbul")
+                                    .put("district", "besiktas")
+                            )
+                    )
+            )
+            .put("total", 4)
+            .put("pagination", JSONObject().put("limit", 300).put("offset", 0))
+
+        val parsed = ActiveHelpRequestsRepository.parseActiveHelpRequestsResponse(response)
+
+        assertEquals(1, parsed.requests.size)
+        assertEquals(3, parsed.skippedCount)
+        assertEquals("req-valid", parsed.requests.first().requestId)
+        assertEquals("Shelter", parsed.requests.first().typeLabel)
+    }
+
+    @Test
+    fun parseActiveHelpRequestsResponse_handlesBackendCaseVariantsAndMissingPaginationDefaults() {
+        val response = JSONObject()
+            .put(
+                "requests",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("requestId", "req-lowercase")
+                            .put("type", "unknown_server_type")
+                            .put("status", "pending")
+                            .put("createdAt", "not-an-iso-date")
+                            .put("assignmentState", "unassigned")
+                            .put(
+                                "location",
+                                JSONObject()
+                                    .put("latitude", 41.043)
+                                    .put("longitude", 29.009)
+                            )
+                    )
+            )
+            .put("total", 1)
+
+        val parsed = ActiveHelpRequestsRepository.parseActiveHelpRequestsResponse(response)
+        val request = parsed.requests.first()
+
+        assertEquals(1, parsed.requests.size)
+        assertEquals(0, parsed.skippedCount)
+        assertEquals(300, parsed.limit)
+        assertEquals(0, parsed.offset)
+        assertEquals(CrisisRequestType.OTHER, request.type)
+        assertEquals("Other / Unknown", request.typeLabel)
+        assertEquals("MEDIUM", request.priorityLevel)
+        assertEquals("unknown", request.city)
+        assertEquals("unknown", request.district)
+        assertEquals("not-an-iso-date", ActiveHelpRequestsRepository.formatOpenedAt(request.createdAt))
+    }
+
+    @Test
     fun normalizeRequestType_groupsFoodWaterAndSearchRescueTypes() {
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("food"))
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("water"))
