@@ -192,6 +192,16 @@ Demo login password for `*@neph.test` users:
 DemoPass123!
 ```
 
+Demo accounts:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin_demo@neph.test` | `DemoPass123!` |
+| Requester | `requester_ayse@neph.test` | `DemoPass123!` |
+| Requester | `requester_mert@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_elif@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_can@neph.test` | `DemoPass123!` |
+
 ### Optional non-Docker development
 
 If you want to run modules directly on your machine instead of Docker Compose, use the module-specific setup inside each folder:

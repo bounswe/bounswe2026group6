@@ -12,6 +12,20 @@ const users = [
     firstName: 'Deniz',
     lastName: 'Yilmaz',
     phone: '5321112233',
+    physical: { age: 38, gender: 'male', height: 178, weight: 76 },
+    health: {
+      medicalConditions: [],
+      chronicDiseases: [],
+      allergies: [],
+      medications: [],
+      bloodType: '0+',
+    },
+    privacy: {
+      profileVisibility: 'EMERGENCY_ONLY',
+      healthInfoVisibility: 'EMERGENCY_ONLY',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+    },
     location: {
       district: 'Beşiktaş',
       neighborhood: 'Levazim',
@@ -27,6 +41,20 @@ const users = [
     firstName: 'Ayse',
     lastName: 'Kara',
     phone: '5332223344',
+    physical: { age: 71, gender: 'female', height: 162, weight: 68 },
+    health: {
+      medicalConditions: ['hypertension'],
+      chronicDiseases: ['high blood pressure'],
+      allergies: ['penicillin'],
+      medications: ['blood pressure medication'],
+      bloodType: 'A+',
+    },
+    privacy: {
+      profileVisibility: 'EMERGENCY_ONLY',
+      healthInfoVisibility: 'EMERGENCY_ONLY',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+    },
     location: {
       district: 'Kadıköy',
       neighborhood: 'Moda',
@@ -41,6 +69,20 @@ const users = [
     firstName: 'Mert',
     lastName: 'Demir',
     phone: '5343334455',
+    physical: { age: 34, gender: 'male', height: 181, weight: 82 },
+    health: {
+      medicalConditions: [],
+      chronicDiseases: [],
+      allergies: [],
+      medications: [],
+      bloodType: 'B+',
+    },
+    privacy: {
+      profileVisibility: 'EMERGENCY_ONLY',
+      healthInfoVisibility: 'PRIVATE',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+    },
     location: {
       district: 'Şişli',
       neighborhood: 'Mecidiyeköy',
@@ -55,6 +97,20 @@ const users = [
     firstName: 'Elif',
     lastName: 'Aydin',
     phone: '5354445566',
+    physical: { age: 29, gender: 'female', height: 168, weight: 61 },
+    health: {
+      medicalConditions: [],
+      chronicDiseases: [],
+      allergies: [],
+      medications: [],
+      bloodType: 'A-',
+    },
+    privacy: {
+      profileVisibility: 'PUBLIC',
+      healthInfoVisibility: 'EMERGENCY_ONLY',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+    },
     location: {
       district: 'Beşiktaş',
       neighborhood: 'Levazim',
@@ -72,6 +128,20 @@ const users = [
     firstName: 'Can',
     lastName: 'Ozturk',
     phone: '5365556677',
+    physical: { age: 42, gender: 'male', height: 176, weight: 79 },
+    health: {
+      medicalConditions: [],
+      chronicDiseases: [],
+      allergies: ['dust'],
+      medications: [],
+      bloodType: '0-',
+    },
+    privacy: {
+      profileVisibility: 'PUBLIC',
+      healthInfoVisibility: 'EMERGENCY_ONLY',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+    },
     location: {
       district: 'Kadıköy',
       neighborhood: 'Moda',
@@ -237,6 +307,13 @@ const notifications = [
   },
 ];
 
+const seededIds = {
+  usersByDemoId: new Map(),
+  profilesByDemoUserId: new Map(),
+  volunteersByDemoVolunteerId: new Map(),
+  adminId: null,
+};
+
 function logInserted(stats, label, id) {
   stats.inserted += 1;
   console.log(`inserted ${label}: ${id}`);
@@ -252,20 +329,71 @@ async function exists(sql, params) {
   return result.rowCount > 0;
 }
 
+async function findOne(sql, params) {
+  const result = await query(sql, params);
+  return result.rows[0] || null;
+}
+
+function makeProfileId(user) {
+  return `demo_profile_${user.id.replace('demo_user_', '')}`;
+}
+
+function makeProfileChildId(prefix, user) {
+  return `${prefix}_${user.id.replace('demo_user_', '')}`;
+}
+
+function getSeededUserId(demoUserId) {
+  const userId = seededIds.usersByDemoId.get(demoUserId);
+
+  if (!userId) {
+    throw new Error(`Missing seeded user id for ${demoUserId}.`);
+  }
+
+  return userId;
+}
+
+function getSeededProfileId(demoUserId) {
+  const profileId = seededIds.profilesByDemoUserId.get(demoUserId);
+
+  if (!profileId) {
+    throw new Error(`Missing seeded profile id for ${demoUserId}.`);
+  }
+
+  return profileId;
+}
+
+function getSeededVolunteerId(demoVolunteerId) {
+  const volunteerId = seededIds.volunteersByDemoVolunteerId.get(demoVolunteerId);
+
+  if (!volunteerId) {
+    throw new Error(`Missing seeded volunteer id for ${demoVolunteerId}.`);
+  }
+
+  return volunteerId;
+}
+
 async function seedUsers() {
   const stats = { inserted: 0, skipped: 0 };
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, PASSWORD_SALT_ROUNDS);
 
   for (const user of users) {
-    const userExists = await exists('SELECT 1 FROM users WHERE user_id = $1 OR email = $2 LIMIT 1', [
-      user.id,
-      user.email,
-    ]);
+    let userRow = await findOne('SELECT user_id, email FROM users WHERE email = $1 LIMIT 1', [user.email]);
 
-    if (userExists) {
-      logSkipped(stats, 'user', user.email);
+    if (!userRow) {
+      const userIdConflict = await findOne('SELECT user_id, email FROM users WHERE user_id = $1 LIMIT 1', [user.id]);
+
+      if (userIdConflict) {
+        throw new Error(
+          `Cannot seed ${user.email}: demo user id ${user.id} is already used by ${userIdConflict.email}.`,
+        );
+      }
+    }
+
+    if (userRow) {
+      seededIds.usersByDemoId.set(user.id, userRow.user_id);
+      logSkipped(stats, 'user', `${user.email} (${userRow.user_id})`);
     } else {
-      await query(
+      const insertedUser = await query(
         `
           INSERT INTO users (
             user_id,
@@ -275,19 +403,40 @@ async function seedUsers() {
             accepted_terms
           )
           VALUES ($1, $2, $3, TRUE, TRUE)
+          RETURNING user_id, email
         `,
         [user.id, user.email, passwordHash],
       );
+      userRow = insertedUser.rows[0];
+      seededIds.usersByDemoId.set(user.id, userRow.user_id);
       logInserted(stats, 'user', user.email);
     }
 
-    const profileId = `demo_profile_${user.id.replace('demo_user_', '')}`;
-    const profileExists = await exists('SELECT 1 FROM user_profiles WHERE user_id = $1 LIMIT 1', [user.id]);
+    const actualUserId = seededIds.usersByDemoId.get(user.id);
+    const deterministicProfileId = makeProfileId(user);
+    let profileRow = await findOne(
+      'SELECT profile_id, user_id FROM user_profiles WHERE user_id = $1 LIMIT 1',
+      [actualUserId],
+    );
 
-    if (profileExists) {
-      logSkipped(stats, 'profile', user.email);
+    if (!profileRow) {
+      const profileIdConflict = await findOne(
+        'SELECT profile_id, user_id FROM user_profiles WHERE profile_id = $1 LIMIT 1',
+        [deterministicProfileId],
+      );
+
+      if (profileIdConflict) {
+        throw new Error(
+          `Cannot seed ${user.email}: demo profile id ${deterministicProfileId} is already used by user ${profileIdConflict.user_id}.`,
+        );
+      }
+    }
+
+    if (profileRow) {
+      seededIds.profilesByDemoUserId.set(user.id, profileRow.profile_id);
+      logSkipped(stats, 'profile', `${user.email} (${profileRow.profile_id})`);
     } else {
-      await query(
+      const insertedProfile = await query(
         `
           INSERT INTO user_profiles (
             profile_id,
@@ -297,14 +446,18 @@ async function seedUsers() {
             phone_number
           )
           VALUES ($1, $2, $3, $4, $5)
+          RETURNING profile_id, user_id
         `,
-        [profileId, user.id, user.firstName, user.lastName, user.phone],
+        [deterministicProfileId, actualUserId, user.firstName, user.lastName, user.phone],
       );
+      profileRow = insertedProfile.rows[0];
+      seededIds.profilesByDemoUserId.set(user.id, profileRow.profile_id);
       logInserted(stats, 'profile', user.email);
     }
 
+    const actualProfileId = seededIds.profilesByDemoUserId.get(user.id);
     const locationExists = await exists('SELECT 1 FROM location_profiles WHERE profile_id = $1 LIMIT 1', [
-      profileId,
+      actualProfileId,
     ]);
 
     if (locationExists) {
@@ -332,8 +485,8 @@ async function seedUsers() {
           VALUES ($1, $2, $3, $3, 'Istanbul', 'Türkiye', 'TR', $4, $5, $6, $7, $8, 25, 'DEMO', CURRENT_TIMESTAMP)
         `,
         [
-          `demo_location_profile_${user.id.replace('demo_user_', '')}`,
-          profileId,
+          makeProfileChildId('demo_location_profile', user),
+          actualProfileId,
           `${user.location.neighborhood}, ${user.location.district} - ${user.location.extraAddress}`,
           user.location.district,
           user.location.neighborhood,
@@ -345,22 +498,132 @@ async function seedUsers() {
       logInserted(stats, 'location profile', user.email);
     }
 
+    const physicalExists = await exists('SELECT 1 FROM physical_info WHERE profile_id = $1 LIMIT 1', [
+      actualProfileId,
+    ]);
+
+    if (physicalExists) {
+      logSkipped(stats, 'physical info', user.email);
+    } else {
+      await query(
+        `
+          INSERT INTO physical_info (
+            physical_id,
+            profile_id,
+            age,
+            gender,
+            height,
+            weight
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [
+          makeProfileChildId('demo_physical', user),
+          actualProfileId,
+          user.physical.age,
+          user.physical.gender,
+          user.physical.height,
+          user.physical.weight,
+        ],
+      );
+      logInserted(stats, 'physical info', user.email);
+    }
+
+    const healthExists = await exists('SELECT 1 FROM health_info WHERE profile_id = $1 LIMIT 1', [
+      actualProfileId,
+    ]);
+
+    if (healthExists) {
+      logSkipped(stats, 'health info', user.email);
+    } else {
+      await query(
+        `
+          INSERT INTO health_info (
+            health_id,
+            profile_id,
+            medical_conditions,
+            chronic_diseases,
+            allergies,
+            medications,
+            blood_type
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `,
+        [
+          makeProfileChildId('demo_health', user),
+          actualProfileId,
+          user.health.medicalConditions,
+          user.health.chronicDiseases,
+          user.health.allergies,
+          user.health.medications,
+          user.health.bloodType,
+        ],
+      );
+      logInserted(stats, 'health info', user.email);
+    }
+
+    const privacyExists = await exists('SELECT 1 FROM privacy_settings WHERE profile_id = $1 LIMIT 1', [
+      actualProfileId,
+    ]);
+
+    if (privacyExists) {
+      logSkipped(stats, 'privacy settings', user.email);
+    } else {
+      await query(
+        `
+          INSERT INTO privacy_settings (
+            settings_id,
+            profile_id,
+            profile_visibility,
+            health_info_visibility,
+            location_visibility,
+            location_sharing_enabled
+          )
+          VALUES ($1, $2, $3::visibility_level, $4::visibility_level, $5::visibility_level, $6)
+        `,
+        [
+          makeProfileChildId('demo_privacy', user),
+          actualProfileId,
+          user.privacy.profileVisibility,
+          user.privacy.healthInfoVisibility,
+          user.privacy.locationVisibility,
+          user.privacy.locationSharingEnabled,
+        ],
+      );
+      logInserted(stats, 'privacy settings', user.email);
+    }
+
     if (user.adminId) {
-      const adminExists = await exists('SELECT 1 FROM admins WHERE admin_id = $1 OR user_id = $2 LIMIT 1', [
-        user.adminId,
-        user.id,
+      let adminRow = await findOne('SELECT admin_id, user_id FROM admins WHERE user_id = $1 LIMIT 1', [
+        actualUserId,
       ]);
 
-      if (adminExists) {
-        logSkipped(stats, 'admin', user.email);
+      if (!adminRow) {
+        const adminIdConflict = await findOne('SELECT admin_id, user_id FROM admins WHERE admin_id = $1 LIMIT 1', [
+          user.adminId,
+        ]);
+
+        if (adminIdConflict) {
+          throw new Error(
+            `Cannot seed ${user.email}: demo admin id ${user.adminId} is already used by user ${adminIdConflict.user_id}.`,
+          );
+        }
+      }
+
+      if (adminRow) {
+        seededIds.adminId = adminRow.admin_id;
+        logSkipped(stats, 'admin', `${user.email} (${adminRow.admin_id})`);
       } else {
-        await query(
-          'INSERT INTO admins (admin_id, user_id, role) VALUES ($1, $2, $3)',
-          [user.adminId, user.id, 'SUPER_ADMIN'],
+        const insertedAdmin = await query(
+          'INSERT INTO admins (admin_id, user_id, role) VALUES ($1, $2, $3) RETURNING admin_id',
+          [user.adminId, actualUserId, 'SUPER_ADMIN'],
         );
+        adminRow = insertedAdmin.rows[0];
+        seededIds.adminId = adminRow.admin_id;
         logInserted(stats, 'admin', user.email);
       }
     }
+
   }
 
   return stats;
@@ -371,15 +634,30 @@ async function seedVolunteers() {
   const volunteerUsers = users.filter((user) => user.volunteerId);
 
   for (const user of volunteerUsers) {
-    const volunteerExists = await exists('SELECT 1 FROM volunteers WHERE volunteer_id = $1 OR user_id = $2 LIMIT 1', [
-      user.volunteerId,
-      user.id,
+    const actualUserId = getSeededUserId(user.id);
+    const actualProfileId = getSeededProfileId(user.id);
+    let volunteerRow = await findOne('SELECT volunteer_id, user_id FROM volunteers WHERE user_id = $1 LIMIT 1', [
+      actualUserId,
     ]);
 
-    if (volunteerExists) {
-      logSkipped(stats, 'volunteer', user.email);
+    if (!volunteerRow) {
+      const volunteerIdConflict = await findOne(
+        'SELECT volunteer_id, user_id FROM volunteers WHERE volunteer_id = $1 LIMIT 1',
+        [user.volunteerId],
+      );
+
+      if (volunteerIdConflict) {
+        throw new Error(
+          `Cannot seed ${user.email}: demo volunteer id ${user.volunteerId} is already used by user ${volunteerIdConflict.user_id}.`,
+        );
+      }
+    }
+
+    if (volunteerRow) {
+      seededIds.volunteersByDemoVolunteerId.set(user.volunteerId, volunteerRow.volunteer_id);
+      logSkipped(stats, 'volunteer', `${user.email} (${volunteerRow.volunteer_id})`);
     } else {
-      await query(
+      const insertedVolunteer = await query(
         `
           INSERT INTO volunteers (
             volunteer_id,
@@ -392,24 +670,34 @@ async function seedVolunteers() {
             location_updated_at
           )
           VALUES ($1, $2, TRUE, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+          RETURNING volunteer_id, user_id
         `,
         [
           user.volunteerId,
-          user.id,
+          actualUserId,
           user.skills,
           user.needTypes,
           user.location.latitude,
           user.location.longitude,
         ],
       );
+      volunteerRow = insertedVolunteer.rows[0];
+      seededIds.volunteersByDemoVolunteerId.set(user.volunteerId, volunteerRow.volunteer_id);
       logInserted(stats, 'volunteer', user.email);
     }
 
-    const profileId = `demo_profile_${user.id.replace('demo_user_', '')}`;
     const expertiseId = `demo_expertise_${user.id.replace('demo_user_', '')}`;
-    const expertiseExists = await exists('SELECT 1 FROM expertise WHERE expertise_id = $1 LIMIT 1', [expertiseId]);
+    const expertiseRow = await findOne('SELECT expertise_id, profile_id FROM expertise WHERE expertise_id = $1 LIMIT 1', [
+      expertiseId,
+    ]);
 
-    if (expertiseExists) {
+    if (expertiseRow && expertiseRow.profile_id !== actualProfileId) {
+      throw new Error(
+        `Cannot seed ${user.email}: demo expertise id ${expertiseId} is already used by profile ${expertiseRow.profile_id}.`,
+      );
+    }
+
+    if (expertiseRow) {
       logSkipped(stats, 'expertise', user.email);
     } else {
       await query(
@@ -425,7 +713,7 @@ async function seedVolunteers() {
         `,
         [
           expertiseId,
-          profileId,
+          actualProfileId,
           user.volunteerId === 'demo_volunteer_elif' ? 'Paramedic volunteer' : 'Logistics volunteer',
           user.volunteerId === 'demo_volunteer_elif' ? 'medical' : 'food/water',
         ],
@@ -489,7 +777,7 @@ async function seedRequests() {
         `,
         [
           request.id,
-          request.userId,
+          getSeededUserId(request.userId),
           request.helpTypes,
           request.affectedPeopleCount,
           request.riskFlags,
@@ -563,7 +851,7 @@ async function seedRequests() {
             )
             VALUES ($1, $2, $3, CURRENT_TIMESTAMP - INTERVAL '20 minutes', FALSE)
           `,
-          [request.assignmentId, request.assignedVolunteerId, request.id],
+          [request.assignmentId, getSeededVolunteerId(request.assignedVolunteerId), request.id],
         );
         logInserted(stats, 'assignment', request.assignmentId);
       }
@@ -575,7 +863,10 @@ async function seedRequests() {
 
 async function seedAnnouncements() {
   const stats = { inserted: 0, skipped: 0 };
-  const adminId = users.find((user) => user.adminId).adminId;
+
+  if (!seededIds.adminId) {
+    throw new Error('Missing seeded admin id for demo announcements.');
+  }
 
   for (const announcement of announcements) {
     const announcementExists = await exists('SELECT 1 FROM news_announcements WHERE announcement_id = $1 LIMIT 1', [
@@ -595,7 +886,7 @@ async function seedAnnouncements() {
           )
           VALUES ($1, $2, $3, $4)
         `,
-        [announcement.id, adminId, announcement.title, announcement.content],
+        [announcement.id, seededIds.adminId, announcement.title, announcement.content],
       );
       logInserted(stats, 'announcement', announcement.title);
     }
@@ -632,8 +923,8 @@ async function seedNotifications() {
         `,
         [
           notification.id,
-          notification.recipientUserId,
-          notification.actorUserId,
+          getSeededUserId(notification.recipientUserId),
+          getSeededUserId(notification.actorUserId),
           notification.type,
           notification.title,
           notification.body,
