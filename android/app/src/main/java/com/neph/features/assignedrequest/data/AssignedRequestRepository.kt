@@ -55,6 +55,12 @@ data class AssignedRequestUiModel(
         get() = syncStatus == SyncStatus.FAILED || syncStatus == SyncStatus.CONFLICTED
 }
 
+data class AssignmentRouteUiModel(
+    val distanceKm: Double,
+    val estimatedTimeMin: Int?,
+    val source: String
+)
+
 object AssignedRequestRepository {
     private val database get() = NephDatabaseProvider.requireInstance()
 
@@ -113,6 +119,34 @@ object AssignedRequestRepository {
         )
         OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "assignment-cancelled")
         return pending.toUiModel()
+    }
+
+    suspend fun fetchAssignmentRoute(token: String, assignmentId: String): AssignmentRouteUiModel? {
+        val response = JsonHttpClient.request(
+            path = "/assignments/$assignmentId/route",
+            token = token
+        )
+
+        if (response.optString("error") == "location_unavailable") {
+            return null
+        }
+
+        val distanceKm = response.optDouble("distance_km", Double.NaN)
+        if (!distanceKm.isFinite() || distanceKm < 0.0) {
+            return null
+        }
+
+        val estimatedTimeMin = response.opt("estimated_time_min")
+            ?.toString()
+            ?.toDoubleOrNull()
+            ?.toInt()
+            ?.takeIf { it > 0 }
+
+        return AssignmentRouteUiModel(
+            distanceKm = distanceKm,
+            estimatedTimeMin = estimatedTimeMin,
+            source = response.optString("source").ifBlank { "fallback" }
+        )
     }
 
     internal suspend fun pushCancelOperation(operation: SyncOperationEntity, token: String?) {
