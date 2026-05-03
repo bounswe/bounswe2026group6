@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -385,6 +386,7 @@ private fun CrisisRequestMapPanel(
     val latSpan = (maxLatitude - minLatitude).takeIf { it > 0.000001 } ?: 0.01
     val lonSpan = (maxLongitude - minLongitude).takeIf { it > 0.000001 } ?: 0.01
     val selectedRequest = requests.firstOrNull { it.requestId == selectedRequestId }
+    val density = LocalDensity.current
 
     Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
         SectionHeader(
@@ -416,13 +418,13 @@ private fun CrisisRequestMapPanel(
                     }
                 }
         ) {
-            val mapWidth = maxWidth
-            val mapHeight = maxHeight
+            val availableHeight = maxHeight
+            val availableWidth = maxWidth
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(mapHeight)
+                    .height(availableHeight)
                     .graphicsLayer {
                         scaleX = zoom
                         scaleY = zoom
@@ -432,49 +434,82 @@ private fun CrisisRequestMapPanel(
             ) {
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset(0, (mapHeight * 0.22f).roundToPx()) }
+                        .offset {
+                            IntOffset(
+                                0,
+                                with(density) { (availableHeight * 0.22f).roundToPx() }
+                            )
+                        }
                         .fillMaxWidth()
                         .height(12.dp)
                 )
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset(0, (mapHeight * 0.58f).roundToPx()) }
+                        .offset {
+                            IntOffset(
+                                0,
+                                with(density) { (availableHeight * 0.58f).roundToPx() }
+                            )
+                        }
                         .fillMaxWidth()
                         .height(9.dp)
                 )
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset((mapWidth * 0.30f).roundToPx(), 0) }
-                        .size(11.dp, mapHeight)
+                        .offset {
+                            IntOffset(
+                                with(density) { (availableWidth * 0.30f).roundToPx() },
+                                0
+                            )
+                        }
+                        .size(11.dp, availableHeight)
                 )
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset((mapWidth * 0.70f).roundToPx(), 0) }
-                        .size(8.dp, mapHeight)
+                        .offset {
+                            IntOffset(
+                                with(density) { (availableWidth * 0.70f).roundToPx() },
+                                0
+                            )
+                        }
+                        .size(8.dp, availableHeight)
                 )
                 MapNeighborhoodPatch(
                     modifier = Modifier
-                        .offset { IntOffset((mapWidth * 0.08f).roundToPx(), (mapHeight * 0.10f).roundToPx()) }
-                        .size(width = mapWidth * 0.24f, height = mapHeight * 0.18f)
+                        .offset {
+                            IntOffset(
+                                with(density) { (availableWidth * 0.08f).roundToPx() },
+                                with(density) { (availableHeight * 0.10f).roundToPx() }
+                            )
+                        }
+                        .size(width = availableWidth * 0.24f, height = availableHeight * 0.18f)
                 )
                 MapNeighborhoodPatch(
                     modifier = Modifier
-                        .offset { IntOffset((mapWidth * 0.58f).roundToPx(), (mapHeight * 0.68f).roundToPx()) }
-                        .size(width = mapWidth * 0.28f, height = mapHeight * 0.16f)
+                        .offset {
+                            IntOffset(
+                                with(density) { (availableWidth * 0.58f).roundToPx() },
+                                with(density) { (availableHeight * 0.68f).roundToPx() }
+                            )
+                        }
+                        .size(width = availableWidth * 0.28f, height = availableHeight * 0.16f)
                 )
 
                 requests.forEach { item ->
                     val xFraction = ((item.longitude - minLongitude) / lonSpan).coerceIn(0.08, 0.92)
                     val yFraction = (1.0 - ((item.latitude - minLatitude) / latSpan)).coerceIn(0.10, 0.88)
+                    val x = with(density) {
+                        (availableWidth * xFraction.toFloat()).roundToPx()
+                    } - 21
+                    val y = with(density) {
+                        (availableHeight * yFraction.toFloat()).roundToPx()
+                    } - 42
 
                     MapMarker(
                         item = item,
                         selected = item.requestId == selectedRequestId,
                         modifier = Modifier.offset {
-                            IntOffset(
-                                (mapWidth * xFraction.toFloat()).roundToPx() - 21,
-                                (mapHeight * yFraction.toFloat()).roundToPx() - 42
-                            )
+                            IntOffset(x, y)
                         },
                         onClick = { onSelectRequest(item.requestId) }
                     )
