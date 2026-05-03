@@ -14,7 +14,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +44,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private const val DefaultCenterLatitude = 39.9334
-private const val DefaultCenterLongitude = 32.8597
+private enum class GatheringAreasSearchOrigin {
+    CURRENT_LOCATION,
+    OTHER
+}
 
 @Composable
 fun GatheringAreasScreen(
@@ -60,15 +61,28 @@ fun GatheringAreasScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
-    var sourceLabel by remember { mutableStateOf("Ankara city center") }
-    var lastCenterLatitude by remember { mutableStateOf(DefaultCenterLatitude) }
-    var lastCenterLongitude by remember { mutableStateOf(DefaultCenterLongitude) }
+    var sourceLabel by remember { mutableStateOf("") }
+    var lastCenterLatitude by remember { mutableStateOf<Double?>(null) }
+    var lastCenterLongitude by remember { mutableStateOf<Double?>(null) }
+    var lastSearchOrigin by remember { mutableStateOf<GatheringAreasSearchOrigin?>(null) }
     var nearbyResult by remember { mutableStateOf<NearbyGatheringAreasResult?>(null) }
+    val hasSearchCenter = lastCenterLatitude != null && lastCenterLongitude != null
 
-    fun fetchGatheringAreas(lat: Double, lon: Double, label: String) {
+    fun fetchGatheringAreas(
+        lat: Double,
+        lon: Double,
+        label: String,
+        origin: GatheringAreasSearchOrigin
+    ) {
+        val normalizedLabel = label.ifBlank { "selected location" }
+        sourceLabel = normalizedLabel
+        lastCenterLatitude = lat
+        lastCenterLongitude = lon
+        lastSearchOrigin = origin
+
         scope.launch {
             loading = true
             errorMessage = ""
@@ -80,7 +94,7 @@ fun GatheringAreasScreen(
                     longitude = lon
                 )
                 nearbyResult = result
-                sourceLabel = label
+                sourceLabel = normalizedLabel
                 lastCenterLatitude = result.centerLatitude
                 lastCenterLongitude = result.centerLongitude
 
@@ -92,12 +106,9 @@ fun GatheringAreasScreen(
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (error: ApiException) {
-                errorMessage = when (error.code) {
-                    "OVERPASS_TIMEOUT" -> "Gathering area lookup timed out. Please retry."
-                    "OVERPASS_UNAVAILABLE" -> "Gathering area provider is temporarily unavailable."
-                    else -> error.message.ifBlank {
-                        "Could not load gathering areas right now."
-                    }
+                errorMessage = mapGatheringAreasErrorMessage(error)
+                if (lastSearchOrigin == GatheringAreasSearchOrigin.CURRENT_LOCATION && isProviderError(error)) {
+                    infoMessage = "Current location detected. Nearby gathering areas could not be loaded right now."
                 }
             } catch (_: Exception) {
                 errorMessage = "Could not load gathering areas right now."
@@ -124,7 +135,8 @@ fun GatheringAreasScreen(
                     fetchGatheringAreas(
                         lat = location.latitude,
                         lon = location.longitude,
-                        label = "your current location"
+                        label = "your current location",
+                        origin = GatheringAreasSearchOrigin.CURRENT_LOCATION
                     )
                     return@launch
                 }
@@ -132,7 +144,7 @@ fun GatheringAreasScreen(
                 loading = false
                 infoMessage = when (attempt.warning) {
                     CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Location permission is denied. Nearby results were not updated."
+                        "Location permission was denied. Nearby results were not updated."
 
                     CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
                     null -> "Current location is unavailable. Nearby results were not updated."
@@ -152,7 +164,7 @@ fun GatheringAreasScreen(
         if (grants.values.any { it }) {
             requestCurrentLocationAndRefresh()
         } else {
-            infoMessage = "Location permission denied. Nearby results were not updated."
+            infoMessage = "Location permission was denied. Nearby results were not updated."
         }
     }
 
@@ -166,14 +178,6 @@ fun GatheringAreasScreen(
         if (!opened) {
             infoMessage = "Could not open map application."
         }
-    }
-
-    LaunchedEffect(Unit) {
-        fetchGatheringAreas(
-            lat = DefaultCenterLatitude,
-            lon = DefaultCenterLongitude,
-            label = "Ankara city center"
-        )
     }
 
     AppDrawerScaffold(
@@ -201,9 +205,13 @@ fun GatheringAreasScreen(
                         subtitle = "Location-based assembly points and shelters are retrieved from the gathering areas service."
                     )
 
-                    HelperText(
-                        text = "Showing results around $sourceLabel (${formatMapCoordinate(lastCenterLatitude)}, ${formatMapCoordinate(lastCenterLongitude)})."
-                    )
+                    if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
+                        HelperText(
+                            text = "Showing results around $sourceLabel (${formatMapCoordinate(lastCenterLatitude!!)}, ${formatMapCoordinate(lastCenterLongitude!!)})."
+                        )
+                    } else {
+                        HelperText(text = "Use your current location to find nearby gathering areas.")
+                    }
 
                     SecondaryButton(
                         text = "Use Current Location",
@@ -220,13 +228,16 @@ fun GatheringAreasScreen(
                     SecondaryButton(
                         text = "Refresh Nearby Areas",
                         onClick = {
+                            val lat = lastCenterLatitude ?: return@SecondaryButton
+                            val lon = lastCenterLongitude ?: return@SecondaryButton
                             fetchGatheringAreas(
-                                lat = lastCenterLatitude,
-                                lon = lastCenterLongitude,
-                                label = sourceLabel
+                                lat = lat,
+                                lon = lon,
+                                label = sourceLabel,
+                                origin = lastSearchOrigin ?: GatheringAreasSearchOrigin.OTHER
                             )
                         },
-                        enabled = !loading
+                        enabled = !loading && hasSearchCenter
                     )
                 }
             }
@@ -242,37 +253,49 @@ fun GatheringAreasScreen(
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                             HelperText(text = errorMessage)
-                            SecondaryButton(
-                                text = "Retry",
-                                onClick = {
-                                    fetchGatheringAreas(
-                                        lat = lastCenterLatitude,
-                                        lon = lastCenterLongitude,
-                                        label = sourceLabel
-                                    )
-                                }
-                            )
+                            if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
+                                SecondaryButton(
+                                    text = "Retry",
+                                    onClick = {
+                                        fetchGatheringAreas(
+                                            lat = lastCenterLatitude!!,
+                                            lon = lastCenterLongitude!!,
+                                            label = sourceLabel,
+                                            origin = lastSearchOrigin ?: GatheringAreasSearchOrigin.OTHER
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
 
-                nearbyResult?.areas.isNullOrEmpty() -> {
+                !hasSearchCenter -> {
+                    SectionCard {
+                        HelperText(text = "Use your current location to find nearby gathering areas.")
+                    }
+                }
+
+                nearbyResult?.areas?.isEmpty() == true -> {
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                             SectionHeader(
                                 title = "No Gathering Areas Found",
                                 subtitle = "Try refreshing or using your current location for a different area."
                             )
-                            SecondaryButton(
-                                text = "Retry",
-                                onClick = {
-                                    fetchGatheringAreas(
-                                        lat = lastCenterLatitude,
-                                        lon = lastCenterLongitude,
-                                        label = sourceLabel
-                                    )
-                                }
-                            )
+                            if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
+                                SecondaryButton(
+                                    text = "Retry",
+                                    onClick = {
+                                        fetchGatheringAreas(
+                                            lat = lastCenterLatitude!!,
+                                            lon = lastCenterLongitude!!,
+                                            label = sourceLabel,
+                                            origin = lastSearchOrigin ?: GatheringAreasSearchOrigin.OTHER
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -378,6 +401,26 @@ private fun formatCategory(category: String): String {
         "assembly_point" -> "Assembly Point"
         "shelter" -> "Shelter"
         else -> category.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    }
+}
+
+private fun isProviderError(error: ApiException): Boolean {
+    return isProviderTimeout(error) || isProviderUnavailable(error)
+}
+
+private fun isProviderTimeout(error: ApiException): Boolean {
+    return error.code == "OVERPASS_TIMEOUT" || error.status == 504
+}
+
+private fun isProviderUnavailable(error: ApiException): Boolean {
+    return error.code == "OVERPASS_UNAVAILABLE" || error.status == 503
+}
+
+internal fun mapGatheringAreasErrorMessage(error: ApiException): String {
+    return when {
+        isProviderTimeout(error) -> "Gathering area lookup timed out. Please try again."
+        isProviderUnavailable(error) -> "Nearby gathering areas could not be loaded right now. Please try again later."
+        else -> error.message.ifBlank { "Could not load gathering areas right now." }
     }
 }
 
