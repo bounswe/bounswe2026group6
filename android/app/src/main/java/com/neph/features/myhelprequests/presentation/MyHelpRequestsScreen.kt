@@ -141,16 +141,16 @@ fun MyHelpRequestsScreen(
                         }
                     }
 
-                        item {
-                            SectionHeader(
-                                title = "Current Request",
-                                subtitle = if (isAuthenticated) {
-                                    "Your latest active help request is shown first."
-                                } else {
-                                    "Your latest guest help request is shown first."
-                                }
-                            )
-                        }
+                    item {
+                        SectionHeader(
+                            title = "Current Request",
+                            subtitle = if (isAuthenticated) {
+                                "Your latest active help request is shown first."
+                            } else {
+                                "Your latest guest help request is shown first."
+                            }
+                        )
+                    }
 
                     if (currentActiveRequest == null) {
                         item {
@@ -454,22 +454,6 @@ private fun MyHelpRequestCard(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-
-            request.urgencyLabel?.let {
-                Text(
-                    text = "Urgency: $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            request.priorityLabel?.let {
-                Text(
-                    text = "Priority: $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
 
             request.openDurationLabel?.let {
                 Text(
