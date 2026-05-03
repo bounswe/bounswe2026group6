@@ -30,6 +30,7 @@ import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.Routes
@@ -148,17 +149,27 @@ fun HomeScreen(
                 }
                 if (hasActiveRequest) {
                     onOpenMyHelpRequests()
+                } else if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+                    onRequestHelp(null)
                 } else {
                     val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
                         context = context,
                         sharingEnabled = true
                     )
                     val currentLocation = locationAttempt.location
+                    val reverseLocation = if (currentLocation != null) {
+                        RequestHelpRepository.reverseGeocodeCurrentLocation(
+                            latitude = currentLocation.latitude,
+                            longitude = currentLocation.longitude
+                        )
+                    } else {
+                        null
+                    }
                     val draft = RequestHelpRepository.createEmergencyDraft(
                         token = sessionToken,
                         profile = ProfileRepository.getProfile(),
                         currentLocation = currentLocation,
-                        reverseLocation = null
+                        reverseLocation = reverseLocation
                     )
                     onRequestHelp(draft.requestId)
                 }
@@ -170,6 +181,8 @@ fun HomeScreen(
                 } else {
                     requestHelpError = "We could not verify your current help request status. Please try again."
                 }
+            } catch (_: EmergencyDraftRequirementsException) {
+                onRequestHelp(null)
             } catch (_: Exception) {
                 requestHelpError = "We could not verify your current help request status. Please try again."
             } finally {

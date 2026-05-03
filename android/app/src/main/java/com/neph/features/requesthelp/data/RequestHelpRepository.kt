@@ -88,6 +88,10 @@ data class GuestTrackedHelpRequest(
     val guestAccessToken: String
 )
 
+class EmergencyDraftRequirementsException(
+    message: String
+) : IllegalStateException(message)
+
 object RequestHelpRepository {
     private const val PrefsName = "neph_guest_help_requests"
     private const val GuestRequestsKey = "guest_requests"
@@ -609,7 +613,7 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
     }
 }
 
-private fun buildEmergencyDraftSubmission(
+internal fun buildEmergencyDraftSubmission(
     profile: ProfileData,
     currentLocation: CurrentDeviceLocation?,
     reverseLocation: RequestHelpReverseLocation?
@@ -619,10 +623,49 @@ private fun buildEmergencyDraftSubmission(
         .takeIf { phoneParts.countryCode == "+90" }
         ?.toLongOrNull()
         ?.takeIf { it in 5000000000L..5999999999L }
-        ?: 5000000000L
-    val fallbackAddress = profile.extraAddress?.takeIf { it.isNotBlank() }
-        ?: reverseLocation?.extraAddress?.takeIf { it.isNotBlank() }
-        ?: "Details pending from mobile emergency draft"
+        ?: throw EmergencyDraftRequirementsException(
+            "A valid Turkish mobile phone number is required before creating a quick emergency draft."
+        )
+    val contactName = profile.fullName?.trim()?.takeIf { it.isNotBlank() }
+        ?: listOfNotNull(profile.firstName, profile.lastName)
+            .joinToString(" ") { it.trim() }
+            .trim()
+            .takeIf { it.isNotBlank() }
+        ?: throw EmergencyDraftRequirementsException(
+            "A real contact name is required before creating a quick emergency draft."
+        )
+    val profileCoordinatesAllowed = profile.shareLocation == true
+        && profile.sharedLatitude != null
+        && profile.sharedLongitude != null
+    val latitude = currentLocation?.latitude ?: profile.sharedLatitude.takeIf { profileCoordinatesAllowed }
+    val longitude = currentLocation?.longitude ?: profile.sharedLongitude.takeIf { profileCoordinatesAllowed }
+    val coordinateSource = currentLocation?.source ?: latitude.takeIf { profileCoordinatesAllowed }?.let { "PROFILE_LAST_SHARED" }
+    val coordinateCapturedAt = currentLocation?.capturedAt
+    val country = reverseLocation?.country?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.country?.trim()?.takeIf { it.isNotBlank() }
+    val city = reverseLocation?.city?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.city?.trim()?.takeIf { it.isNotBlank() }
+    val district = reverseLocation?.district?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.district?.trim()?.takeIf { it.isNotBlank() }
+    val neighborhood = reverseLocation?.neighborhood?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.neighborhood?.trim()?.takeIf { it.isNotBlank() }
+
+    if (
+        latitude == null ||
+        longitude == null ||
+        country == null ||
+        city == null ||
+        district == null ||
+        neighborhood == null
+    ) {
+        throw EmergencyDraftRequirementsException(
+            "A real emergency location is required before creating a quick emergency draft."
+        )
+    }
+
+    val extraAddress = reverseLocation?.extraAddress?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.extraAddress?.trim()?.takeIf { it.isNotBlank() }
+        ?: ""
 
     return RequestHelpSubmission(
         helpTypes = listOf("other"),
@@ -633,26 +676,18 @@ private fun buildEmergencyDraftSubmission(
         vulnerableGroups = emptyList(),
         bloodType = profile.bloodType.orEmpty(),
         location = RequestHelpLocationSubmission(
-            country = reverseLocation?.country?.takeIf { it.isNotBlank() }
-                ?: profile.country?.takeIf { it.isNotBlank() }
-                ?: "unknown",
-            city = reverseLocation?.city?.takeIf { it.isNotBlank() }
-                ?: profile.city?.takeIf { it.isNotBlank() }
-                ?: "unknown",
-            district = reverseLocation?.district?.takeIf { it.isNotBlank() }
-                ?: profile.district?.takeIf { it.isNotBlank() }
-                ?: "unknown",
-            neighborhood = reverseLocation?.neighborhood?.takeIf { it.isNotBlank() }
-                ?: profile.neighborhood?.takeIf { it.isNotBlank() }
-                ?: "unknown",
-            extraAddress = fallbackAddress,
-            latitude = currentLocation?.latitude ?: profile.sharedLatitude.takeIf { profile.shareLocation == true },
-            longitude = currentLocation?.longitude ?: profile.sharedLongitude.takeIf { profile.shareLocation == true },
-            coordinateSource = currentLocation?.source ?: profile.sharedLatitude.takeIf { profile.shareLocation == true }?.let { "PROFILE_LAST_SHARED" },
-            coordinateCapturedAt = currentLocation?.capturedAt
+            country = country,
+            city = city,
+            district = district,
+            neighborhood = neighborhood,
+            extraAddress = extraAddress,
+            latitude = latitude,
+            longitude = longitude,
+            coordinateSource = coordinateSource,
+            coordinateCapturedAt = coordinateCapturedAt
         ),
         contact = RequestHelpContactSubmission(
-            fullName = profile.fullName?.takeIf { it.isNotBlank() } ?: "Unknown requester",
+            fullName = contactName,
             phone = primaryPhone,
             alternativePhone = null
         ),
