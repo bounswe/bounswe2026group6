@@ -55,7 +55,11 @@ import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.components.selection.AppMultiSelectChipGroup
 import com.neph.ui.layout.AppScaffold
+import com.neph.ui.map.MapPickerDialog
+import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
+import com.neph.ui.map.formatMapCoordinate
+import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -393,6 +397,9 @@ fun RequestHelpScreen(
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
     var mapActionMessage by rememberSaveable { mutableStateOf("") }
+    var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
+    var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
     var guestLocationAutoFillLoading by remember { mutableStateOf(false) }
     var guestLocationPermissionHandled by rememberSaveable { mutableStateOf(false) }
@@ -457,6 +464,54 @@ fun RequestHelpScreen(
                 infoMessage = "Could not retrieve your current location. You can continue with manual location entry."
             } finally {
                 guestLocationAutoFillLoading = false
+            }
+        }
+    }
+
+    fun handleMapSelection(selection: MapPickerSelection) {
+        if (mapPickerLoading) return
+
+        mapPickerLoading = true
+        mapActionMessage = ""
+
+        scope.launch {
+            try {
+                val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
+                    latitude = selection.latitude,
+                    longitude = selection.longitude
+                )
+                val update = resolveMapPickerLocationUpdate(
+                    currentCountry = formState.country,
+                    currentCity = formState.city,
+                    currentDistrict = formState.district,
+                    currentNeighborhood = formState.neighborhood,
+                    currentExtraAddress = formState.shortAddress,
+                    reverseLocation = reverseLocation,
+                    locations = availableLocationData
+                )
+                formState = formState.copy(
+                    country = update.country,
+                    city = update.city,
+                    district = update.district,
+                    neighborhood = update.neighborhood,
+                    shortAddress = update.extraAddress
+                )
+                mapActionMessage = when {
+                    reverseLocation == null ->
+                        "Could not resolve selected coordinates. You can continue with manual location entry."
+                    update.isMeaningfulMapping ->
+                        "Selected location applied."
+                    else ->
+                        "Selected coordinates were detected. Please verify the location fields manually."
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                mapActionMessage = "Could not resolve selected coordinates. You can continue with manual location entry."
+            } finally {
+                mapPickerSelection = selection
+                mapPickerLoading = false
+                mapPickerOpen = false
             }
         }
     }
@@ -740,6 +795,18 @@ fun RequestHelpScreen(
                         neighborhoodError = fieldErrors.neighborhood
                     )
 
+                    SecondaryButton(
+                        text = "Select Location on Map",
+                        onClick = { mapPickerOpen = true },
+                        enabled = !locationLoading && !loading
+                    )
+
+                    mapPickerSelection?.let { selection ->
+                        HelperText(
+                            text = "Selected coordinates: ${formatMapCoordinate(selection.latitude)}, ${formatMapCoordinate(selection.longitude)}"
+                        )
+                    }
+
                     AppTextField(
                         value = formState.shortAddress,
                         onValueChange = { formState = formState.copy(shortAddress = it) },
@@ -758,6 +825,16 @@ fun RequestHelpScreen(
                         onOpenFailure = { mapActionMessage = it },
                         onOpenSuccess = { mapActionMessage = "" }
                     )
+
+                    if (mapPickerOpen) {
+                        MapPickerDialog(
+                            initialLatitude = mapPickerSelection?.latitude,
+                            initialLongitude = mapPickerSelection?.longitude,
+                            loading = mapPickerLoading,
+                            onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
+                            onConfirm = ::handleMapSelection
+                        )
+                    }
                 }
             }
 
