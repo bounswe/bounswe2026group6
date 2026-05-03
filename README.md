@@ -169,6 +169,39 @@ Notes:
 - the backend waits for PostgreSQL to become healthy before starting
 - the web container is configured to talk to the backend in the local Docker setup
 
+### Demo data seed
+
+After migrations have run, you can populate the app with clearly marked demo data for presentations and evaluation. The seed is idempotent, so running it again skips existing demo records instead of creating duplicates.
+
+For the Docker Compose setup, including EC2 deployments that run this repository with Compose:
+
+```bash
+docker compose exec -e ENABLE_DEMO_SEED=true backend node scripts/seed-demo-data.js
+```
+
+For a backend process running directly on the host:
+
+```bash
+cd backend
+ENABLE_DEMO_SEED=true node scripts/seed-demo-data.js
+```
+
+Demo login password for `*@neph.test` users:
+
+```text
+DemoPass123!
+```
+
+Demo accounts:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin_demo@neph.test` | `DemoPass123!` |
+| Requester | `requester_ayse@neph.test` | `DemoPass123!` |
+| Requester | `requester_mert@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_elif@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_can@neph.test` | `DemoPass123!` |
+
 ### Optional non-Docker development
 
 If you want to run modules directly on your machine instead of Docker Compose, use the module-specific setup inside each folder:
