@@ -12,7 +12,9 @@ data class MapPickerLocationUpdate(
     val city: String,
     val district: String,
     val neighborhood: String,
-    val extraAddress: String
+    val extraAddress: String,
+    val hasStructuredMatch: Boolean,
+    val isMeaningfulMapping: Boolean
 )
 
 fun resolveMapPickerLocationUpdate(
@@ -24,18 +26,15 @@ fun resolveMapPickerLocationUpdate(
     reverseLocation: RequestHelpReverseLocation?,
     locations: LocationData
 ): MapPickerLocationUpdate {
-    val normalizedExtraAddress = reverseLocation?.extraAddress
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-        ?: currentExtraAddress
-
     if (reverseLocation == null) {
         return MapPickerLocationUpdate(
             country = currentCountry,
             city = currentCity,
             district = currentDistrict,
             neighborhood = currentNeighborhood,
-            extraAddress = normalizedExtraAddress
+            extraAddress = currentExtraAddress,
+            hasStructuredMatch = false,
+            isMeaningfulMapping = false
         )
     }
 
@@ -61,6 +60,24 @@ fun resolveMapPickerLocationUpdate(
         findNeighborhoodValueByLabel(mappedCountry, mappedCity, mappedDistrict, reverseLocation.neighborhood, locations)
     } else {
         ""
+    }
+
+    val hasStructuredMatch = mappedCountry.isNotBlank() ||
+        mappedCity.isNotBlank() ||
+        mappedDistrict.isNotBlank() ||
+        mappedNeighborhood.isNotBlank()
+    val isMeaningfulMapping = mappedCountry.isNotBlank() &&
+        mappedCity.isNotBlank() &&
+        mappedDistrict.isNotBlank() &&
+        mappedNeighborhood.isNotBlank()
+
+    val normalizedExtraAddress = if (hasStructuredMatch) {
+        reverseLocation.extraAddress
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: currentExtraAddress
+    } else {
+        currentExtraAddress
     }
 
     var nextCountry = currentCountry
@@ -104,6 +121,8 @@ fun resolveMapPickerLocationUpdate(
         city = nextCity,
         district = nextDistrict,
         neighborhood = nextNeighborhood,
-        extraAddress = normalizedExtraAddress
+        extraAddress = normalizedExtraAddress,
+        hasStructuredMatch = hasStructuredMatch,
+        isMeaningfulMapping = isMeaningfulMapping
     )
 }

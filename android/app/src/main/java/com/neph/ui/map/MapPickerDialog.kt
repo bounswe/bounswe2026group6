@@ -1,6 +1,8 @@
 package com.neph.ui.map
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -170,19 +172,26 @@ private class MapPickerBridge(
     private val onMapReady: () -> Unit,
     private val onMapError: (String) -> Unit
 ) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     @JavascriptInterface
     fun onLocationSelected(latitude: Double, longitude: Double) {
-        onLocationSelected(latitude, longitude)
+        mainHandler.post {
+            onLocationSelected(latitude, longitude)
+        }
     }
 
     @JavascriptInterface
     fun onMapReady() {
-        onMapReady()
+        mainHandler.post(onMapReady)
     }
 
     @JavascriptInterface
     fun onMapError(message: String?) {
-        onMapError(message?.trim().orEmpty())
+        val trimmed = message?.trim().orEmpty()
+        mainHandler.post {
+            onMapError(trimmed)
+        }
     }
 }
 

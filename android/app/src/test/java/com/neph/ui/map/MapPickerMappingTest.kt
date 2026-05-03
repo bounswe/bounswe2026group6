@@ -30,6 +30,8 @@ class MapPickerMappingTest {
         assertEquals("besiktas", result.district)
         assertEquals("balmumcu", result.neighborhood)
         assertEquals("Buyukdere Cd.", result.extraAddress)
+        assertEquals(true, result.hasStructuredMatch)
+        assertEquals(true, result.isMeaningfulMapping)
     }
 
     @Test
@@ -56,6 +58,8 @@ class MapPickerMappingTest {
         assertEquals("", result.district)
         assertEquals("", result.neighborhood)
         assertEquals("New Address", result.extraAddress)
+        assertEquals(true, result.hasStructuredMatch)
+        assertEquals(false, result.isMeaningfulMapping)
     }
 
     @Test
@@ -82,6 +86,8 @@ class MapPickerMappingTest {
         assertEquals("cankaya", result.district)
         assertEquals("anittepe", result.neighborhood)
         assertEquals("Existing Address", result.extraAddress)
+        assertEquals(true, result.hasStructuredMatch)
+        assertEquals(false, result.isMeaningfulMapping)
     }
 
     @Test
@@ -108,6 +114,8 @@ class MapPickerMappingTest {
         assertEquals("besiktas", result.district)
         assertEquals("", result.neighborhood)
         assertEquals("Existing Address", result.extraAddress)
+        assertEquals(true, result.hasStructuredMatch)
+        assertEquals(false, result.isMeaningfulMapping)
     }
 
     @Test
@@ -127,6 +135,8 @@ class MapPickerMappingTest {
         assertEquals("cankaya", result.district)
         assertEquals("anittepe", result.neighborhood)
         assertEquals("Existing Address", result.extraAddress)
+        assertEquals(false, result.hasStructuredMatch)
+        assertEquals(false, result.isMeaningfulMapping)
     }
 
     @Test
@@ -152,6 +162,8 @@ class MapPickerMappingTest {
         assertEquals("ankara", result.city)
         assertEquals("cankaya", result.district)
         assertEquals("anittepe", result.neighborhood)
-        assertEquals("Pinned Address", result.extraAddress)
+        assertEquals("Existing Address", result.extraAddress)
+        assertEquals(false, result.hasStructuredMatch)
+        assertEquals(false, result.isMeaningfulMapping)
     }
 }

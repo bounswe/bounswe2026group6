@@ -171,10 +171,13 @@ fun CompleteProfileScreen(
                 district = update.district
                 neighborhood = update.neighborhood
                 extraAddress = update.extraAddress
-                mapActionInfo = if (reverseLocation == null) {
-                    "Could not resolve selected coordinates. You can continue with manual location entry."
-                } else {
-                    "Selected location applied."
+                mapActionInfo = when {
+                    reverseLocation == null ->
+                        "Could not resolve selected coordinates. You can continue with manual location entry."
+                    update.isMeaningfulMapping ->
+                        "Selected location applied."
+                    else ->
+                        "Selected coordinates were detected. Please verify the location fields manually."
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
