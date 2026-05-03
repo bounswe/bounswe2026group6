@@ -331,7 +331,7 @@ fun HomeScreen(
                     )
 
                     PrimaryButton(
-                        text = "Create Help Request",
+                        text = "I need help",
                         onClick = ::handleRequestHelp,
                         modifier = Modifier.heightIn(min = 72.dp),
                         loading = requestHelpLoading,

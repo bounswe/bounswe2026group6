@@ -33,8 +33,8 @@ class AndroidE2ETest {
         waitForClickable("Continue as Guest")
         clickableNode("Continue as Guest").performClick()
 
-        waitForText("Create Help Request")
-        composeRule.onNodeWithText("Create Help Request").assertIsDisplayed()
+        waitForText("I need help")
+        composeRule.onNodeWithText("I need help").assertIsDisplayed()
     }
 
     @Test
@@ -42,7 +42,7 @@ class AndroidE2ETest {
         waitForClickable("Continue as Guest")
         clickableNode("Continue as Guest").performClick()
 
-        waitForText("Create Help Request")
+        waitForText("I need help")
         composeRule.onAllNodesWithContentDescription("Open menu")[0].performClick()
         waitForClickable("Help Request Map")
         clickableNode("Help Request Map").performClick()

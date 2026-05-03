@@ -58,8 +58,8 @@ class AuthenticatedSessionAndroidE2ETest {
 
     @Test
     fun authenticatedUser_can_openProfileFromDrawer() {
-        waitForText("Create Help Request")
-        composeRule.onNodeWithText("Create Help Request").assertIsDisplayed()
+        waitForText("I need help")
+        composeRule.onNodeWithText("I need help").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Open menu").performClick()
         waitForClickable("Profile")
@@ -72,8 +72,8 @@ class AuthenticatedSessionAndroidE2ETest {
 
     @Test
     fun authenticatedUser_can_openPrivacySecurity_and_logout() {
-        waitForText("Create Help Request")
-        composeRule.onNodeWithText("Create Help Request").assertIsDisplayed()
+        waitForText("I need help")
+        composeRule.onNodeWithText("I need help").assertIsDisplayed()
 
         composeRule.onAllNodesWithContentDescription("Open settings")[0].performClick()
         waitForClickable("Privacy & Security")
