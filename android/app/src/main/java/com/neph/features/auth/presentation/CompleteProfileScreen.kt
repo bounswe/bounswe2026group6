@@ -42,8 +42,10 @@ import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.profile.presentation.components.GenderSelector
 import com.neph.features.profile.presentation.components.LocationSelector
+import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SaveActionBar
 import com.neph.ui.components.inputs.AppDropdown
@@ -52,8 +54,12 @@ import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.layout.AuthScaffold
+import com.neph.ui.map.MapPickerDialog
+import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
 import com.neph.ui.map.SharedCoordinatesMapAction
+import com.neph.ui.map.formatMapCoordinate
+import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -105,6 +111,9 @@ fun CompleteProfileScreen(
     var error by rememberSaveable { mutableStateOf("") }
     var info by rememberSaveable { mutableStateOf("") }
     var mapActionInfo by rememberSaveable { mutableStateOf("") }
+    var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
+    var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var availableLocationData by remember { mutableStateOf<LocationData>(locationData) }
     var locationLoading by remember { mutableStateOf(true) }
     var locationInfo by rememberSaveable { mutableStateOf("") }
@@ -132,6 +141,50 @@ fun CompleteProfileScreen(
             locationInfo = "Could not refresh location options. Showing saved location list."
         } finally {
             locationLoading = false
+        }
+    }
+
+    fun handleMapSelection(selection: MapPickerSelection) {
+        if (mapPickerLoading) return
+
+        mapPickerLoading = true
+        mapActionInfo = ""
+
+        scope.launch {
+            try {
+                val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
+                    latitude = selection.latitude,
+                    longitude = selection.longitude
+                )
+                val update = resolveMapPickerLocationUpdate(
+                    currentCountry = country,
+                    currentCity = city,
+                    currentDistrict = district,
+                    currentNeighborhood = neighborhood,
+                    currentExtraAddress = extraAddress,
+                    reverseLocation = reverseLocation,
+                    locations = availableLocationData
+                )
+
+                country = update.country
+                city = update.city
+                district = update.district
+                neighborhood = update.neighborhood
+                extraAddress = update.extraAddress
+                mapActionInfo = if (reverseLocation == null) {
+                    "Could not resolve selected coordinates. You can continue with manual location entry."
+                } else {
+                    "Selected location applied."
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                mapActionInfo = "Could not resolve selected coordinates. You can continue with manual location entry."
+            } finally {
+                mapPickerSelection = selection
+                mapPickerLoading = false
+                mapPickerOpen = false
+            }
         }
     }
 
@@ -441,6 +494,18 @@ fun CompleteProfileScreen(
                 enabled = !locationLoading
             )
 
+            SecondaryButton(
+                text = "Select Location on Map",
+                onClick = { mapPickerOpen = true },
+                enabled = !locationLoading && !loading
+            )
+
+            mapPickerSelection?.let { selection ->
+                HelperText(
+                    text = "Selected coordinates: ${formatMapCoordinate(selection.latitude)}, ${formatMapCoordinate(selection.longitude)}"
+                )
+            }
+
             AppTextField(
                 value = extraAddress,
                 onValueChange = { extraAddress = it },
@@ -484,6 +549,16 @@ fun CompleteProfileScreen(
                 },
                 label = "Share Current Location"
             )
+
+            if (mapPickerOpen) {
+                MapPickerDialog(
+                    initialLatitude = mapPickerSelection?.latitude ?: syncedSharedLatitude,
+                    initialLongitude = mapPickerSelection?.longitude ?: syncedSharedLongitude,
+                    loading = mapPickerLoading,
+                    onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
+                    onConfirm = ::handleMapSelection
+                )
+            }
 
             if (error.isNotBlank()) {
                 Text(error, color = MaterialTheme.colorScheme.error)
