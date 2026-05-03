@@ -183,18 +183,29 @@ describe('safety-status integration', () => {
     expect(response.body.details).toContain('`status` must be one of: safe, not_safe, unknown.');
   });
 
-  test('GET /api/safety-status/visible respects profile privacy and location consent', async () => {
+  test('GET /api/safety-status/visible exposes only self, admin, and public profile statuses', async () => {
     const app = createTestApp();
     const viewerId = 'user_safety_viewer';
+    const adminId = 'user_safety_admin';
     const publicId = 'user_safety_public';
+    const emergencyOnlyId = 'user_safety_emergency_only';
     const privateId = 'user_safety_private';
     await seedActiveUser(viewerId);
+    await seedActiveUser(adminId);
     await seedActiveUser(publicId);
+    await seedActiveUser(emergencyOnlyId);
     await seedActiveUser(privateId);
     await seedProfile(publicId, {
       firstName: 'Public',
       lastName: 'Person',
       profileVisibility: 'PUBLIC',
+      locationVisibility: 'PUBLIC',
+      locationSharingEnabled: true,
+    });
+    await seedProfile(emergencyOnlyId, {
+      firstName: 'Trusted',
+      lastName: 'Circle',
+      profileVisibility: 'EMERGENCY_ONLY',
       locationVisibility: 'PUBLIC',
       locationSharingEnabled: true,
     });
@@ -222,6 +233,15 @@ describe('safety-status integration', () => {
       .expect(200);
     await request(app)
       .patch('/api/safety-status/me')
+      .set('Authorization', `Bearer ${buildAuthToken(emergencyOnlyId)}`)
+      .send({
+        status: 'not_safe',
+        shareLocationConsent: true,
+        location: { latitude: 41.05321, longitude: 29.01987 },
+      })
+      .expect(200);
+    await request(app)
+      .patch('/api/safety-status/me')
       .set('Authorization', `Bearer ${buildAuthToken(privateId)}`)
       .send({ status: 'not_safe' })
       .expect(200);
@@ -243,6 +263,22 @@ describe('safety-status integration', () => {
       latitude: 41.043,
       longitude: 29.01,
     });
+    expect(byUserId[emergencyOnlyId]).toBeUndefined();
     expect(byUserId[privateId]).toBeUndefined();
+
+    const adminResponse = await request(app)
+      .get('/api/safety-status/visible')
+      .set('Authorization', `Bearer ${buildAuthToken(adminId, { isAdmin: true, adminRole: 'OPS' })}`);
+
+    expect(adminResponse.status).toBe(200);
+    const adminByUserId = Object.fromEntries(
+      adminResponse.body.safetyStatuses.map((item) => [item.userId, item]),
+    );
+    expect(adminByUserId[publicId]).toBeTruthy();
+    expect(adminByUserId[emergencyOnlyId]).toMatchObject({
+      displayName: 'Trusted Circle',
+      status: 'not_safe',
+    });
+    expect(adminByUserId[privateId]).toBeTruthy();
   });
 });

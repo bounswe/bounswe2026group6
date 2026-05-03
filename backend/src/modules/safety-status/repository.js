@@ -182,7 +182,7 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false } = {})
       LEFT JOIN privacy_settings ps ON ps.profile_id = up.profile_id
       WHERE uss.user_id = $1
         OR $2 = TRUE
-        OR COALESCE(ps.profile_visibility::text, 'PRIVATE') IN ('PUBLIC', 'EMERGENCY_ONLY')
+        OR COALESCE(ps.profile_visibility::text, 'PRIVATE') = 'PUBLIC'
       ORDER BY uss.updated_at DESC, uss.user_id ASC;
     `,
     [viewerUserId, isAdmin],

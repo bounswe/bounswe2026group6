@@ -8,29 +8,14 @@ object SafetyStatusRepository {
     suspend fun markSafe(
         token: String,
         note: String? = null,
-        location: CurrentDeviceLocation? = null
+        location: CurrentDeviceLocation? = null,
+        shareLocationConsent: Boolean = false
     ) {
-        val body = JSONObject()
-            .put("status", "safe")
-            .put("shareLocationConsent", location != null)
-
-        if (!note.isNullOrBlank()) {
-            body.put("note", note.trim())
-        }
-
-        if (location != null) {
-            body.put(
-                "location",
-                JSONObject()
-                    .put("latitude", location.latitude)
-                    .put("longitude", location.longitude)
-                    .put("accuracyMeters", location.accuracyMeters)
-                    .put("source", location.source)
-                    .put("capturedAt", location.capturedAt)
-            )
-        } else {
-            body.put("location", JSONObject.NULL)
-        }
+        val body = buildMarkSafePayload(
+            note = note,
+            location = location,
+            shareLocationConsent = shareLocationConsent
+        )
 
         JsonHttpClient.request(
             path = "/safety-status/me",
@@ -38,5 +23,36 @@ object SafetyStatusRepository {
             token = token,
             body = body
         )
+    }
+
+    internal fun buildMarkSafePayload(
+        note: String? = null,
+        location: CurrentDeviceLocation? = null,
+        shareLocationConsent: Boolean = false
+    ): JSONObject {
+        val sharedLocation = location.takeIf { shareLocationConsent }
+        val body = JSONObject()
+            .put("status", "safe")
+            .put("shareLocationConsent", sharedLocation != null)
+
+        if (!note.isNullOrBlank()) {
+            body.put("note", note.trim())
+        }
+
+        if (sharedLocation != null) {
+            body.put(
+                "location",
+                JSONObject()
+                    .put("latitude", sharedLocation.latitude)
+                    .put("longitude", sharedLocation.longitude)
+                    .put("accuracyMeters", sharedLocation.accuracyMeters)
+                    .put("source", sharedLocation.source)
+                    .put("capturedAt", sharedLocation.capturedAt)
+            )
+        } else {
+            body.put("location", JSONObject.NULL)
+        }
+
+        return body
     }
 }

@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +71,7 @@ fun HomeScreen(
     var requestHelpLoading by remember { mutableStateOf(false) }
     var requestHelpError by remember { mutableStateOf("") }
     var markSafeLoading by remember { mutableStateOf(false) }
+    var showMarkSafeLocationConsentDialog by remember { mutableStateOf(false) }
     var emergencyInfo by remember { mutableStateOf("") }
     var emergencyError by remember { mutableStateOf("") }
 
@@ -175,7 +178,7 @@ fun HomeScreen(
         }
     }
 
-    fun handleMarkSafe() {
+    fun requestMarkSafeConfirmation() {
         availabilityError = ""
         availabilityInfo = ""
         requestHelpError = ""
@@ -188,21 +191,42 @@ fun HomeScreen(
             return
         }
 
+        showMarkSafeLocationConsentDialog = true
+    }
+
+    fun handleMarkSafe(shareLocation: Boolean) {
+        val safeSessionToken = sessionToken
+        if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
+            showMarkSafeLocationConsentDialog = false
+            emergencyError = "Please log in before marking yourself safe."
+            onNavigateToLogin()
+            return
+        }
+
+        showMarkSafeLocationConsentDialog = false
         markSafeLoading = true
         scope.launch {
             try {
-                val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
-                    context = context,
-                    sharingEnabled = true
-                )
-                SafetyStatusRepository.markSafe(
-                    token = sessionToken,
-                    location = locationAttempt.location
-                )
-                emergencyInfo = if (locationAttempt.location != null) {
-                    "You are marked safe. Your current location was shared with your safety status."
+                val locationAttempt = if (shareLocation) {
+                    DeviceLocationProvider.captureCurrentLocationForSharing(
+                        context = context,
+                        sharingEnabled = true
+                    )
                 } else {
+                    null
+                }
+                val sharedLocation = locationAttempt?.location
+                SafetyStatusRepository.markSafe(
+                    token = safeSessionToken,
+                    location = sharedLocation,
+                    shareLocationConsent = shareLocation && sharedLocation != null
+                )
+                emergencyInfo = if (sharedLocation != null) {
+                    "You are marked safe. Your current location was shared with your safety status."
+                } else if (shareLocation) {
                     "You are marked safe. Location was not shared because permission or location was unavailable."
+                } else {
+                    "You are marked safe. Your location was not shared."
                 }
             } catch (error: ApiException) {
                 if (error.status == 401) {
@@ -220,6 +244,30 @@ fun HomeScreen(
                 markSafeLoading = false
             }
         }
+    }
+
+    if (showMarkSafeLocationConsentDialog) {
+        AlertDialog(
+            onDismissRequest = { showMarkSafeLocationConsentDialog = false },
+            title = {
+                Text(text = "Share location with your safe status?")
+            },
+            text = {
+                Text(
+                    text = "Marking yourself safe does not need your location. Share it only if you want people allowed by your privacy settings, and admins, to see where this safety update came from."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { handleMarkSafe(shareLocation = true) }) {
+                    Text("Share location")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { handleMarkSafe(shareLocation = false) }) {
+                    Text("Mark safe without location")
+                }
+            }
+        )
     }
 
     AppDrawerScaffold(
@@ -279,7 +327,7 @@ fun HomeScreen(
 
                     SecondaryButton(
                         text = "I am safe",
-                        onClick = ::handleMarkSafe,
+                        onClick = ::requestMarkSafeConfirmation,
                         enabled = !availabilityLoading && !requestHelpLoading && !markSafeLoading
                     )
 
