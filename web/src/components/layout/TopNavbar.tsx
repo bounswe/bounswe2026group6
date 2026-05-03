@@ -303,19 +303,6 @@ export function TopNavbar() {
 
                                     <button
                                         type="button"
-                                        className="top-navbar-dropdown-item"
-                                        onClick={() => {
-                                            clearAccessToken();
-                                            void refresh({ force: true });
-                                            setIsMenuOpen(false);
-                                            router.push("/login");
-                                        }}
-                                    >
-                                        Switch Account
-                                    </button>
-
-                                    <button
-                                        type="button"
                                         className="top-navbar-dropdown-item is-danger"
                                         onClick={handleLogout}
                                     >
