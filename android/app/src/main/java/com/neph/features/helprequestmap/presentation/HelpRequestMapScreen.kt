@@ -433,32 +433,52 @@ private fun CrisisRequestMapPanel(
             ) {
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset(0, (availableHeight * 0.22f).roundToPx()) }
+                        .offset {
+                            IntOffset(
+                                0,
+                                with(density) { (availableHeight * 0.22f).roundToPx() }
+                            )
+                        }
                         .fillMaxWidth()
                         .height(12.dp)
                 )
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset(0, (availableHeight * 0.58f).roundToPx()) }
+                        .offset {
+                            IntOffset(
+                                0,
+                                with(density) { (availableHeight * 0.58f).roundToPx() }
+                            )
+                        }
                         .fillMaxWidth()
                         .height(9.dp)
                 )
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset((availableWidth * 0.30f).roundToPx(), 0) }
+                        .offset {
+                            IntOffset(
+                                with(density) { (availableWidth * 0.30f).roundToPx() },
+                                0
+                            )
+                        }
                         .size(11.dp, availableHeight)
                 )
                 MapRoad(
                     modifier = Modifier
-                        .offset { IntOffset((availableWidth * 0.70f).roundToPx(), 0) }
+                        .offset {
+                            IntOffset(
+                                with(density) { (availableWidth * 0.70f).roundToPx() },
+                                0
+                            )
+                        }
                         .size(8.dp, availableHeight)
                 )
                 MapNeighborhoodPatch(
                     modifier = Modifier
                         .offset {
                             IntOffset(
-                                (availableWidth * 0.08f).roundToPx(),
-                                (availableHeight * 0.10f).roundToPx()
+                                with(density) { (availableWidth * 0.08f).roundToPx() },
+                                with(density) { (availableHeight * 0.10f).roundToPx() }
                             )
                         }
                         .size(width = availableWidth * 0.24f, height = availableHeight * 0.18f)
@@ -467,8 +487,8 @@ private fun CrisisRequestMapPanel(
                     modifier = Modifier
                         .offset {
                             IntOffset(
-                                (availableWidth * 0.58f).roundToPx(),
-                                (availableHeight * 0.68f).roundToPx()
+                                with(density) { (availableWidth * 0.58f).roundToPx() },
+                                with(density) { (availableHeight * 0.68f).roundToPx() }
                             )
                         }
                         .size(width = availableWidth * 0.28f, height = availableHeight * 0.16f)

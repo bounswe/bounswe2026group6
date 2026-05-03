@@ -107,7 +107,7 @@ fun GatheringAreasScreen(
                 throw cancellationException
             } catch (error: ApiException) {
                 errorMessage = mapGatheringAreasErrorMessage(error)
-                if (lastSearchOrigin == GatheringAreasSearchOrigin.CURRENT_LOCATION && isProviderError(error)) {
+                if (origin == GatheringAreasSearchOrigin.CURRENT_LOCATION && isProviderError(error)) {
                     infoMessage = "Current location detected. Nearby gathering areas could not be loaded right now."
                 }
             } catch (_: Exception) {
@@ -164,6 +164,8 @@ fun GatheringAreasScreen(
         if (grants.values.any { it }) {
             requestCurrentLocationAndRefresh()
         } else {
+            errorMessage = ""
+            loading = false
             infoMessage = "Location permission was denied. Nearby results were not updated."
         }
     }
@@ -272,7 +274,10 @@ fun GatheringAreasScreen(
 
                 !hasSearchCenter -> {
                     SectionCard {
-                        HelperText(text = "Use your current location to find nearby gathering areas.")
+                        SectionHeader(
+                            title = "No Search Location Selected",
+                            subtitle = "No search location selected yet. Tap \"Use Current Location\" to search nearby gathering areas."
+                        )
                     }
                 }
 
