@@ -183,7 +183,7 @@ private class MapPickerBridge(
 
     @JavascriptInterface
     fun onMapReady() {
-        mainHandler.post(onMapReady)
+        mainHandler.post { onMapReady() }
     }
 
     @JavascriptInterface
