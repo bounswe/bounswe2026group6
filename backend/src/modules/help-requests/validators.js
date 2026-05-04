@@ -91,6 +91,16 @@ function validateRequiredString(fieldName, value, errors, { maxLength = 255 } = 
   return normalized;
 }
 
+const placeholderValues = new Set(['unknown', 'unknown requester', 'n/a', 'na']);
+
+function validateRequiredNonPlaceholderString(fieldName, value, errors, { maxLength = 255 } = {}) {
+  const normalized = validateRequiredString(fieldName, value, errors, { maxLength });
+  if (normalized && placeholderValues.has(normalized.toLowerCase())) {
+    errors.push(`\`${fieldName}\` must be real user-provided information.`);
+  }
+  return normalized;
+}
+
 function validateOptionalString(fieldName, value, errors, { maxLength = 255 } = {}) {
   if (value == null) {
     return '';
@@ -120,6 +130,11 @@ function validateRequiredPhoneNumber(fieldName, value, errors) {
     return null;
   }
 
+  if (value === 5000000000) {
+    errors.push(`\`${fieldName}\` must be a real contact phone number.`);
+    return null;
+  }
+
   return value;
 }
 
@@ -130,6 +145,11 @@ function validateOptionalPhoneNumber(fieldName, value, errors) {
 
   if (!isValidTurkishMobileNumber(value)) {
     errors.push(`\`${fieldName}\` must be a 10-digit integer starting with 5.`);
+    return null;
+  }
+
+  if (value === 5000000000) {
+    errors.push(`\`${fieldName}\` must be a real contact phone number.`);
     return null;
   }
 
@@ -285,16 +305,16 @@ function validateCreateHelpRequest(payload) {
     }
 
     location = {
-      country: validateRequiredString('location.country', payload.location.country, errors, {
+      country: validateRequiredNonPlaceholderString('location.country', payload.location.country, errors, {
         maxLength: 100,
       }),
-      city: validateRequiredString('location.city', payload.location.city, errors, {
+      city: validateRequiredNonPlaceholderString('location.city', payload.location.city, errors, {
         maxLength: 100,
       }),
-      district: validateRequiredString('location.district', payload.location.district, errors, {
+      district: validateRequiredNonPlaceholderString('location.district', payload.location.district, errors, {
         maxLength: 100,
       }),
-      neighborhood: validateRequiredString('location.neighborhood', payload.location.neighborhood, errors, {
+      neighborhood: validateRequiredNonPlaceholderString('location.neighborhood', payload.location.neighborhood, errors, {
         maxLength: 100,
       }),
       extraAddress: validateOptionalString('location.extraAddress', payload.location.extraAddress, errors, {
@@ -317,7 +337,7 @@ function validateCreateHelpRequest(payload) {
     errors.push('`contact` is required and must be an object.');
   } else {
     contact = {
-      fullName: validateRequiredString('contact.fullName', payload.contact.fullName, errors, {
+      fullName: validateRequiredNonPlaceholderString('contact.fullName', payload.contact.fullName, errors, {
         maxLength: 200,
       }),
       phone: validateRequiredPhoneNumber('contact.phone', payload.contact.phone, errors),

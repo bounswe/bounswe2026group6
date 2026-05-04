@@ -4,6 +4,7 @@ const {
   createHelpRequest,
   listHelpRequests,
   getHelpRequest,
+  updateHelpRequest,
   patchHelpRequestStatus,
   listActiveHelpRequests,
 } = require('./controller');
@@ -17,6 +18,7 @@ helpRequestsRouter.post('/', optionalAuth, createHelpRequest);
 helpRequestsRouter.get('/', requireAuth, listHelpRequests);
 helpRequestsRouter.get('/active', optionalAuth, listActiveHelpRequests);
 helpRequestsRouter.get('/:requestId', optionalAuth, getHelpRequest);
+helpRequestsRouter.patch('/:requestId', optionalAuth, updateHelpRequest);
 helpRequestsRouter.patch('/:requestId/status', optionalAuth, patchHelpRequestStatus);
 
 module.exports = {

@@ -2,13 +2,26 @@ package com.neph.features.requesthelp.presentation
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,9 +30,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
+import com.neph.core.database.HelpRequestEntity
+import com.neph.core.sync.LocalOwnerType
+import com.neph.core.sync.SyncStatus
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.auth.util.countryCodeOptions
@@ -44,8 +62,10 @@ import com.neph.features.profile.presentation.components.LocationSelector
 import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.requesthelp.data.RequestHelpSubmission
+import com.neph.features.requesthelp.data.jsonArrayToStringList
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.buttons.TextActionButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
@@ -139,6 +159,8 @@ private val helpTypeApiValues = mapOf(
     "Other" to "other"
 )
 
+private val helpTypeLabelsByApiValue = helpTypeApiValues.entries.associate { (label, value) -> value to label }
+
 private fun parseBackendPhoneNumber(countryCode: String, phone: String): Long? {
     if (countryCode != "+90") {
         return null
@@ -166,6 +188,29 @@ private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
         fullName = profile.fullName.orEmpty(),
         countryCode = phoneParts.countryCode,
         phoneNumber = phoneParts.phone
+    )
+}
+
+private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
+    val phoneParts = normalizePhoneParts(contactPhone)
+    return RequestHelpFormState(
+        helpTypes = helpTypesJson.jsonArrayToStringList().mapNotNull { helpTypeLabelsByApiValue[it] },
+        otherHelpType = otherHelpText,
+        affectedPeopleCount = affectedPeopleCount.toString(),
+        riskFlags = riskFlagsJson.jsonArrayToStringList(),
+        vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList(),
+        situationDescription = description,
+        bloodType = bloodType,
+        country = country,
+        city = city,
+        district = district,
+        neighborhood = neighborhood,
+        shortAddress = extraAddress,
+        fullName = contactFullName,
+        countryCode = phoneParts.countryCode,
+        phoneNumber = phoneParts.phone,
+        alternativePhone = contactAlternativePhone.orEmpty(),
+        confirmationAccepted = true
     )
 }
 
@@ -375,6 +420,7 @@ internal fun resolveGuestLocationAutofillSelection(
 
 @Composable
 fun RequestHelpScreen(
+    draftLocalId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
     onNavigateToMyHelpRequests: () -> Unit
@@ -384,6 +430,11 @@ fun RequestHelpScreen(
     val context = LocalContext.current
     val sessionToken = AuthSessionStore.getAccessToken().orEmpty()
     val isLoggedIn = sessionToken.isNotBlank()
+    var activeDraftLocalId by rememberSaveable { mutableStateOf(draftLocalId.orEmpty()) }
+    val observedDraft by activeDraftLocalId
+        .takeIf { it.isNotBlank() }
+        ?.let { RequestHelpRepository.observeLocalHelpRequest(it).collectAsState(initial = null) }
+        ?: remember { mutableStateOf<HelpRequestEntity?>(null) }
 
     var formState by remember {
         mutableStateOf(
@@ -404,6 +455,19 @@ fun RequestHelpScreen(
     var guestLocationAutoFillLoading by remember { mutableStateOf(false) }
     var guestLocationPermissionHandled by rememberSaveable { mutableStateOf(false) }
     val guestFormInteractionStarted = !isLoggedIn && formState != RequestHelpFormState()
+
+    LaunchedEffect(draftLocalId) {
+        val nextDraftLocalId = draftLocalId.orEmpty()
+        if (nextDraftLocalId != activeDraftLocalId) {
+            activeDraftLocalId = nextDraftLocalId
+            fieldErrors = RequestHelpFieldErrors()
+            errorMessage = ""
+            infoMessage = ""
+            mapActionMessage = ""
+            checkingActiveRequest = isLoggedIn || nextDraftLocalId.isNotBlank()
+        }
+    }
+
     fun triggerGuestLocationAutofill() {
         scope.launch {
             if (guestLocationAutoFillLoading) return@launch
@@ -539,7 +603,21 @@ fun RequestHelpScreen(
         }
     }
 
-    LaunchedEffect(sessionToken) {
+    LaunchedEffect(sessionToken, activeDraftLocalId) {
+        val existingDraft = activeDraftLocalId.takeIf { it.isNotBlank() }?.let { localId ->
+            RequestHelpRepository.getLocalHelpRequest(localId)
+        }
+        if (existingDraft != null) {
+            if (existingDraft.ownerType == LocalOwnerType.AUTHENTICATED && !isLoggedIn) {
+                onNavigateToLogin()
+                return@LaunchedEffect
+            }
+            formState = existingDraft.toFormState()
+            infoMessage = ""
+            checkingActiveRequest = false
+            return@LaunchedEffect
+        }
+
         if (!isLoggedIn) {
             formState = RequestHelpFormState()
             checkingActiveRequest = false
@@ -605,17 +683,27 @@ fun RequestHelpScreen(
         scope.launch {
             try {
                 if (isLoggedIn) {
-                    val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                    val hasActiveRequest = activeDraftLocalId.isBlank() && RequestHelpRepository.hasActiveHelpRequest(sessionToken)
                     if (hasActiveRequest) {
                         errorMessage = "You can only have one active help request at a time."
                         return@launch
                     }
                 }
 
-                RequestHelpRepository.createHelpRequest(
-                    token = sessionToken,
-                    submission = buildSubmission(formState, availableLocationData)
-                )
+                val submission = buildSubmission(formState, availableLocationData)
+                val result = if (activeDraftLocalId.isNotBlank()) {
+                    RequestHelpRepository.updateHelpRequest(
+                        token = sessionToken,
+                        localId = activeDraftLocalId,
+                        submission = submission
+                    )
+                } else {
+                    RequestHelpRepository.createHelpRequest(
+                        token = sessionToken,
+                        submission = submission
+                    )
+                }
+                activeDraftLocalId = result.requestId
                 infoMessage = "Help request saved on this device and queued for sync."
                 onNavigateToMyHelpRequests()
             } catch (error: ApiException) {
@@ -636,7 +724,13 @@ fun RequestHelpScreen(
 
     AppScaffold(
         title = "Request Help",
-        onNavigateBack = onNavigateBack
+        onNavigateBack = onNavigateBack,
+        topBar = {
+            RequestHelpStickyTopBar(
+                draft = observedDraft,
+                onNavigateBack = onNavigateBack
+            )
+        }
     ) {
         if (checkingActiveRequest) {
             HelperText(text = "Checking your current help request status...")
@@ -929,6 +1023,100 @@ fun RequestHelpScreen(
                 text = "Cancel",
                 onClick = onNavigateBack,
                 enabled = !loading
+            )
+        }
+    }
+}
+
+@Composable
+private fun RequestHelpStickyTopBar(
+    draft: HelpRequestEntity?,
+    onNavigateBack: () -> Unit
+) {
+    val spacing = LocalNephSpacing.current
+    Surface(color = MaterialTheme.colorScheme.background) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.lg, vertical = spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                TextActionButton(text = "Back", onClick = onNavigateBack)
+                Text(
+                    text = "Request Help",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Box(modifier = Modifier.size(48.dp))
+            }
+
+            draft?.let {
+                DraftSyncBanner(draft = it)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DraftSyncBanner(draft: HelpRequestEntity) {
+    val spacing = LocalNephSpacing.current
+    val synced = draft.syncStatus == SyncStatus.SYNCED
+    val label = if (synced) "Draft synced" else "Saved offline"
+    val iconTint = if (synced) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = if (synced) Icons.Filled.Wifi else Icons.Filled.Wifi,
+                    contentDescription = label,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+                if (synced) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(12.dp)
+                            .align(Alignment.BottomEnd)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .size(12.dp)
+                            .align(Alignment.BottomEnd)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                }
+            }
+
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }

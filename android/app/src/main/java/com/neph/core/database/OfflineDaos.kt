@@ -33,6 +33,9 @@ interface HelpRequestDao {
     @Query("SELECT * FROM help_requests WHERE localId = :localId LIMIT 1")
     suspend fun getByLocalId(localId: String): HelpRequestEntity?
 
+    @Query("SELECT * FROM help_requests WHERE localId = :localId LIMIT 1")
+    fun observeByLocalId(localId: String): Flow<HelpRequestEntity?>
+
     @Query("SELECT * FROM help_requests WHERE remoteId = :remoteId OR localId = :remoteId LIMIT 1")
     suspend fun getByRemoteId(remoteId: String): HelpRequestEntity?
 
@@ -155,6 +158,20 @@ interface SyncOperationDao {
 
     @Query("DELETE FROM sync_operations WHERE operationId = :operationId")
     suspend fun delete(operationId: String)
+
+    @Query(
+        """
+        DELETE FROM sync_operations
+        WHERE entityType = :entityType
+          AND entityId = :entityId
+          AND operationType = :operationType
+        """
+    )
+    suspend fun deleteOperations(
+        entityType: String,
+        entityId: String,
+        operationType: String
+    )
 
     @Query("DELETE FROM sync_operations WHERE status = 'SYNCED'")
     suspend fun deleteSynced()

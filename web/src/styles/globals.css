@@ -167,7 +167,7 @@ textarea::placeholder {
 .top-navbar {
     position: sticky;
     top: 0;
-    z-index: 1100;
+    z-index: 30;
     border-bottom: 1px solid var(--border-subtle);
     background: color-mix(in srgb, var(--surface-card) 95%, transparent);
     backdrop-filter: blur(8px);

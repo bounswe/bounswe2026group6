@@ -2,9 +2,12 @@ package com.neph.features.requesthelp.data
 
 import com.neph.core.sync.LocalOwnerType
 import com.neph.core.sync.SyncStatus
+import com.neph.features.profile.data.CurrentDeviceLocation
+import com.neph.features.profile.data.ProfileData
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.json.JSONArray
@@ -40,6 +43,40 @@ class RequestHelpOfflineMappingTest {
         assertEquals("Kadikoy", json.getJSONObject("location").getString("district"))
         assertEquals(5551234567L, json.getJSONObject("contact").getLong("phone"))
         assertTrue(json.getBoolean("consentGiven"))
+    }
+
+    @Test
+    fun submissionJsonIncludesCoordinatesWhenAvailable() {
+        val submission = sampleSubmission().copy(
+            location = RequestHelpLocationSubmission(
+                country = "Turkey",
+                city = "Istanbul",
+                district = "Kadikoy",
+                neighborhood = "Moda",
+                extraAddress = "Near park",
+                latitude = 40.987,
+                longitude = 29.025,
+                coordinateSource = "DEVICE_GPS",
+                coordinateCapturedAt = "2026-05-02T10:00:00.000Z"
+            )
+        )
+        val json = submission.toJson()
+        val entity = submission.toEntity(
+            localId = "local-with-location",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            now = 1234L,
+            syncStatus = SyncStatus.PENDING_CREATE
+        )
+
+        val location = json.getJSONObject("location")
+        assertEquals(40.987, location.getDouble("latitude"), 0.0)
+        assertEquals(29.025, location.getDouble("longitude"), 0.0)
+        assertEquals("DEVICE_GPS", location.getJSONObject("coordinate").getString("source"))
+        assertEquals("2026-05-02T10:00:00.000Z", location.getJSONObject("coordinate").getString("capturedAt"))
+        assertEquals(40.987, entity.latitude ?: 0.0, 0.0)
+        assertEquals(29.025, entity.longitude ?: 0.0, 0.0)
+        assertEquals("DEVICE_GPS", entity.coordinateSource)
+        assertEquals("2026-05-02T10:00:00.000Z", entity.coordinateCapturedAt)
     }
 
     @Test
@@ -80,6 +117,55 @@ class RequestHelpOfflineMappingTest {
         assertEquals("2026-04-26T10:00:00.000Z", entity.serverCreatedAt)
     }
 
+    @Test
+    fun emergencyDraftRequiresRealContactAndLocation() {
+        assertThrows(EmergencyDraftRequirementsException::class.java) {
+            buildEmergencyDraftSubmission(
+                profile = ProfileData(),
+                currentLocation = null,
+                reverseLocation = null
+            )
+        }
+    }
+
+    @Test
+    fun emergencyDraftRejectsInvalidPhoneInsteadOfUsingFakeFallback() {
+        assertThrows(EmergencyDraftRequirementsException::class.java) {
+            buildEmergencyDraftSubmission(
+                profile = completeProfile().copy(phone = null),
+                currentLocation = sampleCurrentLocation(),
+                reverseLocation = null
+            )
+        }
+    }
+
+    @Test
+    fun emergencyDraftUsesVerifiedProfileAndCurrentLocationWithoutFakeValues() {
+        val submission = buildEmergencyDraftSubmission(
+            profile = completeProfile(),
+            currentLocation = sampleCurrentLocation(),
+            reverseLocation = RequestHelpReverseLocation(
+                country = "Turkey",
+                city = "Istanbul",
+                district = "Besiktas",
+                neighborhood = "Akat",
+                extraAddress = "Besiktas assembly area"
+            )
+        )
+
+        assertEquals("Ayse Yilmaz", submission.contact.fullName)
+        assertEquals(5551234567L, submission.contact.phone)
+        assertEquals("Turkey", submission.location.country)
+        assertEquals("Istanbul", submission.location.city)
+        assertEquals("Besiktas", submission.location.district)
+        assertEquals("Akat", submission.location.neighborhood)
+        assertEquals("Besiktas assembly area", submission.location.extraAddress)
+        assertEquals(41.043, submission.location.latitude ?: 0.0, 0.0)
+        assertEquals(29.009, submission.location.longitude ?: 0.0, 0.0)
+        assertEquals("DEVICE_GPS", submission.location.coordinateSource)
+        assertTrue(submission.consentGiven)
+    }
+
     private fun sampleSubmission(): RequestHelpSubmission {
         return RequestHelpSubmission(
             helpTypes = listOf("food_water", "first_aid"),
@@ -102,6 +188,28 @@ class RequestHelpOfflineMappingTest {
                 alternativePhone = null
             ),
             consentGiven = true
+        )
+    }
+
+    private fun completeProfile(): ProfileData {
+        return ProfileData(
+            fullName = "Ayse Yilmaz",
+            phone = "+905551234567",
+            country = "Turkey",
+            city = "Istanbul",
+            district = "Kadikoy",
+            neighborhood = "Moda",
+            extraAddress = "Near park"
+        )
+    }
+
+    private fun sampleCurrentLocation(): CurrentDeviceLocation {
+        return CurrentDeviceLocation(
+            latitude = 41.043,
+            longitude = 29.009,
+            accuracyMeters = 12.0,
+            capturedAt = "2026-05-03T10:20:30.000Z",
+            source = "DEVICE_GPS"
         )
     }
 }

@@ -166,6 +166,15 @@ Hybrid location payload example:
 }
 ```
 
+Help request endpoints:
+
+- `POST /api/help-requests` creates a help request for an authenticated user or guest when guest creation is enabled.
+- `GET /api/help-requests` lists the authenticated user's requests.
+- `GET /api/help-requests/:requestId` returns an authenticated user's request, or a guest request when `x-help-request-access-token` is provided.
+- `PATCH /api/help-requests/:requestId` replaces editable request details with the same payload shape as create. Resolved and cancelled requests cannot be edited. Guest updates must send `x-help-request-access-token`.
+- `PATCH /api/help-requests/:requestId/status` updates status to `SYNCED`, `RESOLVED`, or `CANCELLED`. Guest status updates must send `x-help-request-access-token`.
+- `GET /api/help-requests/active` lists active visible requests for map/visibility consumers.
+
 Notification module endpoints:
 
 - `POST /api/notifications` (admin-only manual trigger endpoint)

@@ -28,6 +28,10 @@ sealed class Routes(
     data object EditProfile : Routes("edit_profile")
 
     companion object {
+        const val RequestHelpDraftArg = "draftLocalId"
+
+        fun requestHelpWithDraft(localId: String): String = "${RequestHelp.route}?$RequestHelpDraftArg=$localId"
+
         val authenticatedDrawerItems = listOf(
             Home,
             News,

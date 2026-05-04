@@ -24,7 +24,6 @@ object OfflineSyncScheduler {
 
         val request = OneTimeWorkRequestBuilder<OfflineSyncWorker>()
             .setConstraints(constraints)
-            .setInitialDelay(10, TimeUnit.SECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .setInputData(workDataOf("reason" to reason))
             .addTag(SyncTag)
@@ -32,7 +31,7 @@ object OfflineSyncScheduler {
 
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             OneTimeSyncName,
-            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
             request
         )
     }

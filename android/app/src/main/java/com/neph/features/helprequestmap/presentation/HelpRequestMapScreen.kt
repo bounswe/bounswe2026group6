@@ -420,6 +420,7 @@ private fun CrisisRequestMapPanel(
         ) {
             val availableHeight = maxHeight
             val availableWidth = maxWidth
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -507,7 +508,9 @@ private fun CrisisRequestMapPanel(
                     MapMarker(
                         item = item,
                         selected = item.requestId == selectedRequestId,
-                        modifier = Modifier.offset { IntOffset(x, y) },
+                        modifier = Modifier.offset {
+                            IntOffset(x, y)
+                        },
                         onClick = { onSelectRequest(item.requestId) }
                     )
                 }

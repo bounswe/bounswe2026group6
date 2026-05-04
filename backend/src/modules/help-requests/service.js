@@ -6,6 +6,8 @@ const {
   listHelpRequestsByUserId,
   findHelpRequestById,
   findHelpRequestByIdForUser,
+  updateHelpRequestForUser,
+  updateHelpRequestByRequestId,
   markHelpRequestAsSynced,
   markHelpRequestAsResolved,
   markHelpRequestAsSyncedByRequestId,
@@ -88,6 +90,35 @@ async function getMyHelpRequest(userId, requestId) {
   return findHelpRequestByIdForUser(userId, requestId);
 }
 
+function ensureEditableRequest(currentRequest) {
+  if (!currentRequest) {
+    return;
+  }
+
+  if (currentRequest.internalStatus === 'RESOLVED' || currentRequest.internalStatus === 'CANCELLED') {
+    const error = new Error('A resolved or cancelled request cannot be edited.');
+    error.code = 'REQUEST_NOT_EDITABLE';
+    throw error;
+  }
+}
+
+async function updateMyHelpRequest(userId, requestId, input) {
+  const currentRequest = await findHelpRequestByIdForUser(userId, requestId);
+  if (!currentRequest) {
+    return null;
+  }
+
+  ensureEditableRequest(currentRequest);
+  const updatedRequest = await updateHelpRequestForUser(userId, requestId, input);
+  if (!updatedRequest) {
+    ensureEditableRequest(await findHelpRequestById(requestId));
+    return null;
+  }
+
+  await tryToAssignRequest(updatedRequest.id);
+  return findHelpRequestById(updatedRequest.id);
+}
+
 function buildGuestAccessError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -155,6 +186,22 @@ async function getGuestHelpRequest(requestId, guestAccessToken) {
   }
 
   return redactGuestRequestDetails(helpRequest);
+}
+
+async function updateGuestHelpRequest(requestId, input, guestAccessToken) {
+  const currentRequest = await getGuestHelpRequest(requestId, guestAccessToken);
+  if (!currentRequest) {
+    return null;
+  }
+
+  ensureEditableRequest(currentRequest);
+  const updatedRequest = await updateHelpRequestByRequestId(requestId, input);
+  if (!updatedRequest) {
+    ensureEditableRequest(await findHelpRequestById(requestId));
+    return null;
+  }
+
+  return redactGuestRequestDetails(updatedRequest);
 }
 
 function buildInvalidTransitionError(message) {
@@ -278,8 +325,10 @@ module.exports = {
   createMyHelpRequest,
   listMyHelpRequests,
   getMyHelpRequest,
+  updateMyHelpRequest,
   issueGuestHelpRequestAccessToken,
   getGuestHelpRequest,
+  updateGuestHelpRequest,
   updateMyHelpRequestStatus,
   updateGuestHelpRequestStatus,
   listActiveHelpRequestsForVisibility,

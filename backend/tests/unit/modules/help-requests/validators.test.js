@@ -171,6 +171,27 @@ describe('help-requests validators', () => {
 			expect(errors).toContain('`location.city` is required.');
 		});
 
+		test('rejects emergency draft placeholder contact and location values', () => {
+			const payload = buildPayload();
+			payload.location.country = 'unknown';
+			payload.location.city = 'unknown';
+			payload.location.district = 'unknown';
+			payload.location.neighborhood = 'unknown';
+			payload.contact.fullName = 'Unknown requester';
+			payload.contact.phone = 5000000000;
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toEqual(expect.arrayContaining([
+				'`location.country` must be real user-provided information.',
+				'`location.city` must be real user-provided information.',
+				'`location.district` must be real user-provided information.',
+				'`location.neighborhood` must be real user-provided information.',
+				'`contact.fullName` must be real user-provided information.',
+				'`contact.phone` must be a real contact phone number.',
+			]));
+		});
+
 		test('accepts hybrid location coordinate object', () => {
 			const payload = buildPayload();
 			payload.location.coordinate = {

@@ -86,25 +86,29 @@ adb shell settings put global airplane_mode_on 1
 adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true
 ```
 
-5. In the app, open **Request Help** and submit a help request.
+5. In the app, tap the large **Create Help Request** button on Home.
 6. Expected Android result:
-   - the request is accepted locally
+   - a help request draft is accepted locally immediately
    - a generic fatal network error is **not** shown
-   - the app shows local/offline persistence rather than dropping the request
-7. Open **My Help Requests**.
+   - the app opens the existing request-help form for the same local draft
+7. Fill the request-help form and submit it.
 8. Expected Android result:
+   - the form updates the same local request instead of creating a second request
+   - if current/profile coordinates were available on the draft, they remain attached to the queued payload
+9. Open **My Help Requests**.
+10. Expected Android result:
    - the request is still visible while offline
    - its status should be consistent with the offline-first UI, for example pending/local messaging such as `Saved locally. NEPH will sync this change when the network is available.`
-9. Force-stop the app:
+11. Force-stop the app:
 
 ```bash
 adb shell am force-stop com.neph
 ```
 
-10. Reopen the app while still offline.
-11. Expected Android result:
+12. Reopen the app while still offline.
+13. Expected Android result:
     - the pending request is still visible after restart
-12. Turn network back on:
+14. Turn network back on:
 
 ```bash
 adb shell svc wifi enable
@@ -118,8 +122,8 @@ adb shell settings put global airplane_mode_on 0
 adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false
 ```
 
-13. Wait for WorkManager sync, or open **My Help Requests** again to trigger sync-related refresh.
-14. Expected Android result:
+15. Wait for WorkManager sync, or open **My Help Requests** again to trigger sync-related refresh.
+16. Expected Android result:
     - the pending request eventually leaves the local-only pending state
     - the request appears on the backend when verified with SQL or `curl`
 

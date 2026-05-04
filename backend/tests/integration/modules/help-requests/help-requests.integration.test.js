@@ -252,6 +252,75 @@ describe('help-requests integration', () => {
 		expect(response.body.warnings).toEqual([]);
 	});
 
+	test('PATCH /api/help-requests/:requestId updates an authenticated active request', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_update';
+		await seedActiveUser(userId, 'hr-update@example.com');
+		const token = buildAuthToken(userId);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+
+		const updatedPayload = buildCreatePayload({
+			helpTypes: ['food_water'],
+			affectedPeopleCount: 5,
+			description: 'Updated details after the emergency draft was opened.',
+			location: {
+				country: 'turkiye',
+				city: 'istanbul',
+				district: 'kadikoy',
+				neighborhood: 'moda',
+				extraAddress: 'Updated address',
+			},
+		});
+
+		const updateRes = await request(app)
+			.patch(`/api/help-requests/${createRes.body.request.id}`)
+			.set('Authorization', `Bearer ${token}`)
+			.send(updatedPayload);
+
+		expect(updateRes.status).toBe(200);
+		expect(updateRes.body.request.id).toBe(createRes.body.request.id);
+		expect(updateRes.body.request.helpTypes).toEqual(['food_water']);
+		expect(updateRes.body.request.affectedPeopleCount).toBe(5);
+		expect(updateRes.body.request.description).toBe('Updated details after the emergency draft was opened.');
+		expect(updateRes.body.request.location).toEqual(updatedPayload.location);
+		expect(updateRes.body.request.needType).toBe('food_water');
+	});
+
+	test('PATCH /api/help-requests/:requestId rejects terminal request edits', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_terminal_update';
+		await seedActiveUser(userId, 'hr-terminal-update@example.com');
+		const token = buildAuthToken(userId);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+
+		const resolveRes = await request(app)
+			.patch(`/api/help-requests/${createRes.body.request.id}/status`)
+			.set('Authorization', `Bearer ${token}`)
+			.send({ status: 'RESOLVED' });
+
+		expect(resolveRes.status).toBe(200);
+
+		const updateRes = await request(app)
+			.patch(`/api/help-requests/${createRes.body.request.id}`)
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({ description: 'Should not update.' }));
+
+		expect(updateRes.status).toBe(409);
+		expect(updateRes.body.code).toBe('REQUEST_NOT_EDITABLE');
+	});
+
 	test('POST /api/help-requests trims optional string fields and preserves numeric phones', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_2';
@@ -560,6 +629,59 @@ describe('help-requests integration', () => {
 		expect(response.body.request.description).toBe('guest can read this');
 		expect(response.body.request.helper).toBeNull();
 		expect(response.body.request.helpers).toEqual([]);
+	});
+
+	test('PATCH /api/help-requests/:requestId allows guest detail update with guest header token', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest draft before edit' }));
+
+		const requestId = createResponse.body.request.id;
+		const guestAccessToken = createResponse.body.guestAccessToken;
+		const updatedPayload = buildCreatePayload({
+			helpTypes: ['shelter'],
+			affectedPeopleCount: 2,
+			description: 'guest completed the emergency draft',
+			location: {
+				country: 'turkiye',
+				city: 'istanbul',
+				district: 'uskudar',
+				neighborhood: 'acibadem',
+				extraAddress: 'Updated guest address',
+			},
+		});
+
+		const response = await request(app)
+			.patch(`/api/help-requests/${requestId}`)
+			.set('x-help-request-access-token', guestAccessToken)
+			.send(updatedPayload);
+
+		expect(response.status).toBe(200);
+		expect(response.body.request.id).toBe(requestId);
+		expect(response.body.request.userId).toBeNull();
+		expect(response.body.request.helpTypes).toEqual(['shelter']);
+		expect(response.body.request.affectedPeopleCount).toBe(2);
+		expect(response.body.request.description).toBe('guest completed the emergency draft');
+		expect(response.body.request.location).toEqual(updatedPayload.location);
+		expect(response.body.request.helper).toBeNull();
+		expect(response.body.request.helpers).toEqual([]);
+	});
+
+	test('GET /api/help-requests/:requestId rejects guest token in query string', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest query token check' }));
+
+		const response = await request(app)
+			.get(`/api/help-requests/${createResponse.body.request.id}`)
+			.query({ guestAccessToken: createResponse.body.guestAccessToken });
+
+		expect(response.status).toBe(401);
+		expect(response.body.code).toBe('UNAUTHORIZED');
 	});
 
 	test('GET /api/help-requests/:requestId redacts helper details for guest token even if assignment exists', async () => {

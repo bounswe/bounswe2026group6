@@ -6,7 +6,7 @@ The Android client now treats local persistence as the canonical read source for
 
 | Domain | Local source of truth | Offline writes | Sync/conflict policy |
 | --- | --- | --- | --- |
-| Help requests | `help_requests` Room table | Create request, mark request resolved | Local writes are queued as `sync_operations`. Creates keep a client `local_*` id until the server id arrives. Status conflicts with terminal server state become `CONFLICTED` instead of silently overwriting local intent. |
+| Help requests | `help_requests` Room table | Create request, update draft/request details, mark request resolved | Local writes are queued as `sync_operations`. Creates keep a client `local_*` id until the server id arrives. Draft updates replace the pending create payload before first sync; later detail updates are coalesced as one pending update operation. Status conflicts with terminal server state become `CONFLICTED` instead of silently overwriting local intent. |
 | Helper availability | `availability_state` Room table | Toggle available/unavailable | Toggles are recorded locally and batched through `/availability/sync`. Latest local intent remains visible until sync succeeds. |
 | Assigned request | `assigned_requests` Room table | Release/cancel assignment | Release is queued as durable WorkManager-backed work. The assigned request remains visible with pending/failed sync state until backend reconciliation. |
 | Sync queue | `sync_operations` Room table | All queued mutations | Operations are replayed oldest-first. Stale `IN_PROGRESS` operations are reset to `PENDING` at sync start after a 15-minute recovery timeout so interrupted workers do not strand queued writes. |
@@ -30,16 +30,16 @@ The Android client now treats local persistence as the canonical read source for
 
 ## Database and migration notes
 
-- New Room database: `neph-offline.db`, schema version `1`.
+- Room database: `neph-offline.db`, schema version `4`.
 - Existing SharedPreferences availability state is migrated into Room on first initialization.
-- There was no prior Room schema, so no Room migration class is required for this change.
+- Room migrations preserve existing offline rows and add helper metadata, operational lifecycle fields, and help-request coordinate metadata used by emergency drafts.
 - New Gradle dependencies: Room runtime/ktx/compiler via KSP, WorkManager runtime-ktx, and unit-test dependencies.
 
 ## Tests
 
 New unit tests cover:
 
-- local help request entity creation and backend JSON payload mapping
+- local help request entity creation, coordinate preservation, and backend JSON payload mapping
 - conflict policy for remote terminal-state mismatches
 - retry policy for transient vs non-retryable sync failures
 - stale `IN_PROGRESS` recovery policy for interrupted sync attempts

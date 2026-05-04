@@ -94,6 +94,7 @@ object OfflineSyncCoordinator {
         return try {
             when (operation.operationType) {
                 SyncOperationType.CREATE_HELP_REQUEST -> RequestHelpRepository.pushCreateOperation(operation, token)
+                SyncOperationType.UPDATE_HELP_REQUEST -> RequestHelpRepository.pushUpdateOperation(operation, token)
                 SyncOperationType.UPDATE_HELP_REQUEST_STATUS -> RequestHelpRepository.pushStatusOperation(operation, token)
                 SyncOperationType.CANCEL_ASSIGNMENT -> AssignedRequestRepository.pushCancelOperation(operation, token)
             }
@@ -110,7 +111,10 @@ object OfflineSyncCoordinator {
     }
 
     private suspend fun deferOperationUntilDependenciesSync(operation: SyncOperationEntity): Boolean {
-        if (operation.operationType != SyncOperationType.UPDATE_HELP_REQUEST_STATUS) {
+        if (
+            operation.operationType != SyncOperationType.UPDATE_HELP_REQUEST &&
+            operation.operationType != SyncOperationType.UPDATE_HELP_REQUEST_STATUS
+        ) {
             return false
         }
 

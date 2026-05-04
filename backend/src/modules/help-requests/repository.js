@@ -404,6 +404,187 @@ async function createHelpRequest(input) {
   }
 }
 
+async function updateHelpRequestByRequestId(requestId, input, executor = null) {
+  const client = executor || await pool.connect();
+  const shouldManageTransaction = !executor;
+
+  try {
+    if (shouldManageTransaction) {
+      await client.query('BEGIN');
+    }
+
+    const operationalLevels = deriveOperationalLevels({
+      affectedPeopleCount: input.affectedPeopleCount,
+      riskFlags: input.riskFlags,
+    });
+
+    const requestResult = await client.query(
+      `
+        UPDATE help_requests
+        SET help_types = $2,
+            other_help_text = $3,
+            affected_people_count = $4,
+            risk_flags = $5,
+            vulnerable_groups = $6,
+            need_type = $7,
+            description = $8,
+            blood_type = $9,
+            contact_full_name = $10,
+            contact_phone = $11,
+            contact_alternative_phone = $12,
+            consent_given = $13,
+            urgency_level = $14,
+            priority_level = $15,
+            is_saved_locally = FALSE
+        WHERE request_id = $1
+          AND status NOT IN ('RESOLVED', 'CANCELLED')
+        RETURNING
+          request_id,
+          user_id,
+          help_types,
+          other_help_text,
+          affected_people_count,
+          risk_flags,
+          vulnerable_groups,
+          need_type,
+          description,
+          blood_type,
+          contact_full_name,
+          contact_phone,
+          contact_alternative_phone,
+          consent_given,
+          status,
+          urgency_level,
+          priority_level,
+          created_at,
+          resolved_at,
+          cancelled_at,
+          COALESCE(cancelled_at, resolved_at) AS closed_at,
+          FLOOR(
+            EXTRACT(
+              EPOCH FROM (COALESCE(cancelled_at, resolved_at, CURRENT_TIMESTAMP) - created_at)
+            ) / 60
+          )::int AS open_duration_minutes,
+          is_saved_locally
+      `,
+      [
+        requestId,
+        input.helpTypes,
+        input.otherHelpText,
+        input.affectedPeopleCount,
+        input.riskFlags,
+        input.vulnerableGroups,
+        input.needType,
+        input.description,
+        input.bloodType || null,
+        input.contact.fullName,
+        input.contact.phone,
+        input.contact.alternativePhone ?? null,
+        input.consentGiven,
+        operationalLevels.urgencyLevel,
+        operationalLevels.priorityLevel,
+      ],
+    );
+
+    if (requestResult.rows.length === 0) {
+      if (shouldManageTransaction) {
+        await client.query('ROLLBACK');
+      }
+      return null;
+    }
+
+    const coordinate = input.location.coordinate || null;
+    const latitude = input.location.latitude ?? coordinate?.latitude ?? null;
+    const longitude = input.location.longitude ?? coordinate?.longitude ?? null;
+    const isGpsLocation = Boolean(
+      coordinate
+      && typeof coordinate.source === 'string'
+      && coordinate.source.toUpperCase().includes('GPS'),
+    );
+
+    const locationResult = await client.query(
+      `
+        INSERT INTO request_locations (
+          location_id,
+          request_id,
+          country,
+          city,
+          district,
+          neighborhood,
+          extra_address,
+          latitude,
+          longitude,
+          is_gps_location,
+          is_last_known
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
+        ON CONFLICT (request_id) DO UPDATE
+        SET country = EXCLUDED.country,
+            city = EXCLUDED.city,
+            district = EXCLUDED.district,
+            neighborhood = EXCLUDED.neighborhood,
+            extra_address = EXCLUDED.extra_address,
+            latitude = EXCLUDED.latitude,
+            longitude = EXCLUDED.longitude,
+            is_gps_location = EXCLUDED.is_gps_location,
+            is_last_known = FALSE,
+            captured_at = CURRENT_TIMESTAMP
+        RETURNING
+          location_id,
+          country,
+          city,
+          district,
+          neighborhood,
+          extra_address,
+          latitude,
+          longitude,
+          is_gps_location,
+          is_last_known,
+          captured_at
+      `,
+      [
+        crypto.randomUUID(),
+        requestId,
+        input.location.country,
+        input.location.city,
+        input.location.district,
+        input.location.neighborhood,
+        input.location.displayAddress || input.location.extraAddress || null,
+        latitude,
+        longitude,
+        isGpsLocation,
+      ],
+    );
+
+    if (shouldManageTransaction) {
+      await client.query('COMMIT');
+    }
+
+    return mapHelpRequest({
+      ...requestResult.rows[0],
+      ...locationResult.rows[0],
+    });
+  } catch (error) {
+    if (shouldManageTransaction) {
+      await client.query('ROLLBACK');
+    }
+    throw error;
+  } finally {
+    if (shouldManageTransaction) {
+      client.release();
+    }
+  }
+}
+
+async function updateHelpRequestForUser(userId, requestId, input) {
+  const existing = await findHelpRequestByIdForUser(userId, requestId);
+  if (!existing) {
+    return null;
+  }
+
+  return updateHelpRequestByRequestId(requestId, input);
+}
+
 async function listHelpRequestsByUserId(userId, executor = null) {
   const result = await runQuery(
     executor,
@@ -699,6 +880,8 @@ async function listActiveHelpRequestsVisibility({
 
 module.exports = {
   createHelpRequest,
+  updateHelpRequestForUser,
+  updateHelpRequestByRequestId,
   listHelpRequestsByUserId,
   findHelpRequestById,
   findHelpRequestByIdForUser,

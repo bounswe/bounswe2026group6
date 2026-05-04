@@ -108,8 +108,10 @@ fun AppNavGraph(
             val profileBadgeText = resolveProfileBadgeText(authenticated)
 
             HomeScreen(
-                onRequestHelp = {
-                    navController.navigate(Routes.RequestHelp.route)
+                onRequestHelp = { draftLocalId ->
+                    navController.navigate(
+                        draftLocalId?.let(Routes::requestHelpWithDraft) ?: Routes.RequestHelp.route
+                    )
                 },
                 onOpenAssignedRequest = {
                     navigateToDrawerRoute(Routes.AssignedRequest.route)
@@ -165,7 +167,13 @@ fun AppNavGraph(
             val authenticated = isAuthenticated()
             val profileBadgeText = resolveProfileBadgeText(authenticated)
             MyHelpRequestsScreen(
-                onNavigateToRoute = ::navigateToDrawerRoute,
+                onNavigateToRoute = { route ->
+                    if (route.startsWith(Routes.RequestHelp.route)) {
+                        navController.navigate(route)
+                    } else {
+                        navigateToDrawerRoute(route)
+                    }
+                },
                 onOpenSettings = if (authenticated) {
                     { navigateToDrawerRoute(Routes.Settings.route) }
                 } else {
@@ -381,8 +389,18 @@ fun AppNavGraph(
             )
         }
 
-        composable(Routes.RequestHelp.route) {
+        composable(
+            route = "${Routes.RequestHelp.route}?${Routes.RequestHelpDraftArg}={${Routes.RequestHelpDraftArg}}",
+            arguments = listOf(
+                navArgument(Routes.RequestHelpDraftArg) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
             RequestHelpScreen(
+                draftLocalId = backStackEntry.arguments?.getString(Routes.RequestHelpDraftArg),
                 onNavigateBack = {
                     navController.popBackStack()
                 },
