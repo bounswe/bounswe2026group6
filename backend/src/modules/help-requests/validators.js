@@ -91,6 +91,16 @@ function validateRequiredString(fieldName, value, errors, { maxLength = 255 } = 
   return normalized;
 }
 
+const placeholderValues = new Set(['unknown', 'unknown requester', 'n/a', 'na']);
+
+function validateRequiredNonPlaceholderString(fieldName, value, errors, { maxLength = 255 } = {}) {
+  const normalized = validateRequiredString(fieldName, value, errors, { maxLength });
+  if (normalized && placeholderValues.has(normalized.toLowerCase())) {
+    errors.push(`\`${fieldName}\` must be real user-provided information.`);
+  }
+  return normalized;
+}
+
 function validateOptionalString(fieldName, value, errors, { maxLength = 255 } = {}) {
   if (value == null) {
     return '';
@@ -120,6 +130,11 @@ function validateRequiredPhoneNumber(fieldName, value, errors) {
     return null;
   }
 
+  if (value === 5000000000) {
+    errors.push(`\`${fieldName}\` must be a real contact phone number.`);
+    return null;
+  }
+
   return value;
 }
 
@@ -130,6 +145,11 @@ function validateOptionalPhoneNumber(fieldName, value, errors) {
 
   if (!isValidTurkishMobileNumber(value)) {
     errors.push(`\`${fieldName}\` must be a 10-digit integer starting with 5.`);
+    return null;
+  }
+
+  if (value === 5000000000) {
+    errors.push(`\`${fieldName}\` must be a real contact phone number.`);
     return null;
   }
 
@@ -287,13 +307,13 @@ function validateCreateHelpRequest(payload) {
     }
 
     location = {
-      country: validateRequiredString('location.country', payload.location.country, errors, {
+      country: validateRequiredNonPlaceholderString('location.country', payload.location.country, errors, {
         maxLength: 100,
       }),
-      city: validateRequiredString('location.city', payload.location.city, errors, {
+      city: validateRequiredNonPlaceholderString('location.city', payload.location.city, errors, {
         maxLength: 100,
       }),
-      district: validateRequiredString('location.district', payload.location.district, errors, {
+      district: validateRequiredNonPlaceholderString('location.district', payload.location.district, errors, {
         maxLength: 100,
       }),
       neighborhood: validateOptionalString('location.neighborhood', payload.location.neighborhood, errors, {
@@ -375,8 +395,102 @@ function validateHelpRequestStatusUpdate(payload) {
   };
 }
 
+const ACTIVE_VISIBILITY_STATUSES = new Set(['PENDING', 'ASSIGNED', 'IN_PROGRESS']);
+const BBOX_SEGMENT_COUNT = 4;
+
+function validateActiveHelpRequestListQuery(query = {}) {
+  const errors = [];
+
+  const rawTypes = typeof query.type === 'string' ? query.type : '';
+  const typeFilters = rawTypes
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  const rawStatuses = typeof query.status === 'string' ? query.status : '';
+  const statusFilters = rawStatuses
+    .split(',')
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+
+  const invalidStatuses = statusFilters.filter((value) => !ACTIVE_VISIBILITY_STATUSES.has(value));
+  if (invalidStatuses.length > 0) {
+    errors.push(
+      `\`status\` contains invalid values: ${invalidStatuses.join(', ')}. Allowed values: PENDING, ASSIGNED, IN_PROGRESS.`,
+    );
+  }
+
+  let bbox = null;
+  if (typeof query.bbox === 'string' && query.bbox.trim() !== '') {
+    const parts = query.bbox
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (parts.length !== BBOX_SEGMENT_COUNT) {
+      errors.push('`bbox` must have 4 comma-separated values: minLng,minLat,maxLng,maxLat.');
+    } else {
+      const [minLngRaw, minLatRaw, maxLngRaw, maxLatRaw] = parts;
+      const minLng = Number(minLngRaw);
+      const minLat = Number(minLatRaw);
+      const maxLng = Number(maxLngRaw);
+      const maxLat = Number(maxLatRaw);
+
+      if (![minLng, minLat, maxLng, maxLat].every((value) => Number.isFinite(value))) {
+        errors.push('`bbox` values must be valid numbers.');
+      } else {
+        if (minLng < -180 || minLng > 180 || maxLng < -180 || maxLng > 180) {
+          errors.push('`bbox` longitude values must be between -180 and 180.');
+        }
+        if (minLat < -90 || minLat > 90 || maxLat < -90 || maxLat > 90) {
+          errors.push('`bbox` latitude values must be between -90 and 90.');
+        }
+        if (minLng > maxLng) {
+          errors.push('`bbox` minLng must be less than or equal to maxLng.');
+        }
+        if (minLat > maxLat) {
+          errors.push('`bbox` minLat must be less than or equal to maxLat.');
+        }
+
+        if (errors.length === 0) {
+          bbox = { minLng, minLat, maxLng, maxLat };
+        }
+      }
+    }
+  }
+
+  const limit =
+    query.limit === undefined
+      ? 100
+      : Number(query.limit);
+  const offset =
+    query.offset === undefined
+      ? 0
+      : Number(query.offset);
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    errors.push('`limit` must be an integer between 1 and 500.');
+  }
+
+  if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
+    errors.push('`offset` must be an integer between 0 and 100000.');
+  }
+
+  return {
+    errors,
+    value: {
+      typeFilters,
+      statusFilters: statusFilters.length > 0 ? statusFilters : ['PENDING', 'ASSIGNED', 'IN_PROGRESS'],
+      bbox,
+      limit,
+      offset,
+    },
+  };
+}
+
 module.exports = {
   readUserId,
   validateCreateHelpRequest,
   validateHelpRequestStatusUpdate,
+  validateActiveHelpRequestListQuery,
 };

@@ -252,6 +252,75 @@ describe('help-requests integration', () => {
 		expect(response.body.warnings).toEqual([]);
 	});
 
+	test('PATCH /api/help-requests/:requestId updates an authenticated active request', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_update';
+		await seedActiveUser(userId, 'hr-update@example.com');
+		const token = buildAuthToken(userId);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+
+		const updatedPayload = buildCreatePayload({
+			helpTypes: ['food_water'],
+			affectedPeopleCount: 5,
+			description: 'Updated details after the emergency draft was opened.',
+			location: {
+				country: 'turkiye',
+				city: 'istanbul',
+				district: 'kadikoy',
+				neighborhood: 'moda',
+				extraAddress: 'Updated address',
+			},
+		});
+
+		const updateRes = await request(app)
+			.patch(`/api/help-requests/${createRes.body.request.id}`)
+			.set('Authorization', `Bearer ${token}`)
+			.send(updatedPayload);
+
+		expect(updateRes.status).toBe(200);
+		expect(updateRes.body.request.id).toBe(createRes.body.request.id);
+		expect(updateRes.body.request.helpTypes).toEqual(['food_water']);
+		expect(updateRes.body.request.affectedPeopleCount).toBe(5);
+		expect(updateRes.body.request.description).toBe('Updated details after the emergency draft was opened.');
+		expect(updateRes.body.request.location).toEqual(updatedPayload.location);
+		expect(updateRes.body.request.needType).toBe('food_water');
+	});
+
+	test('PATCH /api/help-requests/:requestId rejects terminal request edits', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_terminal_update';
+		await seedActiveUser(userId, 'hr-terminal-update@example.com');
+		const token = buildAuthToken(userId);
+
+		const createRes = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload());
+
+		expect(createRes.status).toBe(201);
+
+		const resolveRes = await request(app)
+			.patch(`/api/help-requests/${createRes.body.request.id}/status`)
+			.set('Authorization', `Bearer ${token}`)
+			.send({ status: 'RESOLVED' });
+
+		expect(resolveRes.status).toBe(200);
+
+		const updateRes = await request(app)
+			.patch(`/api/help-requests/${createRes.body.request.id}`)
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({ description: 'Should not update.' }));
+
+		expect(updateRes.status).toBe(409);
+		expect(updateRes.body.code).toBe('REQUEST_NOT_EDITABLE');
+	});
+
 	test('POST /api/help-requests persists minimal optional payload with defaults and nulls', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_minimal_1';
