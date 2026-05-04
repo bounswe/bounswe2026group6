@@ -108,7 +108,7 @@ export default function PrivacySecurityView() {
             setError("");
             setInfo("");
 
-            if (!initialShareLocation && shareLocation && !locationPreview) {
+            if (!initialShareLocation && shareLocation) {
                 setError(
                     "To enable Share Current Location, go to Profile, click Use Current Location, and save there first."
                 );
