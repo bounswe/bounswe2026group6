@@ -1,6 +1,7 @@
 package com.neph.e2e
 
 import android.content.Context
+import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import com.neph.core.database.NephDatabaseProvider
@@ -22,6 +23,7 @@ class NephE2ETestEnvironmentRule(
                 val context = InstrumentationRegistry.getInstrumentation().targetContext
 
                 resetAppState(context)
+                grantRuntimePermissions(context)
                 fakeBackend.reset()
                 fakeBackend.start()
                 beforeLaunch?.invoke(context, fakeBackend)
@@ -58,6 +60,16 @@ class NephE2ETestEnvironmentRule(
                     .commit()
             }
             runCatching { context.deleteSharedPreferences(prefsName) }
+        }
+    }
+
+    private fun grantRuntimePermissions(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+                    "pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS"
+                ).close()
+            }
         }
     }
 }

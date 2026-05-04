@@ -23,6 +23,7 @@ import org.json.JSONObject
 
 data class MyHelpRequestUiModel(
     val id: String,
+    val localId: String,
     val guestAccessToken: String? = null,
     val helpTypes: List<String>,
     val helpTypeSummary: String,
@@ -127,12 +128,32 @@ object MyHelpRequestsRepository {
 
     suspend fun markGuestRequestAsResolved(
         requestId: String,
-        guestAccessToken: String
+        guestAccessToken: String? = null
     ): MyHelpRequestUiModel? {
         return markLocalRequestStatus(
             requestId = requestId,
             ownerType = LocalOwnerType.GUEST,
             nextStatus = "RESOLVED",
+            guestAccessToken = guestAccessToken
+        )
+    }
+
+    suspend fun markRequestAsCancelled(token: String, requestId: String): MyHelpRequestUiModel? {
+        return markLocalRequestStatus(
+            requestId = requestId,
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            nextStatus = "CANCELLED"
+        )
+    }
+
+    suspend fun markGuestRequestAsCancelled(
+        requestId: String,
+        guestAccessToken: String? = null
+    ): MyHelpRequestUiModel? {
+        return markLocalRequestStatus(
+            requestId = requestId,
+            ownerType = LocalOwnerType.GUEST,
+            nextStatus = "CANCELLED",
             guestAccessToken = guestAccessToken
         )
     }
@@ -167,6 +188,8 @@ object MyHelpRequestsRepository {
 
         val nextEntity = entity.copy(
             status = nextStatus,
+            resolvedAt = if (nextStatus == "RESOLVED") now.toIsoLikeString() else entity.resolvedAt,
+            cancelledAt = if (nextStatus == "CANCELLED") now.toIsoLikeString() else entity.cancelledAt,
             guestAccessToken = guestAccessToken ?: entity.guestAccessToken,
             syncStatus = if (entity.syncStatus == SyncStatus.PENDING_CREATE) {
                 SyncStatus.PENDING_CREATE
@@ -221,18 +244,27 @@ internal fun buildMyHelpRequestsOverview(
 
 internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
     val helpTypes = helpTypesJson.jsonArrayToStringList().map(::formatHelpType)
+    val normalizedStatus = status.trim().uppercase()
     val riskStatusLabel = when (syncStatus) {
-        SyncStatus.PENDING_CREATE -> "Saved offline, waiting to sync"
-        SyncStatus.PENDING_UPDATE -> "Update waiting to sync"
-        SyncStatus.FAILED -> "Sync failed"
-        SyncStatus.CONFLICTED -> "Needs review"
+        SyncStatus.PENDING_CREATE -> if (normalizedStatus.isTerminalRequestStatus()) {
+            formatStatus(status)
+        } else {
+            "Saved offline, waiting to sync"
+        }
+        SyncStatus.PENDING_UPDATE -> if (normalizedStatus.isTerminalRequestStatus()) {
+            formatStatus(status)
+        } else {
+            "Update waiting to sync"
+        }
+        SyncStatus.FAILED -> if (normalizedStatus.isTerminalRequestStatus()) formatStatus(status) else "Sync failed"
+        SyncStatus.CONFLICTED -> if (normalizedStatus.isTerminalRequestStatus()) formatStatus(status) else "Needs review"
         else -> formatStatus(status)
     }
     val displayId = remoteId ?: localId
     val created = serverCreatedAt?.let(::formatLifecycleTimestamp)
         ?: formatEpochMillis(createdAtEpochMillis)
     val closedAtRaw = cancelledAt ?: resolvedAt
-    val closedStateLabel = when (status.trim().uppercase()) {
+    val closedStateLabel = when (normalizedStatus) {
         "RESOLVED" -> "Resolved"
         "CANCELLED" -> "Cancelled"
         else -> null
@@ -263,6 +295,7 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
 
     return MyHelpRequestUiModel(
         id = displayId,
+        localId = localId,
         guestAccessToken = guestAccessToken,
         helpTypes = helpTypes,
         helpTypeSummary = buildHelpTypeSummary(helpTypes),
@@ -271,7 +304,7 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
         locationLabel = buildLocationLabel(country, city, district, neighborhood, extraAddress),
         status = status,
         statusLabel = riskStatusLabel,
-        isActive = status != "RESOLVED" && status != "CANCELLED",
+        isActive = !normalizedStatus.isTerminalRequestStatus(),
         contactName = contactFullName.takeIf { it.isNotBlank() },
         contactPhone = contactPhone.takeIf { it.isNotBlank() },
         alternativePhone = contactAlternativePhone,
@@ -368,6 +401,14 @@ private fun formatStatus(status: String): String {
         "PENDING_SYNC" -> "Pending sync"
         else -> "Status unavailable"
     }
+}
+
+private fun String.isTerminalRequestStatus(): Boolean = this == "RESOLVED" || this == "CANCELLED"
+
+private fun Long.toIsoLikeString(): String {
+    val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+    formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+    return formatter.format(java.util.Date(this))
 }
 
 private fun buildShortDescription(description: String): String {

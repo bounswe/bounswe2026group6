@@ -112,7 +112,7 @@ test('keeps map/list selection stable when features share same id but different 
   await page.getByRole('button', { name: /City Hall Shelter/i }).click();
 
   await expect(page.locator('.gathering-areas-selected-name')).toHaveText('City Hall Shelter');
-  await expect(page.locator('.gathering-areas-selected-meta').first()).toContainText('shelter');
+  await expect(page.locator('.gathering-areas-selected-meta').first()).toContainText('Shelter');
 });
 
 test('shows empty and error states for gathering areas retrieval', async ({ page }) => {

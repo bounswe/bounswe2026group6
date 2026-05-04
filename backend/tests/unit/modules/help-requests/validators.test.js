@@ -4,6 +4,7 @@ const {
 	readUserId,
 	validateCreateHelpRequest,
 	validateHelpRequestStatusUpdate,
+	validateActiveHelpRequestListQuery,
 } = require('../../../../src/modules/help-requests/validators');
 
 describe('help-requests validators', () => {
@@ -206,6 +207,27 @@ describe('help-requests validators', () => {
 			expect(errors).toContain('`location.city` is required.');
 		});
 
+		test('rejects emergency draft placeholder contact and location values', () => {
+			const payload = buildPayload();
+			payload.location.country = 'unknown';
+			payload.location.city = 'unknown';
+			payload.location.district = 'unknown';
+			payload.location.neighborhood = 'unknown';
+			payload.contact.fullName = 'Unknown requester';
+			payload.contact.phone = 5000000000;
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toEqual(expect.arrayContaining([
+				'`location.country` must be real user-provided information.',
+				'`location.city` must be real user-provided information.',
+				'`location.district` must be real user-provided information.',
+				'`location.neighborhood` must be real user-provided information.',
+				'`contact.fullName` must be real user-provided information.',
+				'`contact.phone` must be a real contact phone number.',
+			]));
+		});
+
 		test('accepts hybrid location coordinate object', () => {
 			const payload = buildPayload();
 			payload.location.coordinate = {
@@ -323,6 +345,78 @@ describe('help-requests validators', () => {
 			const { errors } = validateHelpRequestStatusUpdate({ status: 123 });
 
 			expect(errors.length).toBeGreaterThan(0);
+		});
+	});
+
+	describe('validateActiveHelpRequestListQuery', () => {
+		test('uses defaults when optional query params are absent', () => {
+			const { errors, value } = validateActiveHelpRequestListQuery({});
+
+			expect(errors).toHaveLength(0);
+			expect(value.typeFilters).toEqual([]);
+			expect(value.statusFilters).toEqual(['PENDING', 'ASSIGNED', 'IN_PROGRESS']);
+			expect(value.limit).toBe(100);
+			expect(value.offset).toBe(0);
+			expect(value.bbox).toBeNull();
+		});
+
+		test('parses type and status filters', () => {
+			const { errors, value } = validateActiveHelpRequestListQuery({
+				type: 'first_aid, shelter ',
+				status: 'pending,assigned',
+				limit: '20',
+				offset: '5',
+			});
+
+			expect(errors).toHaveLength(0);
+			expect(value.typeFilters).toEqual(['first_aid', 'shelter']);
+			expect(value.statusFilters).toEqual(['PENDING', 'ASSIGNED']);
+			expect(value.limit).toBe(20);
+			expect(value.offset).toBe(5);
+		});
+
+		test('parses bbox values', () => {
+			const { errors, value } = validateActiveHelpRequestListQuery({
+				bbox: '28.9,40.9,29.2,41.2',
+			});
+
+			expect(errors).toHaveLength(0);
+			expect(value.bbox).toEqual({
+				minLng: 28.9,
+				minLat: 40.9,
+				maxLng: 29.2,
+				maxLat: 41.2,
+			});
+		});
+
+		test('rejects unsupported statuses', () => {
+			const { errors } = validateActiveHelpRequestListQuery({
+				status: 'resolved',
+			});
+
+			expect(errors).toEqual(expect.arrayContaining([
+				expect.stringContaining('`status` contains invalid values'),
+			]));
+		});
+
+		test('rejects malformed bbox', () => {
+			const { errors } = validateActiveHelpRequestListQuery({
+				bbox: '29.1,41.1,29.2',
+			});
+
+			expect(errors).toContain('`bbox` must have 4 comma-separated values: minLng,minLat,maxLng,maxLat.');
+		});
+
+		test('rejects invalid pagination values', () => {
+			const { errors } = validateActiveHelpRequestListQuery({
+				limit: '0',
+				offset: '-1',
+			});
+
+			expect(errors).toEqual(expect.arrayContaining([
+				'`limit` must be an integer between 1 and 500.',
+				'`offset` must be an integer between 0 and 100000.',
+			]));
 		});
 	});
 });

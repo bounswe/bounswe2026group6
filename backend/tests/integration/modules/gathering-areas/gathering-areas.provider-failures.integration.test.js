@@ -49,12 +49,37 @@ describe('gathering-areas integration - provider failures', () => {
     expect(response.body.code).toBe('OVERPASS_UNAVAILABLE');
   });
 
+  test('GET /api/gathering-areas/nearby returns 503 when provider keeps returning 406', async () => {
+    const app = createApp();
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 406,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 406,
+        json: async () => ({}),
+      });
+
+    const response = await request(app)
+      .get('/api/gathering-areas/nearby?lat=41.01&lon=29.01&radius=1500&limit=10');
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe('OVERPASS_UNAVAILABLE');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   test('GET /api/gathering-areas/nearby returns 504 when provider times out', async () => {
     const app = createApp();
 
     const timeoutError = new Error('timeout');
     timeoutError.name = 'AbortError';
-    global.fetch.mockRejectedValueOnce(timeoutError);
+    global.fetch
+      .mockRejectedValueOnce(timeoutError)
+      .mockRejectedValueOnce(timeoutError);
 
     const response = await request(app)
       .get('/api/gathering-areas/nearby?lat=41.01&lon=29.01&radius=1500&limit=10');

@@ -16,6 +16,13 @@ object ProfileRepository {
     private lateinit var prefs: SharedPreferences
     private var cachedProfile = ProfileData()
 
+    internal const val LocationSharingInitializationMessage =
+        "To enable Share Current Location, capture and save a valid location from your profile first."
+
+    class LocationSharingInitializationRequiredException(
+        message: String = LocationSharingInitializationMessage
+    ) : IllegalStateException(message)
+
     fun initialize(context: Context) {
         if (!::prefs.isInitialized) {
             prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
@@ -99,17 +106,49 @@ object ProfileRepository {
     ): ProfileData {
         ensureInitialized()
 
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        check(token.isNotBlank()) { "Access token is required before saving the profile." }
+
+        val trustedSavedCoordinates = if (
+            cachedProfile.shareLocation != true &&
+            profile.shareLocation == true &&
+            currentDeviceLocation == null
+        ) {
+            hasTrustedRemoteSharedCoordinates(token)
+        } else {
+            false
+        }
+
+        if (
+            isFirstTimeShareEnableWithoutCoordinates(
+                previousProfile = cachedProfile,
+                nextProfile = profile,
+                currentDeviceLocation = currentDeviceLocation,
+                hasTrustedSavedCoordinates = trustedSavedCoordinates
+            )
+        ) {
+            throw LocationSharingInitializationRequiredException()
+        }
+
         try {
             LocationTreeRepository.ensureLocationData()
         } catch (_: Exception) {
             // Keep fallback location mapping when location tree is unavailable.
         }
 
-        val token = AuthSessionStore.getAccessToken().orEmpty()
-        check(token.isNotBlank()) { "Access token is required before saving the profile." }
-
-        val normalizedName = profile.fullName?.trim().orEmpty()
-        val (firstName, lastName) = splitFullName(normalizedName)
+        val fallbackNames = splitFullName(profile.fullName.orEmpty())
+        val firstName = profile.firstName?.trim()?.takeIf(String::isNotBlank) ?: fallbackNames.first
+        val lastName = profile.lastName?.trim()?.takeIf(String::isNotBlank) ?: fallbackNames.second
+        val normalizedDateOfBirth = normalizeDateOfBirth(profile.dateOfBirth)
+        val resolvedAge = profile.age ?: calculateAgeFromDateOfBirth(normalizedDateOfBirth)
+        val normalizedProfile = profile.copy(
+            firstName = firstName,
+            lastName = lastName,
+            fullName = composeFullName(firstName, lastName),
+            dateOfBirth = normalizedDateOfBirth,
+            age = resolvedAge,
+            expertise = normalizeExpertise(profile.expertise)
+        )
 
         return try {
             JsonHttpClient.request(
@@ -119,7 +158,7 @@ object ProfileRepository {
                 body = JSONObject().apply {
                     put("firstName", firstName)
                     put("lastName", lastName)
-                    putNullable("phoneNumber", profile.phone?.trim()?.takeIf(String::isNotBlank))
+                    putNullable("phoneNumber", normalizedProfile.phone?.trim()?.takeIf(String::isNotBlank))
                 }
             )
 
@@ -128,10 +167,13 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    profile.age?.let { put("age", it) }
-                    putNullable("gender", profile.gender)
-                    profile.height?.let { put("height", it.toDouble()) }
-                    profile.weight?.let { put("weight", it.toDouble()) }
+                    putNullable("dateOfBirth", normalizedDateOfBirth)
+                    if (normalizedDateOfBirth == null) {
+                        resolvedAge?.let { put("age", it) }
+                    }
+                    putNullable("gender", normalizedProfile.gender)
+                    normalizedProfile.height?.let { put("height", it.toDouble()) }
+                    normalizedProfile.weight?.let { put("weight", it.toDouble()) }
                 }
             )
 
@@ -140,10 +182,10 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    put("medicalConditions", JSONArray(parseListField(profile.medicalHistory)))
-                    put("chronicDiseases", JSONArray(parseListField(profile.chronicDiseases)))
-                    put("allergies", JSONArray(parseListField(profile.allergies)))
-                    putNullable("bloodType", profile.bloodType)
+                    put("medicalConditions", JSONArray(parseListField(normalizedProfile.medicalHistory)))
+                    put("chronicDiseases", JSONArray(parseListField(normalizedProfile.chronicDiseases)))
+                    put("allergies", JSONArray(parseListField(normalizedProfile.allergies)))
+                    putNullable("bloodType", normalizedProfile.bloodType)
                 }
             )
 
@@ -159,6 +201,9 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
+                    put("profileVisibility", normalizedProfile.profileVisibility ?: "PRIVATE")
+                    put("healthInfoVisibility", normalizedProfile.healthInfoVisibility ?: "PRIVATE")
+                    put("locationVisibility", normalizedProfile.locationVisibility ?: "PRIVATE")
                     put("locationSharingEnabled", profile.shareLocation ?: false)
                 }
             )
@@ -168,7 +213,7 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    putNullable("profession", profile.profession)
+                    putNullable("profession", normalizedProfile.profession)
                 }
             )
 
@@ -177,11 +222,11 @@ object ProfileRepository {
                 method = "PUT",
                 token = token,
                 body = JSONObject().apply {
-                    put("expertiseAreas", JSONArray(profile.expertise))
+                    put("expertiseAreas", JSONArray(normalizedProfile.expertise))
                 }
             )
 
-            saveProfile(profile)
+            saveProfile(normalizedProfile)
 
             val refreshed = fetchAndCacheRemoteProfile()
             saveProfile(refreshed)
@@ -197,6 +242,69 @@ object ProfileRepository {
             }
             throw error
         }
+    }
+
+    internal fun isFirstTimeShareEnableWithoutCoordinates(
+        previousProfile: ProfileData,
+        nextProfile: ProfileData,
+        currentDeviceLocation: CurrentDeviceLocation?,
+        hasTrustedSavedCoordinates: Boolean
+    ): Boolean {
+        val enablingFromDisabledToEnabled = previousProfile.shareLocation != true && nextProfile.shareLocation == true
+        if (!enablingFromDisabledToEnabled) {
+            return false
+        }
+
+        val hasFreshCurrentCoordinates = currentDeviceLocation != null
+
+        return !hasTrustedSavedCoordinates && !hasFreshCurrentCoordinates
+    }
+
+    suspend fun syncPrivacySettings(
+        profileVisibility: String,
+        healthInfoVisibility: String,
+        locationVisibility: String,
+        locationSharingEnabled: Boolean
+    ): ProfileData {
+        ensureInitialized()
+
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        check(token.isNotBlank()) { "Access token is required before saving privacy settings." }
+
+        val response = JsonHttpClient.request(
+            path = "/profiles/me/privacy",
+            method = "PATCH",
+            token = token,
+            body = JSONObject().apply {
+                put("profileVisibility", normalizeVisibility(profileVisibility))
+                put("healthInfoVisibility", normalizeVisibility(healthInfoVisibility))
+                put("locationVisibility", normalizeVisibility(locationVisibility))
+                put("locationSharingEnabled", locationSharingEnabled)
+            }
+        )
+
+        val updated = mapBackendProfile(
+            profileJson = response,
+            email = cachedProfile.email.orEmpty(),
+            cachedProfileSnapshot = cachedProfile
+        )
+        saveProfile(updated)
+        return updated
+    }
+
+    private suspend fun hasTrustedRemoteSharedCoordinates(token: String): Boolean {
+        val profileResponse = JsonHttpClient.request(
+            path = "/profiles/me",
+            token = token
+        )
+        val locationProfile = profileResponse.optJSONObject("locationProfile") ?: JSONObject()
+        val coordinate = locationProfile.optJSONObject("coordinate") ?: JSONObject()
+        val sharedLatitude = coordinate.optNullableDouble("latitude")
+            ?: locationProfile.optNullableDouble("latitude")
+        val sharedLongitude = coordinate.optNullableDouble("longitude")
+            ?: locationProfile.optNullableDouble("longitude")
+
+        return sharedLatitude != null && sharedLongitude != null
     }
 
     suspend fun syncLocationOnLaunch(
@@ -315,17 +423,27 @@ object ProfileRepository {
     }
 
     private fun persistProfile(profile: ProfileData) {
+        val resolvedFirstName = profile.firstName?.trim()?.takeIf(String::isNotBlank)
+        val resolvedLastName = profile.lastName?.trim()?.takeIf(String::isNotBlank)
+        val resolvedDateOfBirth = normalizeDateOfBirth(profile.dateOfBirth)
+        val resolvedAge = profile.age ?: calculateAgeFromDateOfBirth(resolvedDateOfBirth)
+        val resolvedExpertise = normalizeExpertise(profile.expertise)
+        val resolvedFullName = composeFullName(resolvedFirstName, resolvedLastName) ?: profile.fullName
+
         prefs.edit().apply {
-            putString("fullName", profile.fullName)
+            putString("firstName", resolvedFirstName)
+            putString("lastName", resolvedLastName)
+            putString("fullName", resolvedFullName)
             putString("email", profile.email)
             putString("phone", profile.phone)
             putString("profession", profile.profession)
-            putString("expertise", JSONArray(profile.expertise).toString())
+            putString("expertise", JSONArray(resolvedExpertise).toString())
             putFloatOrRemove("height", profile.height)
             putFloatOrRemove("weight", profile.weight)
             putString("bloodType", profile.bloodType)
             putString("gender", profile.gender)
-            putIntOrRemove("age", profile.age)
+            putString("dateOfBirth", resolvedDateOfBirth)
+            putIntOrRemove("age", resolvedAge)
             putString("medicalHistory", profile.medicalHistory)
             putString("chronicDiseases", profile.chronicDiseases)
             putString("allergies", profile.allergies)
@@ -334,6 +452,9 @@ object ProfileRepository {
             putString("district", profile.district)
             putString("neighborhood", profile.neighborhood)
             putString("extraAddress", profile.extraAddress)
+            putString("profileVisibility", normalizeVisibility(profile.profileVisibility))
+            putString("healthInfoVisibility", normalizeVisibility(profile.healthInfoVisibility))
+            putString("locationVisibility", normalizeVisibility(profile.locationVisibility))
             putBoolean("shareLocation", profile.shareLocation ?: false)
             putString("sharedLatitude", profile.sharedLatitude?.toString())
             putString("sharedLongitude", profile.sharedLongitude?.toString())
@@ -346,14 +467,21 @@ object ProfileRepository {
             emptyList()
         } else {
             try {
-                JSONArray(expertiseJson).toStringList()
+                normalizeExpertise(JSONArray(expertiseJson).toStringList())
             } catch (_: Exception) {
                 emptyList()
             }
         }
 
+        val storedFirstName = prefs.getString("firstName", null)
+        val storedLastName = prefs.getString("lastName", null)
+        val storedDateOfBirth = normalizeDateOfBirth(prefs.getString("dateOfBirth", null))
+        val storedAge = prefs.getNullableInt("age") ?: calculateAgeFromDateOfBirth(storedDateOfBirth)
+
         return ProfileData(
-            fullName = prefs.getString("fullName", null),
+            firstName = storedFirstName,
+            lastName = storedLastName,
+            fullName = composeFullName(storedFirstName, storedLastName) ?: prefs.getString("fullName", null),
             email = prefs.getString("email", null),
             phone = prefs.getString("phone", null),
             profession = prefs.getString("profession", null),
@@ -362,7 +490,8 @@ object ProfileRepository {
             weight = prefs.getNullableFloat("weight"),
             bloodType = prefs.getString("bloodType", null),
             gender = prefs.getString("gender", null),
-            age = prefs.getNullableInt("age"),
+            dateOfBirth = storedDateOfBirth,
+            age = storedAge,
             medicalHistory = prefs.getString("medicalHistory", null),
             chronicDiseases = prefs.getString("chronicDiseases", null),
             allergies = prefs.getString("allergies", null),
@@ -371,6 +500,9 @@ object ProfileRepository {
             district = prefs.getString("district", null),
             neighborhood = prefs.getString("neighborhood", null),
             extraAddress = prefs.getString("extraAddress", null),
+            profileVisibility = normalizeVisibility(prefs.getString("profileVisibility", null)),
+            healthInfoVisibility = normalizeVisibility(prefs.getString("healthInfoVisibility", null)),
+            locationVisibility = normalizeVisibility(prefs.getString("locationVisibility", null)),
             shareLocation = if (prefs.contains("shareLocation")) prefs.getBoolean("shareLocation", false) else null,
             sharedLatitude = prefs.getString("sharedLatitude", null)?.toDoubleOrNull(),
             sharedLongitude = prefs.getString("sharedLongitude", null)?.toDoubleOrNull()
@@ -419,25 +551,29 @@ object ProfileRepository {
         val neighborhoodValue = neighborhoodFromAdministrative.ifBlank { parsedAddress.second }
         val extraAddressFromBackend = administrative.optStringOrNull("extraAddress")
             ?: parsedAddress.third
+        val firstName = profile.optStringOrNull("firstName")
+        val lastName = profile.optStringOrNull("lastName")
+        val dateOfBirth = normalizeDateOfBirth(physicalInfo.optStringOrNull("dateOfBirth"))
+        val resolvedAge = physicalInfo.optNullableInt("age") ?: calculateAgeFromDateOfBirth(dateOfBirth)
         val sharedLatitude = coordinate.optNullableDouble("latitude")
             ?: locationProfile.optNullableDouble("latitude")
         val sharedLongitude = coordinate.optNullableDouble("longitude")
             ?: locationProfile.optNullableDouble("longitude")
 
         return ProfileData(
-            fullName = listOf(
-                profile.optStringOrNull("firstName"),
-                profile.optStringOrNull("lastName")
-            ).filterNotNull().joinToString(" ").trim().takeIf { it.isNotBlank() },
+            firstName = firstName,
+            lastName = lastName,
+            fullName = composeFullName(firstName, lastName),
             email = email.takeIf { it.isNotBlank() } ?: cachedProfileSnapshot.email,
             phone = profile.optStringOrNull("phoneNumber"),
             profession = expertise?.optStringOrNull("profession"),
-            expertise = expertise?.optJSONArray("expertiseAreas").toStringList(),
+            expertise = normalizeExpertise(expertise?.optJSONArray("expertiseAreas").toStringList()),
             height = physicalInfo.optNullableFloat("height"),
             weight = physicalInfo.optNullableFloat("weight"),
             bloodType = normalizeBloodType(healthInfo.optStringOrNull("bloodType")),
             gender = physicalInfo.optStringOrNull("gender"),
-            age = physicalInfo.optNullableInt("age"),
+            dateOfBirth = dateOfBirth,
+            age = resolvedAge,
             medicalHistory = healthInfo.optJSONArray("medicalConditions").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             chronicDiseases = healthInfo.optJSONArray("chronicDiseases").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
             allergies = healthInfo.optJSONArray("allergies").toStringList().joinToString(", ").takeIf { it.isNotBlank() },
@@ -451,6 +587,9 @@ object ProfileRepository {
                 .takeIf { it.isNotBlank() },
             extraAddress = extraAddressFromBackend
                 ?: cachedProfileSnapshot.extraAddress,
+            profileVisibility = normalizeVisibility(privacySettings.optStringOrNull("profileVisibility")),
+            healthInfoVisibility = normalizeVisibility(privacySettings.optStringOrNull("healthInfoVisibility")),
+            locationVisibility = normalizeVisibility(privacySettings.optStringOrNull("locationVisibility")),
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled"),
             sharedLatitude = sharedLatitude,
             sharedLongitude = sharedLongitude
@@ -563,6 +702,14 @@ object ProfileRepository {
 
     private fun JSONObject.optNullableDouble(key: String): Double? {
         return if (has(key) && !isNull(key)) optDouble(key) else null
+    }
+
+    private fun normalizeVisibility(value: String?): String {
+        return when (value?.uppercase(Locale.ROOT)) {
+            "PUBLIC" -> "PUBLIC"
+            "EMERGENCY_ONLY" -> "EMERGENCY_ONLY"
+            else -> "PRIVATE"
+        }
     }
 
     private fun ensureInitialized() {

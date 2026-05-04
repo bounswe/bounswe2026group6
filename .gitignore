@@ -69,3 +69,7 @@ test-results/
 .sisyphus
 mvp354/
 .omx/
+
+# Firebase secrets
+android/app/src/debug/google-services.json
+android/app/src/e2e/google-services.json

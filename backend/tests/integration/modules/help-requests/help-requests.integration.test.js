@@ -691,6 +691,59 @@ describe('help-requests integration', () => {
 		expect(response.body.request.helpers).toEqual([]);
 	});
 
+	test('PATCH /api/help-requests/:requestId allows guest detail update with guest header token', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest draft before edit' }));
+
+		const requestId = createResponse.body.request.id;
+		const guestAccessToken = createResponse.body.guestAccessToken;
+		const updatedPayload = buildCreatePayload({
+			helpTypes: ['shelter'],
+			affectedPeopleCount: 2,
+			description: 'guest completed the emergency draft',
+			location: {
+				country: 'turkiye',
+				city: 'istanbul',
+				district: 'uskudar',
+				neighborhood: 'acibadem',
+				extraAddress: 'Updated guest address',
+			},
+		});
+
+		const response = await request(app)
+			.patch(`/api/help-requests/${requestId}`)
+			.set('x-help-request-access-token', guestAccessToken)
+			.send(updatedPayload);
+
+		expect(response.status).toBe(200);
+		expect(response.body.request.id).toBe(requestId);
+		expect(response.body.request.userId).toBeNull();
+		expect(response.body.request.helpTypes).toEqual(['shelter']);
+		expect(response.body.request.affectedPeopleCount).toBe(2);
+		expect(response.body.request.description).toBe('guest completed the emergency draft');
+		expect(response.body.request.location).toEqual(updatedPayload.location);
+		expect(response.body.request.helper).toBeNull();
+		expect(response.body.request.helpers).toEqual([]);
+	});
+
+	test('GET /api/help-requests/:requestId rejects guest token in query string', async () => {
+		const app = createTestApp();
+
+		const createResponse = await request(app)
+			.post('/api/help-requests')
+			.send(buildCreatePayload({ description: 'guest query token check' }));
+
+		const response = await request(app)
+			.get(`/api/help-requests/${createResponse.body.request.id}`)
+			.query({ guestAccessToken: createResponse.body.guestAccessToken });
+
+		expect(response.status).toBe(401);
+		expect(response.body.code).toBe('UNAUTHORIZED');
+	});
+
 	test('GET /api/help-requests/:requestId redacts helper details for guest token even if assignment exists', async () => {
 		const app = createTestApp();
 		const helperUserId = 'user_hr_guest_redact_helper_1';
@@ -1757,5 +1810,338 @@ describe('help-requests integration', () => {
 		expect(nearStatus.body.assignment).toBeTruthy();
 		expect(nearStatus.body.assignment.request_id).toBe(response.body.request.id);
 		expect(farStatus.body.assignment).toBeNull();
+	});
+
+	test('GET /api/help-requests/active allows guest access', async () => {
+		const app = createTestApp();
+
+		const response = await request(app)
+			.get('/api/help-requests/active');
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests).toEqual([]);
+		expect(response.body.total).toBe(0);
+	});
+
+	test('GET /api/help-requests/active returns only active requests with regular-user-safe fields', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_active_visibility_regular_1';
+		await seedActiveUser(requesterId, 'activevisibilityregular1@example.com');
+		const token = buildAuthToken(requesterId);
+
+		const activeCreate = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({
+				helpTypes: ['first_aid'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Bina B',
+					latitude: 41.04321,
+					longitude: 29.00987,
+				},
+			}));
+
+		const closedCreate = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({
+				helpTypes: ['shelter'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Bina C',
+					latitude: 41.0435,
+					longitude: 29.01,
+				},
+			}));
+
+		await request(app)
+			.patch(`/api/help-requests/${closedCreate.body.request.id}/status`)
+			.set('Authorization', `Bearer ${token}`)
+			.send({ status: 'RESOLVED' })
+			.expect(200);
+
+		const response = await request(app)
+			.get('/api/help-requests/active')
+			.set('Authorization', `Bearer ${token}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests).toHaveLength(1);
+		expect(response.body.requests[0].requestId).toBe(activeCreate.body.request.id);
+		expect(response.body.requests[0].type).toBe('first_aid');
+		expect(response.body.requests[0].location.latitude).toBeCloseTo(41.043, 3);
+		expect(response.body.requests[0].location.longitude).toBeCloseTo(29.01, 3);
+		expect(response.body.requests[0].location.neighborhood).toBeUndefined();
+		expect(response.body.requests[0].assignmentState).toBe('UNASSIGNED');
+	});
+
+	test('GET /api/help-requests/active supports type and bbox filtering', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_active_visibility_filter_1';
+		await seedActiveUser(requesterId, 'activevisibilityfilter1@example.com');
+		const token = buildAuthToken(requesterId);
+
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({
+				helpTypes: ['first_aid'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'In bbox',
+					latitude: 41.0432,
+					longitude: 29.0092,
+				},
+			}));
+
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send(buildCreatePayload({
+				helpTypes: ['food'],
+				location: {
+					country: 'turkiye',
+					city: 'ankara',
+					district: 'cankaya',
+					neighborhood: 'kizilay',
+					extraAddress: 'Out of bbox',
+					latitude: 39.9334,
+					longitude: 32.8597,
+				},
+			}));
+
+		const response = await request(app)
+			.get('/api/help-requests/active?type=first_aid&bbox=29.0,41.0,29.1,41.1')
+			.set('Authorization', `Bearer ${token}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests).toHaveLength(1);
+		expect(response.body.requests[0].type).toBe('first_aid');
+	});
+
+	test('GET /api/help-requests/active supports status filtering for active states', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_active_visibility_status_1';
+		const helperId = 'user_active_visibility_status_helper_1';
+		await seedActiveUser(requesterId, 'activevisibilitystatus1@example.com');
+		await seedActiveUser(helperId, 'activevisibilitystatushelper1@example.com');
+		await seedVolunteer({
+			volunteerId: 'vol_active_visibility_status_helper_1',
+			userId: helperId,
+			latitude: 41.043,
+			longitude: 29.009,
+		});
+		const requesterToken = buildAuthToken(requesterId);
+
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload({
+				helpTypes: ['shelter'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Pending candidate',
+					latitude: 41.0432,
+					longitude: 29.0092,
+				},
+			}));
+
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload({
+				helpTypes: ['first_aid'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Assigned candidate',
+					latitude: 41.043,
+					longitude: 29.009,
+				},
+			}));
+
+		const response = await request(app)
+			.get('/api/help-requests/active?status=PENDING')
+			.set('Authorization', `Bearer ${requesterToken}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests.length).toBeGreaterThanOrEqual(1);
+		expect(response.body.requests.every((item) => item.status === 'PENDING')).toBe(true);
+	});
+
+	test('GET /api/help-requests/active rejects non-active status filters', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_active_visibility_status_2';
+		await seedActiveUser(requesterId, 'activevisibilitystatus2@example.com');
+		const requesterToken = buildAuthToken(requesterId);
+
+		const response = await request(app)
+			.get('/api/help-requests/active?status=RESOLVED')
+			.set('Authorization', `Bearer ${requesterToken}`);
+
+		expect(response.status).toBe(400);
+		expect(response.body.code).toBe('VALIDATION_FAILED');
+		expect(response.body.details).toEqual(expect.arrayContaining([
+			expect.stringContaining('`status` contains invalid values'),
+		]));
+	});
+
+	test('GET /api/help-requests/active ignores claim-only admin JWT flags', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_active_visibility_claim_only_1';
+		await seedActiveUser(requesterId, 'activevisibilityclaimonly1@example.com');
+
+		const requesterToken = buildAuthToken(requesterId);
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload({
+				helpTypes: ['shelter'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Claim-only admin check',
+					latitude: 41.04321,
+					longitude: 29.00987,
+				},
+			}));
+
+		const claimOnlyAdminToken = jwt.sign(
+			{
+				userId: requesterId,
+				email: 'activevisibilityclaimonly1@example.com',
+				isAdmin: true,
+				adminRole: 'SUPER_ADMIN',
+			},
+			process.env.JWT_SECRET || 'dev-secret-123',
+			{ expiresIn: '1h' },
+		);
+
+		const response = await request(app)
+			.get('/api/help-requests/active')
+			.set('Authorization', `Bearer ${claimOnlyAdminToken}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests).toHaveLength(1);
+		expect(response.body.requests[0].location.latitude).toBeCloseTo(41.043, 3);
+		expect(response.body.requests[0].location.longitude).toBeCloseTo(29.01, 3);
+		expect(response.body.requests[0].location.neighborhood).toBeUndefined();
+	});
+
+	test('GET /api/help-requests/active treats banned admin token as guest visibility', async () => {
+		const app = createTestApp();
+		const requesterId = 'user_active_visibility_regular_2';
+		const bannedAdminUserId = 'user_active_visibility_banned_admin_1';
+
+		await seedActiveUser(requesterId, 'activevisibilityregular2@example.com');
+		await seedActiveUser(bannedAdminUserId, 'activevisibilitybannedadmin1@example.com');
+		await query(
+			`INSERT INTO admins (admin_id, user_id, role) VALUES ('adm_active_visibility_banned_1', $1, 'OPS')`,
+			[bannedAdminUserId],
+		);
+		await query(
+			`UPDATE users SET is_banned = TRUE, ban_reason = 'Policy', banned_at = CURRENT_TIMESTAMP WHERE user_id = $1`,
+			[bannedAdminUserId],
+		);
+
+		const requesterToken = buildAuthToken(requesterId);
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${requesterToken}`)
+			.send(buildCreatePayload({
+				helpTypes: ['food'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Banned admin visibility check',
+					latitude: 41.04321,
+					longitude: 29.00987,
+				},
+			}));
+
+		const bannedAdminToken = jwt.sign(
+			{
+				userId: bannedAdminUserId,
+				email: 'activevisibilitybannedadmin1@example.com',
+				isAdmin: true,
+				adminRole: 'OPS',
+			},
+			process.env.JWT_SECRET || 'dev-secret-123',
+			{ expiresIn: '1h' },
+		);
+
+		const response = await request(app)
+			.get('/api/help-requests/active')
+			.set('Authorization', `Bearer ${bannedAdminToken}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests).toHaveLength(1);
+		expect(response.body.requests[0].location.latitude).toBeCloseTo(41.043, 3);
+		expect(response.body.requests[0].location.longitude).toBeCloseTo(29.01, 3);
+		expect(response.body.requests[0].location.neighborhood).toBeUndefined();
+	});
+
+	test('GET /api/help-requests/active includes admin-level location detail for admin users', async () => {
+		const app = createTestApp();
+		const adminUserId = 'user_active_visibility_admin_1';
+		await seedActiveUser(adminUserId, 'activevisibilityadmin1@example.com');
+		await query(
+			`INSERT INTO admins (admin_id, user_id, role) VALUES ('adm_active_visibility_1', $1, 'OPS')`,
+			[adminUserId],
+		);
+		const adminToken = jwt.sign(
+			{
+				userId: adminUserId,
+				email: 'activevisibilityadmin1@example.com',
+				isAdmin: true,
+				adminRole: 'OPS',
+			},
+			process.env.JWT_SECRET || 'dev-secret-123',
+			{ expiresIn: '1h' },
+		);
+
+		await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${adminToken}`)
+			.send(buildCreatePayload({
+				helpTypes: ['shelter'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+					neighborhood: 'levazim',
+					extraAddress: 'Admin detail check',
+					latitude: 41.04321,
+					longitude: 29.00987,
+				},
+			}));
+
+		const response = await request(app)
+			.get('/api/help-requests/active')
+			.set('Authorization', `Bearer ${adminToken}`);
+
+		expect(response.status).toBe(200);
+		expect(response.body.requests).toHaveLength(1);
+		expect(response.body.requests[0].location.latitude).toBeCloseTo(41.04321, 5);
+		expect(response.body.requests[0].location.longitude).toBeCloseTo(29.00987, 5);
+		expect(response.body.requests[0].location.neighborhood).toBe('levazim');
 	});
 });

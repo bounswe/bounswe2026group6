@@ -11,17 +11,24 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.RowScope.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.auth.data.AuthRepository
@@ -45,6 +53,7 @@ import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.buttons.TextActionButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
@@ -55,6 +64,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyHelpRequestsScreen(
     onNavigateToRoute: (String) -> Unit,
@@ -67,12 +77,103 @@ fun MyHelpRequestsScreen(
     val token = AuthSessionStore.getAccessToken().orEmpty()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val listState = rememberLazyListState()
 
     val requests by MyHelpRequestsRepository.observeHelpRequests(isAuthenticated)
         .collectAsState(initial = emptyList())
     var actionInProgress by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf("") }
     var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
+    var reconnectRefreshInProgress by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<PendingRequestAction?>(null) }
+    val pullToRefreshState = rememberPullToRefreshState()
+
+    fun refreshRequests(showFullPageLoading: Boolean) {
+        if (!showFullPageLoading && (initialRefreshInProgress || reconnectRefreshInProgress)) return
+        if (showFullPageLoading && reconnectRefreshInProgress) return
+
+        scope.launch {
+            if (showFullPageLoading) {
+                initialRefreshInProgress = true
+            } else {
+                reconnectRefreshInProgress = true
+            }
+
+            OfflineSyncScheduler.enqueueSync(context, reason = "my-help-requests-refresh", replaceExisting = true)
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.fetchMyHelpRequests(token)
+                } else {
+                    MyHelpRequestsRepository.fetchGuestHelpRequests()
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (error: ApiException) {
+                if (error.status == 401 && isAuthenticated) {
+                    AuthRepository.logout()
+                    onNavigateToRoute(Routes.Login.route)
+                }
+            } catch (_: Exception) {
+                // Keep showing the best local snapshot if reconnecting fails.
+            } finally {
+                if (showFullPageLoading) {
+                    initialRefreshInProgress = false
+                } else {
+                    reconnectRefreshInProgress = false
+                }
+            }
+        }
+    }
+
+    fun resolveCurrentRequest(currentActiveRequest: MyHelpRequestUiModel) {
+        actionMessage = ""
+        actionInProgress = true
+        scope.launch {
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.markRequestAsResolved(
+                        token = token,
+                        requestId = currentActiveRequest.id
+                    )
+                } else {
+                    MyHelpRequestsRepository.markGuestRequestAsResolved(
+                        requestId = currentActiveRequest.id,
+                        guestAccessToken = currentActiveRequest.guestAccessToken
+                    )
+                }
+                actionMessage = "Request marked resolved."
+            } catch (_: Exception) {
+                actionMessage = "Could not update request status."
+            } finally {
+                actionInProgress = false
+            }
+        }
+    }
+
+    fun cancelCurrentRequest(currentActiveRequest: MyHelpRequestUiModel) {
+        actionMessage = ""
+        actionInProgress = true
+        scope.launch {
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.markRequestAsCancelled(
+                        token = token,
+                        requestId = currentActiveRequest.id
+                    )
+                } else {
+                    MyHelpRequestsRepository.markGuestRequestAsCancelled(
+                        requestId = currentActiveRequest.id,
+                        guestAccessToken = currentActiveRequest.guestAccessToken
+                    )
+                }
+                actionMessage = "Request cancelled."
+            } catch (_: Exception) {
+                actionMessage = "Could not cancel request."
+            } finally {
+                actionInProgress = false
+            }
+        }
+    }
 
     AppDrawerScaffold(
         title = "My Help Requests",
@@ -90,57 +191,63 @@ fun MyHelpRequestsScreen(
         contentFillMaxSize = true
     ) {
         LaunchedEffect(isAuthenticated, token) {
-            initialRefreshInProgress = true
-            OfflineSyncScheduler.enqueueSync(context, reason = "my-help-requests-open", replaceExisting = true)
-            try {
-                if (isAuthenticated && token.isNotBlank()) {
-                    MyHelpRequestsRepository.fetchMyHelpRequests(token)
-                } else {
-                    MyHelpRequestsRepository.fetchGuestHelpRequests()
-                }
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (error: ApiException) {
-                if (error.status == 401 && isAuthenticated) {
-                    AuthRepository.logout()
-                    onNavigateToRoute(Routes.Login.route)
-                }
-            } catch (_: Exception) {
-                // Keep showing the best local snapshot if the initial refresh fails.
-            } finally {
-                initialRefreshInProgress = false
-            }
+            refreshRequests(showFullPageLoading = true)
         }
 
-        when {
-            initialRefreshInProgress && requests.isEmpty() -> {
-                LoadingStateView()
-            }
+        PullToRefreshBox(
+            isRefreshing = reconnectRefreshInProgress,
+            onRefresh = { refreshRequests(showFullPageLoading = false) },
+            state = pullToRefreshState,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val overview = buildMyHelpRequestsOverview(requests)
+            val currentActiveRequest = overview.activeRequests.firstOrNull()
+            val requestHistory = overview.historyRequests
 
-            requests.isEmpty() -> {
-                EmptyStateView(
-                    onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) }
-                )
-            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(spacing.lg),
+                contentPadding = PaddingValues(vertical = spacing.sm)
+            ) {
+                if (reconnectRefreshInProgress) {
+                    item {
+                        ReconnectRefreshIndicator()
+                    }
+                }
 
-            else -> {
-                val overview = buildMyHelpRequestsOverview(requests)
-                val currentActiveRequest = overview.activeRequests.firstOrNull()
-                val requestHistory = overview.historyRequests
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(spacing.lg),
-                    contentPadding = PaddingValues(vertical = spacing.sm)
-                ) {
-                    if (overview.hasMultipleRequestContext) {
+                when {
+                    initialRefreshInProgress && requests.isEmpty() -> {
                         item {
-                            RequestsOverviewCard(
-                                overview = overview,
-                                isAuthenticated = isAuthenticated
+                            LoadingStateView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 520.dp)
                             )
                         }
                     }
+
+                    requests.isEmpty() -> {
+                        item {
+                            EmptyStateView(
+                                onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 520.dp)
+                            )
+                        }
+                    }
+
+                    else -> {
+
+                        if (overview.hasMultipleRequestContext) {
+                            item {
+                                RequestsOverviewCard(
+                                    overview = overview,
+                                    isAuthenticated = isAuthenticated
+                                )
+                            }
+                        }
 
                         item {
                             SectionHeader(
@@ -153,86 +260,156 @@ fun MyHelpRequestsScreen(
                             )
                         }
 
-                    if (currentActiveRequest == null) {
-                        item {
-                            SectionCard {
-                                Text(
-                                    text = "No active help request right now.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (currentActiveRequest == null) {
+                            item {
+                                SectionCard {
+                                    Text(
+                                        text = "No active help request right now.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = currentActiveRequest.id) {
+                                MyHelpRequestCard(
+                                    request = currentActiveRequest,
+                                    titleOverride = currentActiveRequest.helpTypeSummary,
+                                    subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
+                                        ?: "Opened time unavailable",
+                                    actionMessage = actionMessage,
+                                    onEdit = { pendingAction = PendingRequestAction.Edit(currentActiveRequest) },
+                                    onCancel = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                        { pendingAction = PendingRequestAction.Cancel(currentActiveRequest) }
+                                    } else {
+                                        null
+                                    },
+                                    onResolve = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                        { pendingAction = PendingRequestAction.Resolve(currentActiveRequest) }
+                                    } else {
+                                        null
+                                    },
+                                    actionLoading = actionInProgress
                                 )
                             }
                         }
-                    } else {
-                        item(key = currentActiveRequest.id) {
-                            MyHelpRequestCard(
-                                request = currentActiveRequest,
-                                titleOverride = currentActiveRequest.helpTypeSummary,
-                                subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
-                                    ?: "Opened time unavailable",
-                                actionMessage = actionMessage,
-                                onResolve = if (isAuthenticated && token.isNotBlank()) {
-                                    {
-                                        actionMessage = ""
-                                        actionInProgress = true
-                                        scope.launch {
-                                            try {
-                                                MyHelpRequestsRepository.markRequestAsResolved(
-                                                    token = token,
-                                                    requestId = currentActiveRequest.id
-                                                )
-                                                actionMessage = "Request marked resolved locally and queued for sync."
-                                            } catch (_: Exception) {
-                                                actionMessage = "Could not save the status change locally."
-                                            } finally {
-                                                actionInProgress = false
-                                            }
-                                        }
-                                    }
-                                } else if (!isAuthenticated && currentActiveRequest.guestAccessToken != null) {
-                                    {
-                                        actionMessage = ""
-                                        actionInProgress = true
-                                        scope.launch {
-                                            try {
-                                                MyHelpRequestsRepository.markGuestRequestAsResolved(
-                                                    requestId = currentActiveRequest.id,
-                                                    guestAccessToken = currentActiveRequest.guestAccessToken
-                                                )
-                                                actionMessage = "Request marked resolved locally and queued for sync."
-                                            } catch (_: Exception) {
-                                                actionMessage = "Could not save the status change locally."
-                                            } finally {
-                                                actionInProgress = false
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    null
-                                },
-                                resolveLoading = actionInProgress
-                            )
-                        }
-                    }
 
-                    if (requestHistory.isNotEmpty()) {
-                        item {
-                            SectionHeader(
-                                title = "Request History",
-                                subtitle = if (isAuthenticated) {
-                                    "Previous requests from your account."
-                                } else {
-                                    "Previous guest requests created from this device."
-                                }
-                            )
-                        }
+                        if (requestHistory.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Request History",
+                                    subtitle = if (isAuthenticated) {
+                                        "Previous requests from your account."
+                                    } else {
+                                        "Previous guest requests created from this device."
+                                    }
+                                )
+                            }
 
-                        items(requestHistory, key = { it.id }) { request ->
-                            MyHelpRequestCard(request = request)
+                            items(requestHistory, key = { it.id }) { request ->
+                                MyHelpRequestCard(request = request)
+                            }
                         }
                     }
                 }
             }
+        }
+
+        pendingAction?.let { action ->
+            ConfirmRequestActionDialog(
+                action = action,
+                onDismiss = { pendingAction = null },
+                onConfirm = {
+                    pendingAction = null
+                    when (action) {
+                        is PendingRequestAction.Edit -> onNavigateToRoute(Routes.requestHelpWithDraft(action.request.localId))
+                        is PendingRequestAction.Cancel -> cancelCurrentRequest(action.request)
+                        is PendingRequestAction.Resolve -> resolveCurrentRequest(action.request)
+                    }
+                }
+            )
+        }
+    }
+}
+
+private sealed class PendingRequestAction(open val request: MyHelpRequestUiModel) {
+    data class Edit(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+    data class Cancel(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+    data class Resolve(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+}
+
+@Composable
+private fun ConfirmRequestActionDialog(
+    action: PendingRequestAction,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val title = when (action) {
+        is PendingRequestAction.Edit -> "Edit help request?"
+        is PendingRequestAction.Cancel -> "Cancel help request?"
+        is PendingRequestAction.Resolve -> "Mark request resolved?"
+    }
+    val text = when (action) {
+        is PendingRequestAction.Edit -> "You will return to the request form and update this same request."
+        is PendingRequestAction.Cancel -> "This closes the request as cancelled."
+        is PendingRequestAction.Resolve -> "This closes the request as resolved."
+    }
+    val confirm = when (action) {
+        is PendingRequestAction.Edit -> "Edit"
+        is PendingRequestAction.Cancel -> "Cancel request"
+        is PendingRequestAction.Resolve -> "Mark resolved"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title) },
+        text = { Text(text = text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirm)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Keep current")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReconnectRefreshIndicator(modifier: Modifier = Modifier) {
+    val spacing = LocalNephSpacing.current
+
+    SectionCard(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(32.dp),
+                    strokeWidth = 2.dp
+                )
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Trying to reconnect",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Text(
+                text = "Trying to reconnect...",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -337,11 +514,11 @@ private fun OverviewMetric(
 }
 
 @Composable
-private fun LoadingStateView() {
+private fun LoadingStateView(modifier: Modifier = Modifier) {
     val spacing = LocalNephSpacing.current
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -361,12 +538,13 @@ private fun LoadingStateView() {
 
 @Composable
 private fun EmptyStateView(
-    onRequestHelp: () -> Unit
+    onRequestHelp: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -419,7 +597,9 @@ private fun MyHelpRequestCard(
     subtitleOverride: String? = null,
     actionMessage: String = "",
     onResolve: (() -> Unit)? = null,
-    resolveLoading: Boolean = false
+    onEdit: (() -> Unit)? = null,
+    onCancel: (() -> Unit)? = null,
+    actionLoading: Boolean = false
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
@@ -456,22 +636,6 @@ private fun MyHelpRequestCard(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            request.urgencyLabel?.let {
-                Text(
-                    text = "Urgency: $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            request.priorityLabel?.let {
-                Text(
-                    text = "Priority: $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
             request.openDurationLabel?.let {
                 Text(
                     text = if (request.isActive) "Open for: $it" else "Was open for: $it",
@@ -489,17 +653,19 @@ private fun MyHelpRequestCard(
             }
 
             if (request.isPendingSync) {
-                HelperText(text = "Saved locally. NEPH will sync this change when the network is available.")
+                HelperText(text = request.pendingSyncMessage())
             }
 
             if (request.isFailedSync) {
-                HelperText(text = request.pendingError ?: "Sync failed. Retry when connected.")
-                SecondaryButton(
-                    text = "Retry Sync",
-                    onClick = {
-                        OfflineSyncScheduler.enqueueSync(context, reason = "manual-help-request-retry", replaceExisting = true)
-                    }
-                )
+                HelperText(text = request.failedSyncMessage())
+                if (request.isActive) {
+                    SecondaryButton(
+                        text = "Retry Sync",
+                        onClick = {
+                            OfflineSyncScheduler.enqueueSync(context, reason = "manual-help-request-retry", replaceExisting = true)
+                        }
+                    )
+                }
             }
 
             request.lastSyncedAt?.let {
@@ -584,18 +750,70 @@ private fun MyHelpRequestCard(
                 )
             }
 
-            if (request.isActive && onResolve != null) {
+            if (request.isActive) {
                 if (actionMessage.isNotBlank()) {
                     HelperText(text = actionMessage)
                 }
 
                 PrimaryButton(
-                    text = "Mark Request As Resolved",
-                    onClick = onResolve,
-                    loading = resolveLoading
+                    text = "Edit Request",
+                    onClick = onEdit ?: {},
+                    enabled = onEdit != null && !actionLoading
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+                ) {
+                    SecondaryButton(
+                        text = "Cancel",
+                        onClick = onCancel ?: {},
+                        modifier = Modifier.weight(1f),
+                        enabled = onCancel != null && !actionLoading
+                    )
+
+                    TextActionButton(
+                        text = "Mark Resolved",
+                        onClick = onResolve ?: {},
+                        modifier = Modifier.weight(1f),
+                        enabled = onResolve != null && !actionLoading
+                    )
+                }
+
+                if (actionLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .align(Alignment.CenterHorizontally),
+                        strokeWidth = 2.dp
+                    )
+                }
             }
         }
+    }
+}
+
+private fun MyHelpRequestUiModel.pendingSyncMessage(): String {
+    return when (status.trim().uppercase()) {
+        "CANCELLED" -> if (syncStatus == com.neph.core.sync.SyncStatus.PENDING_CREATE) {
+            "Cancellation saved offline, waiting to sync."
+        } else {
+            "Cancellation waiting to sync."
+        }
+        "RESOLVED" -> if (syncStatus == com.neph.core.sync.SyncStatus.PENDING_CREATE) {
+            "Resolution saved offline, waiting to sync."
+        } else {
+            "Resolution waiting to sync."
+        }
+        else -> "Saved locally. NEPH will sync this change when the network is available."
+    }
+}
+
+private fun MyHelpRequestUiModel.failedSyncMessage(): String {
+    return when (status.trim().uppercase()) {
+        "CANCELLED" -> pendingError ?: "Cancellation could not sync yet. Pull down to reconnect when online."
+        "RESOLVED" -> pendingError ?: "Resolution could not sync yet. Pull down to reconnect when online."
+        else -> pendingError ?: "Sync failed. Retry when connected."
     }
 }
 

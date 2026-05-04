@@ -195,6 +195,19 @@ export function LocationPicker({
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
+                    onChange({
+                        ...toManualPickerValue(
+                            position.coords.latitude,
+                            position.coords.longitude
+                        ),
+                        source: "current_device",
+                        accuracyMeters:
+                            typeof position.coords.accuracy === "number"
+                                ? position.coords.accuracy
+                                : null,
+                        capturedAt: new Date(position.timestamp).toISOString(),
+                    });
+
                     void handleResolveCoordinates(
                         position.coords.latitude,
                         position.coords.longitude,
@@ -250,10 +263,10 @@ export function LocationPicker({
     }, [handleSearch]);
 
     return (
-        <div className="flex flex-col gap-3">
+        <div className="location-picker-wrap flex flex-col gap-3">
             <HelperText className="text-sm text-[#2b2b33]">{label}</HelperText>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <TextInput
                     id={searchInputId}
                     label="Search location"
@@ -307,6 +320,13 @@ export function LocationPicker({
                         : null
                 }
                 onSelectPosition={(position) => {
+                    onChange({
+                        ...toManualPickerValue(position.latitude, position.longitude),
+                        source: "map_pin",
+                        accuracyMeters: null,
+                        capturedAt: new Date().toISOString(),
+                    });
+
                     void handleResolveCoordinates(position.latitude, position.longitude, {
                         source: "map_pin",
                         accuracyMeters: null,

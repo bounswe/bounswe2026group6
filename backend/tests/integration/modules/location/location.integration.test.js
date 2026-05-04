@@ -204,6 +204,38 @@ describe('location integration', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  test('GET /api/location/reverse maps street extraAddress from pedestrian fallback', async () => {
+    const app = createApp();
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        place_id: 98765,
+        display_name: 'Levent, Besiktas, Istanbul, Turkey',
+        lat: '41.0822',
+        lon: '29.0154',
+        address: {
+          country_code: 'tr',
+          country: 'Turkey',
+          city: 'Istanbul',
+          county: 'Besiktas',
+          suburb: 'Levent',
+          pedestrian: 'Buyukdere Cd.',
+          house_number: '45',
+          postcode: '34330',
+        },
+      }),
+    });
+
+    const response = await request(app)
+      .get('/api/location/reverse?lat=41.0822&lon=29.0154');
+
+    expect(response.status).toBe(200);
+    expect(response.body.item.placeId).toBe('98765');
+    expect(response.body.item.administrative.extraAddress).toBe('Buyukdere Cd. 45');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('GET /api/location/search uses in-memory cache for identical queries', async () => {
     const app = createApp();
 

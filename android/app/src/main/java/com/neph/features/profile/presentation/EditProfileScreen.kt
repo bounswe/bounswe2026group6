@@ -1,7 +1,5 @@
 package com.neph.features.profile.presentation
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,29 +15,30 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
-import com.neph.features.profile.data.CurrentLocationShareWarning
-import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.bloodTypeOptions
+import com.neph.features.profile.data.calculateAgeFromDateOfBirth
 import com.neph.features.profile.data.combinePhoneNumber
+import com.neph.features.profile.data.composeFullName
 import com.neph.features.profile.data.expertiseOptionsFor
 import com.neph.features.profile.data.locationData
+import com.neph.features.profile.data.normalizeDateOfBirth
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseListField
 import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
-import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.profile.presentation.components.GenderSelector
 import com.neph.features.profile.presentation.components.LocationSelector
 import com.neph.ui.components.buttons.PrimaryButton
+import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
@@ -47,13 +46,17 @@ import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
-import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.layout.AppScaffold
+import com.neph.ui.map.MapPickerDialog
+import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
-import com.neph.ui.map.SharedCoordinatesMapAction
+import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun EditProfileScreen(
@@ -61,72 +64,74 @@ fun EditProfileScreen(
     onNavigateBack: () -> Unit
 ) {
     var profile by remember { mutableStateOf(ProfileRepository.getProfile()) }
+    val initialFirstName = remember(profile.firstName, profile.fullName) {
+        profile.firstName?.trim().orEmpty().ifBlank {
+            profile.fullName.orEmpty().trim().split(Regex("\\s+")).firstOrNull().orEmpty()
+        }
+    }
+    val initialLastName = remember(profile.lastName, profile.fullName) {
+        profile.lastName?.trim().orEmpty().ifBlank {
+            val parts = profile.fullName.orEmpty().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            parts.drop(1).joinToString(" ")
+        }
+    }
     val initialPhoneParts = remember { normalizePhoneParts(profile.phone) }
 
     var loading by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf("") }
     var info by rememberSaveable { mutableStateOf("") }
     var mapActionInfo by rememberSaveable { mutableStateOf("") }
+    var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
+    var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
 
     var countryCode by rememberSaveable { mutableStateOf(initialPhoneParts.countryCode) }
     var phone by rememberSaveable { mutableStateOf(initialPhoneParts.phone) }
+    var firstNameText by rememberSaveable { mutableStateOf(initialFirstName) }
+    var lastNameText by rememberSaveable { mutableStateOf(initialLastName) }
     var heightText by rememberSaveable { mutableStateOf(profile.height.toEditableString()) }
     var weightText by rememberSaveable { mutableStateOf(profile.weight.toEditableString()) }
-    var ageText by rememberSaveable { mutableStateOf(profile.age?.toString().orEmpty()) }
+    var dateOfBirthText by rememberSaveable { mutableStateOf(profile.dateOfBirth.orEmpty()) }
     var availableLocationData by remember { mutableStateOf<LocationData>(locationData) }
     var locationLoading by remember { mutableStateOf(true) }
     var locationInfo by rememberSaveable { mutableStateOf("") }
-    var syncedSharedLatitude by remember { mutableStateOf(profile.sharedLatitude) }
-    var syncedSharedLongitude by remember { mutableStateOf(profile.sharedLongitude) }
 
     val scope = rememberCoroutineScope()
     val spacing = LocalNephSpacing.current
-    val context = LocalContext.current
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants.values.any { it }) {
-            profile = profile.copy(shareLocation = true)
-            info = "Location permission granted. Current location will be shared when you save."
-        } else {
-            profile = profile.copy(shareLocation = false)
-            info = "Location permission denied. Current location sharing remains off."
-        }
-    }
 
     LaunchedEffect(Unit) {
         try {
             profile = ProfileRepository.fetchAndCacheRemoteProfile()
-            syncedSharedLatitude = profile.sharedLatitude
-            syncedSharedLongitude = profile.sharedLongitude
             val phoneParts = normalizePhoneParts(profile.phone)
             countryCode = phoneParts.countryCode
             phone = phoneParts.phone
+            firstNameText = profile.firstName.orEmpty()
+            lastNameText = profile.lastName.orEmpty()
             heightText = profile.height.toEditableString()
             weightText = profile.weight.toEditableString()
-            ageText = profile.age?.toString().orEmpty()
+            dateOfBirthText = profile.dateOfBirth.orEmpty()
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (_: ApiException) {
             profile = ProfileRepository.getProfile()
-            syncedSharedLatitude = profile.sharedLatitude
-            syncedSharedLongitude = profile.sharedLongitude
             val phoneParts = normalizePhoneParts(profile.phone)
             countryCode = phoneParts.countryCode
             phone = phoneParts.phone
+            firstNameText = profile.firstName.orEmpty()
+            lastNameText = profile.lastName.orEmpty()
             heightText = profile.height.toEditableString()
             weightText = profile.weight.toEditableString()
-            ageText = profile.age?.toString().orEmpty()
+            dateOfBirthText = profile.dateOfBirth.orEmpty()
         } catch (_: Exception) {
             profile = ProfileRepository.getProfile()
-            syncedSharedLatitude = profile.sharedLatitude
-            syncedSharedLongitude = profile.sharedLongitude
             val phoneParts = normalizePhoneParts(profile.phone)
             countryCode = phoneParts.countryCode
             phone = phoneParts.phone
+            firstNameText = profile.firstName.orEmpty()
+            lastNameText = profile.lastName.orEmpty()
             heightText = profile.height.toEditableString()
             weightText = profile.weight.toEditableString()
-            ageText = profile.age?.toString().orEmpty()
+            dateOfBirthText = profile.dateOfBirth.orEmpty()
             info = "Could not refresh your profile. Showing saved information."
         }
     }
@@ -144,14 +149,72 @@ fun EditProfileScreen(
         }
     }
 
+    fun handleMapSelection(selection: MapPickerSelection) {
+        if (mapPickerLoading) return
+
+        mapPickerLoading = true
+        mapActionInfo = ""
+
+        scope.launch {
+            try {
+                val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
+                    latitude = selection.latitude,
+                    longitude = selection.longitude
+                )
+                val update = resolveMapPickerLocationUpdate(
+                    currentCountry = profile.country.orEmpty(),
+                    currentCity = profile.city.orEmpty(),
+                    currentDistrict = profile.district.orEmpty(),
+                    currentNeighborhood = profile.neighborhood.orEmpty(),
+                    currentExtraAddress = profile.extraAddress.orEmpty(),
+                    reverseLocation = reverseLocation,
+                    locations = availableLocationData
+                )
+
+                profile = profile.copy(
+                    country = update.country,
+                    city = update.city,
+                    district = update.district,
+                    neighborhood = update.neighborhood,
+                    extraAddress = update.extraAddress
+                )
+                mapActionInfo = when {
+                    reverseLocation == null ->
+                        "Could not resolve selected coordinates. You can continue with manual location entry."
+                    update.isMeaningfulMapping ->
+                        "Selected location applied."
+                    else ->
+                        "Selected coordinates were detected. Please verify the location fields manually."
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                mapActionInfo = "Could not resolve selected coordinates. You can continue with manual location entry."
+            } finally {
+                mapPickerSelection = selection
+                mapPickerLoading = false
+                mapPickerOpen = false
+            }
+        }
+    }
+
     fun handleSave() {
         error = ""
         info = ""
         mapActionInfo = ""
 
-        val (firstName, lastName) = splitFullName(profile.fullName.orEmpty())
-        if (firstName.isBlank() || lastName.isBlank()) {
+        val normalizedFirstName = firstNameText.trim()
+        val normalizedLastName = lastNameText.trim()
+        val normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirthText)
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+        if (normalizedFirstName.isBlank() || normalizedLastName.isBlank()) {
             error = "Please enter both first and last name."
+            return
+        }
+
+        if (normalizedDateOfBirth == null || normalizedDateOfBirth > todayIso) {
+            error = "Please enter a valid date of birth in YYYY-MM-DD format."
             return
         }
 
@@ -162,14 +225,14 @@ fun EditProfileScreen(
 
         val heightFloat = heightText.toFloatOrNull()
         val weightFloat = weightText.toFloatOrNull()
-        val ageInt = ageText.toIntOrNull()
+        val ageInt = calculateAgeFromDateOfBirth(normalizedDateOfBirth)
         if (heightFloat == null || heightFloat <= 0f || weightFloat == null || weightFloat <= 0f) {
             error = "Height and weight must be valid positive numbers."
             return
         }
 
-        if (ageInt == null || ageInt <= 0) {
-            error = "Age must be a valid positive number."
+        if (ageInt == null) {
+            error = "Please enter a valid date of birth in YYYY-MM-DD format."
             return
         }
 
@@ -182,50 +245,28 @@ fun EditProfileScreen(
         scope.launch {
             try {
                 val profileToSync = profile.copy(
+                    firstName = normalizedFirstName,
+                    lastName = normalizedLastName,
+                    fullName = composeFullName(normalizedFirstName, normalizedLastName),
                     phone = combinePhoneNumber(countryCode, phone),
                     height = heightFloat,
                     weight = weightFloat,
+                    dateOfBirth = normalizedDateOfBirth,
                     age = ageInt
                 )
-                val locationShareAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
-                    context = context,
-                    sharingEnabled = profileToSync.shareLocation == true
-                )
-                val profileWithSharePolicy = when (locationShareAttempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED -> profileToSync.copy(shareLocation = false)
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE -> profileToSync
-                    null -> profileToSync
-                }
-
                 profile = ProfileRepository.syncProfile(
-                    profile = profileWithSharePolicy,
-                    currentDeviceLocation = locationShareAttempt.location,
-                    forceClearSharedCoordinates = locationShareAttempt.warning == CurrentLocationShareWarning.LOCATION_UNAVAILABLE
+                    profile = profileToSync
                 )
-                syncedSharedLatitude = profile.sharedLatitude
-                syncedSharedLongitude = profile.sharedLongitude
 
                 val phoneParts = normalizePhoneParts(profile.phone)
                 countryCode = phoneParts.countryCode
                 phone = phoneParts.phone
+                firstNameText = profile.firstName.orEmpty()
+                lastNameText = profile.lastName.orEmpty()
                 heightText = profile.height.toEditableString()
                 weightText = profile.weight.toEditableString()
-                ageText = profile.age?.toString().orEmpty()
-                info = when (locationShareAttempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Profile updated successfully. Location permission is denied, so location sharing was turned off and stored coordinates were cleared."
-
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE ->
-                        "Profile updated successfully. Current location is unavailable, so sharing remains on and stale coordinates were cleared."
-
-                    null -> {
-                        if (locationShareAttempt.location != null) {
-                            "Profile updated successfully. Current location shared."
-                        } else {
-                            "Profile updated successfully."
-                        }
-                    }
-                }
+                dateOfBirthText = profile.dateOfBirth.orEmpty()
+                info = "Profile updated successfully."
                 onSave(profile)
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
@@ -245,11 +286,21 @@ fun EditProfileScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                     SectionHeader(title = "Account Information")
 
-                    AppTextField(
-                        value = profile.fullName.orEmpty(),
-                        onValueChange = { profile = profile.copy(fullName = it) },
-                        label = "Full Name"
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                        AppTextField(
+                            value = firstNameText,
+                            onValueChange = { firstNameText = it },
+                            label = "First Name",
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        AppTextField(
+                            value = lastNameText,
+                            onValueChange = { lastNameText = it },
+                            label = "Last Name",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
                     AppTextField(
                         value = profile.email.orEmpty(),
@@ -307,13 +358,13 @@ fun EditProfileScreen(
                     )
 
                     AppTextField(
-                        value = ageText,
+                        value = dateOfBirthText,
                         onValueChange = {
-                            ageText = it.filter(Char::isDigit).take(3)
+                            dateOfBirthText = it
                         },
-                        label = "Age",
-                        placeholder = "Enter your age",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        label = "Date of Birth",
+                        placeholder = "YYYY-MM-DD",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
                     )
                 }
             }
@@ -394,7 +445,10 @@ fun EditProfileScreen(
 
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                    SectionHeader(title = "Location")
+                    SectionHeader(
+                        title = "Residential Location",
+                        subtitle = "This is your home/neighborhood location. It is not automatically updated by GPS."
+                    )
 
                     if (locationLoading) {
                         HelperText(text = "Loading location options...")
@@ -425,6 +479,12 @@ fun EditProfileScreen(
                         enabled = !locationLoading
                     )
 
+                    SecondaryButton(
+                        text = "Select Home Location on Map",
+                        onClick = { mapPickerOpen = true },
+                        enabled = !locationLoading && !loading
+                    )
+
                     AppTextField(
                         value = profile.extraAddress.orEmpty(),
                         onValueChange = { profile = profile.copy(extraAddress = it) },
@@ -443,30 +503,16 @@ fun EditProfileScreen(
                         onOpenSuccess = { mapActionInfo = "" }
                     )
 
-                    SharedCoordinatesMapAction(
-                        latitude = syncedSharedLatitude,
-                        longitude = syncedSharedLongitude,
-                        enabled = !loading,
-                        onOpenFailure = { mapActionInfo = it },
-                        onOpenSuccess = { mapActionInfo = "" }
-                    )
-
-                    AppToggleSwitch(
-                        checked = profile.shareLocation ?: false,
-                        onCheckedChange = { shareEnabled ->
-                            if (!shareEnabled) {
-                                profile = profile.copy(shareLocation = false)
-                                return@AppToggleSwitch
-                            }
-
-                            if (DeviceLocationProvider.hasLocationPermission(context)) {
-                                profile = profile.copy(shareLocation = true)
-                            } else {
-                                locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
-                            }
-                        },
-                        label = "Share Current Location"
-                    )
+                    if (mapPickerOpen) {
+                        MapPickerDialog(
+                            title = "Select Home Location on Map",
+                            initialLatitude = mapPickerSelection?.latitude,
+                            initialLongitude = mapPickerSelection?.longitude,
+                            loading = mapPickerLoading,
+                            onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
+                            onConfirm = ::handleMapSelection
+                        )
+                    }
                 }
             }
 

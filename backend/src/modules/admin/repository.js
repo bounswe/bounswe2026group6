@@ -1,5 +1,12 @@
 const { query } = require('../../db/pool');
 
+function runQuery(executor, text, params = []) {
+  if (executor && typeof executor.query === 'function') {
+    return executor.query(text, params);
+  }
+  return query(text, params);
+}
+
 function getDerivedUrgencySql() {
   return `
     CASE
@@ -20,26 +27,165 @@ function getPrioritySql() {
   return `COALESCE(hr.priority_level, (${urgencySql}))`;
 }
 
-async function listUsers() {
+async function listUsers({
+  limit = 50,
+  offset = 0,
+  emailContains = null,
+  isEmailVerified = null,
+  isBanned = null,
+} = {}) {
+  const conditions = ['u.is_deleted = FALSE'];
+  const values = [];
+
+  if (emailContains) {
+    values.push(`%${emailContains.toLowerCase()}%`);
+    conditions.push(`LOWER(u.email) LIKE $${values.length}`);
+  }
+  if (isEmailVerified !== null) {
+    values.push(isEmailVerified);
+    conditions.push(`u.is_email_verified = $${values.length}`);
+  }
+  if (isBanned !== null) {
+    values.push(isBanned);
+    conditions.push(`u.is_banned = $${values.length}`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const totalResult = await query(
+    `SELECT COUNT(*)::int AS count FROM users u ${whereClause}`,
+    values,
+  );
+
+  const listValues = [...values, limit, offset];
+  const limitPlaceholder = `$${listValues.length - 1}`;
+  const offsetPlaceholder = `$${listValues.length}`;
+
   const result = await query(
     `
       SELECT
         u.user_id,
         u.email,
         u.is_email_verified,
+        u.is_banned,
+        u.ban_reason,
+        u.banned_at,
         u.created_at,
         u.is_deleted,
         u.accepted_terms,
         a.admin_id,
-        a.role AS admin_role
+        a.role AS admin_role,
+        p.first_name,
+        p.last_name
       FROM users u
       LEFT JOIN admins a ON a.user_id = u.user_id
+      LEFT JOIN user_profiles p ON p.user_id = u.user_id
+      ${whereClause}
       ORDER BY u.created_at DESC
-      LIMIT 100
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `,
+    listValues,
   );
 
-  return result.rows;
+  return {
+    users: result.rows,
+    total: totalResult.rows[0].count,
+  };
+}
+
+async function banUserById(userId, reason = null, executor = null) {
+  const result = await runQuery(
+    executor,
+    `
+      WITH updated AS (
+        UPDATE users u
+        SET
+          is_banned = TRUE,
+          ban_reason = $2,
+          banned_at = CURRENT_TIMESTAMP
+        WHERE u.user_id = $1
+          AND u.is_deleted = FALSE
+        RETURNING
+          u.user_id,
+          u.email,
+          u.is_email_verified,
+          u.is_banned,
+          u.ban_reason,
+          u.banned_at,
+          u.created_at
+      )
+      SELECT
+        updated.*,
+        a.admin_id,
+        a.role AS admin_role,
+        p.first_name,
+        p.last_name
+      FROM updated
+      LEFT JOIN admins a ON a.user_id = updated.user_id
+      LEFT JOIN user_profiles p ON p.user_id = updated.user_id
+      LIMIT 1
+    `,
+    [userId, reason],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findBanTargetByUserId(userId, executor = null) {
+  const result = await runQuery(
+    executor,
+    `
+      SELECT
+        u.user_id,
+        (a.admin_id IS NOT NULL) AS is_admin
+      FROM users u
+      LEFT JOIN admins a ON a.user_id = u.user_id
+      WHERE u.user_id = $1
+        AND u.is_deleted = FALSE
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function unbanUserById(userId, executor = null) {
+  const result = await runQuery(
+    executor,
+    `
+      WITH updated AS (
+        UPDATE users u
+        SET
+          is_banned = FALSE,
+          ban_reason = NULL,
+          banned_at = NULL
+        WHERE u.user_id = $1
+          AND u.is_deleted = FALSE
+        RETURNING
+          u.user_id,
+          u.email,
+          u.is_email_verified,
+          u.is_banned,
+          u.ban_reason,
+          u.banned_at,
+          u.created_at
+      )
+      SELECT
+        updated.*,
+        a.admin_id,
+        a.role AS admin_role,
+        p.first_name,
+        p.last_name
+      FROM updated
+      LEFT JOIN admins a ON a.user_id = updated.user_id
+      LEFT JOIN user_profiles p ON p.user_id = updated.user_id
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  return result.rows[0] || null;
 }
 
 async function listHelpRequests() {
@@ -843,6 +989,9 @@ async function getDeploymentMonitoring({
 
 module.exports = {
   listUsers,
+  banUserById,
+  findBanTargetByUserId,
+  unbanUserById,
   listHelpRequests,
   listAnnouncements,
   getBasicStats,

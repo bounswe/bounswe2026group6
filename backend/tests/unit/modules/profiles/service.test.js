@@ -42,6 +42,7 @@ function makeBundleRow(overrides = {}) {
 		medications: null,
 		blood_type: null,
 		age: null,
+		date_of_birth: null,
 		gender: null,
 		height: null,
 		weight: null,
@@ -76,6 +77,17 @@ describe('profiles service', () => {
 		expect(result.profile.userId).toBe('u1');
 		expect(result.expertise).toHaveLength(1);
 		expect(result.expertise[0].profession).toBe('Doctor');
+	});
+
+	test('getMyProfile maps date_of_birth to physicalInfo.dateOfBirth', async () => {
+		repository.findProfileBundleByUserId.mockResolvedValueOnce(
+			makeBundleRow({ date_of_birth: '1998-06-20' }),
+		);
+		repository.listExpertiseByProfileId.mockResolvedValueOnce([]);
+
+		const result = await getMyProfile('u1');
+
+		expect(result.physicalInfo.dateOfBirth).toBe('1998-06-20');
 	});
 
 	test('getMyProfile keeps locationProfile.coordinate null when only one coordinate value exists', async () => {

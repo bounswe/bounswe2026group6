@@ -5,6 +5,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -32,8 +33,32 @@ class AndroidE2ETest {
         waitForClickable("Continue as Guest")
         clickableNode("Continue as Guest").performClick()
 
-        waitForText("Request Help")
-        composeRule.onNodeWithText("Request Help").assertIsDisplayed()
+        waitForText("I need help")
+        composeRule.onNodeWithText("I need help").assertIsDisplayed()
+    }
+
+    @Test
+    fun guest_can_openHelpRequestMap_andSeeWaitingRequests() {
+        waitForClickable("Continue as Guest")
+        clickableNode("Continue as Guest").performClick()
+
+        waitForText("I need help")
+        composeRule.onAllNodesWithContentDescription("Open menu")[0].performClick()
+        waitForClickable("Help Request Map")
+        clickableNode("Help Request Map").performClick()
+
+        waitForText("Showing waiting help requests by type and priority.")
+        composeRule.onAllNodesWithText("Help Request Map")[0].assertIsDisplayed()
+
+        composeRule.waitUntil(5_000) {
+            contentDescriptionNodeCount("Crisis marker") == 2 &&
+                textNodeCount("First Aid") > 0 &&
+                textNodeCount("Shelter") > 0 &&
+                textNodeCount("Priority: High") > 0 &&
+                textNodeCount("Waiting Requests") > 0 &&
+                textNodeCount("Search and Rescue") == 0 &&
+                textNodeCount("sariyer") == 0
+        }
     }
 
     @Test
@@ -119,5 +144,17 @@ class AndroidE2ETest {
         return runCatching {
             composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
         }.getOrDefault(false)
+    }
+
+    private fun textNodeCount(text: String): Int {
+        return runCatching {
+            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().size
+        }.getOrDefault(0)
+    }
+
+    private fun contentDescriptionNodeCount(text: String): Int {
+        return runCatching {
+            composeRule.onAllNodesWithContentDescription(text, substring = true).fetchSemanticsNodes().size
+        }.getOrDefault(0)
     }
 }

@@ -48,7 +48,7 @@ fun LocationSelector(
 
     AppDropdown(
         value = country,
-        onValueChange = { onCountryChange(it); onCityChange(""); onDistrictChange(""); onNeighborhoodChange("") },
+        onValueChange = onCountryChange,
         label = "Country",
         options = listOf(DropdownOption("Select Country", "")) + countryOptions,
         enabled = enabled,
@@ -60,7 +60,7 @@ fun LocationSelector(
 
     AppDropdown(
         value = city,
-        onValueChange = { onCityChange(it); onDistrictChange(""); onNeighborhoodChange("") },
+        onValueChange = onCityChange,
         label = "City",
         options = listOf(DropdownOption("Select City", "")) + cityOptions,
         enabled = enabled && country.isNotEmpty(),
@@ -72,7 +72,7 @@ fun LocationSelector(
 
     AppDropdown(
         value = district,
-        onValueChange = { onDistrictChange(it); onNeighborhoodChange("") },
+        onValueChange = onDistrictChange,
         label = "District",
         options = listOf(DropdownOption("Select District", "")) + districtOptions,
         enabled = enabled && city.isNotEmpty(),

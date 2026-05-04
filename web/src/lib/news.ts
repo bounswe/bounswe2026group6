@@ -1,42 +1,86 @@
+import { apiRequest } from "@/lib/api";
+
+export type Announcement = {
+    id: string;
+    adminId: string;
+    title: string;
+    content: string;
+    createdAt: string;
+};
+
 export type NewsItem = {
     id: string;
     title: string;
+    content: string;
     summary: string;
+    hasMore: boolean;
     publishedAt: string;
-    category: "Preparedness" | "Community" | "Announcement";
+    category: "Announcement";
 };
 
-export const mockNews: NewsItem[] = [
-    {
-        id: "n-001",
-        title: "Neighborhood Preparedness Workshops Start Next Week",
-        summary:
-            "Local volunteer teams will host practical first-response workshops for households in participating districts.",
-        publishedAt: "2026-03-20",
-        category: "Preparedness",
-    },
-    {
-        id: "n-002",
-        title: "Mobile App Pilot Open for Early Access",
-        summary:
-            "NEPH mobile pilot is available for selected users to test incident reporting and emergency support requests.",
-        publishedAt: "2026-03-18",
+type AnnouncementsResponse = {
+    announcements: Announcement[];
+};
+
+type AnnouncementResponse = {
+    announcement: Announcement;
+};
+
+function buildAnnouncementsPath(options: { limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (typeof options.limit === "number") {
+        params.set("limit", String(options.limit));
+    }
+
+    const query = params.toString();
+    return `/announcements${query ? `?${query}` : ""}`;
+}
+
+export function formatAnnouncementDate(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
+}
+
+export function summarizeAnnouncementContent(content: string, maxLength = 180) {
+    const normalized = content.replace(/\s+/g, " ").trim();
+    if (normalized.length <= maxLength) {
+        return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength - 1).trim()}…`;
+}
+
+export function announcementToNewsItem(announcement: Announcement): NewsItem {
+    const summary = summarizeAnnouncementContent(announcement.content);
+
+    return {
+        id: announcement.id,
+        title: announcement.title,
+        content: announcement.content,
+        summary,
+        hasMore: summary !== announcement.content.replace(/\s+/g, " ").trim(),
+        publishedAt: formatAnnouncementDate(announcement.createdAt),
         category: "Announcement",
-    },
-    {
-        id: "n-003",
-        title: "Community Safety Volunteers Expanded",
-        summary:
-            "New volunteers have joined the response network, improving local coverage for urgent coordination.",
-        publishedAt: "2026-03-13",
-        category: "Community",
-    },
-    {
-        id: "n-004",
-        title: "Medical Information Checklist Updated",
-        summary:
-            "The profile health checklist now includes clearer guidance for medications and chronic conditions.",
-        publishedAt: "2026-03-09",
-        category: "Preparedness",
-    },
-];
+    };
+}
+
+export async function fetchAnnouncements(options: { limit?: number } = {}) {
+    const response = await apiRequest<AnnouncementsResponse>(buildAnnouncementsPath(options));
+    return response.announcements;
+}
+
+export async function fetchAnnouncement(announcementId: string) {
+    const response = await apiRequest<AnnouncementResponse>(
+        `/announcements/${encodeURIComponent(announcementId)}`
+    );
+
+    return response.announcement;
+}

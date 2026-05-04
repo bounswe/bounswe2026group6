@@ -30,12 +30,13 @@ test('new user can sign up, verify email, complete their profile, and see persis
   await expect(page).toHaveURL(/\/complete-profile$/);
   await expect(page.getByRole('heading', { name: 'Complete Your Profile' })).toBeVisible();
 
-  await page.locator('#fullName').fill('Jane Onboard');
+  await page.locator('#firstName').fill('Jane');
+  await page.locator('#lastName').fill('Onboard');
   await page.locator('#phone').fill('5551234567');
   await page.locator('#height').fill('168');
   await page.locator('#weight').fill('58');
   await page.locator('#gender').selectOption('female');
-  await page.locator('#age').fill('27');
+  await page.locator('#dateOfBirth').fill('1998-01-15');
   await page.locator('#bloodType').selectOption('a_pos');
   await page.locator('#medicalHistory').fill('Seasonal asthma');
   await page.locator('#profession').selectOption('Engineer');
@@ -67,6 +68,7 @@ test('new user can sign up, verify email, complete their profile, and see persis
   expect(profile.profile.phoneNumber).toBe('+905551234567');
   expect(profile.physicalInfo.height).toBe(168);
   expect(profile.physicalInfo.weight).toBe(58);
+  expect(profile.physicalInfo.dateOfBirth).toBe('1998-01-15');
   expect(profile.healthInfo.bloodType).toBe('a_pos');
   expect(profile.locationProfile.country).toBe('Turkey');
   expect(profile.locationProfile.city?.toLocaleLowerCase('tr')).toBe('istanbul');

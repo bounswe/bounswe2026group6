@@ -180,3 +180,129 @@ export function parseLocationAddress(
         extraAddress: Array.from(remainingTokens.values()).join(", "),
     };
 }
+
+export type ResolvedPickerLocation = {
+    countryKey: string;
+    cityKey: string;
+    districtKey: string;
+    neighborhoodValue: string;
+    extraAddress: string;
+};
+
+/**
+ * Resolve a picker selection (administrative fields + free-text displayName)
+ * to dropdown keys. Falls back to scanning displayName tokens when the
+ * administrative payload is sparse, so that map pins always have a chance
+ * to populate the country/city/district/neighborhood dropdowns.
+ */
+export function resolvePickerLocation(
+    locationTree: LocationTreeByCountry,
+    administrative: {
+        country?: string | null;
+        countryCode?: string | null;
+        city?: string | null;
+        district?: string | null;
+        neighborhood?: string | null;
+        extraAddress?: string | null;
+    },
+    displayName: string
+): ResolvedPickerLocation {
+    const tokens = (displayName || "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    const findCountryFromTokens = () => {
+        for (let index = tokens.length - 1; index >= 0; index -= 1) {
+            const key = findCountryKeyByLabel(locationTree, tokens[index]);
+            if (key) {
+                return key;
+            }
+        }
+        return "";
+    };
+
+    const countryKey =
+        findCountryKeyByLabel(locationTree, administrative.country || "") ||
+        findCountryKeyByLabel(locationTree, administrative.countryCode || "") ||
+        findCountryFromTokens();
+
+    if (!countryKey) {
+        return {
+            countryKey: "",
+            cityKey: "",
+            districtKey: "",
+            neighborhoodValue: "",
+            extraAddress: administrative.extraAddress || "",
+        };
+    }
+
+    const findCityFromTokens = () => {
+        for (const token of tokens) {
+            const key = findCityKeyByLabel(locationTree, countryKey, token);
+            if (key) {
+                return key;
+            }
+        }
+        return "";
+    };
+
+    const cityKey =
+        findCityKeyByLabel(locationTree, countryKey, administrative.city || "") ||
+        findCityFromTokens();
+
+    if (!cityKey) {
+        return {
+            countryKey,
+            cityKey: "",
+            districtKey: "",
+            neighborhoodValue: "",
+            extraAddress: administrative.extraAddress || "",
+        };
+    }
+
+    const findDistrictFromTokens = () => {
+        for (const token of tokens) {
+            const key = findDistrictKeyByLabel(locationTree, countryKey, cityKey, token);
+            if (key) {
+                return key;
+            }
+        }
+        return "";
+    };
+
+    const districtKey =
+        findDistrictKeyByLabel(
+            locationTree,
+            countryKey,
+            cityKey,
+            administrative.district || ""
+        ) || findDistrictFromTokens();
+
+    const neighborhoods =
+        locationTree[countryKey]?.cities[cityKey]?.districts[districtKey]?.neighborhoods ||
+        [];
+
+    const findNeighborhoodFromTokens = () => {
+        for (const token of tokens) {
+            const value = findNeighborhoodValueByLabel(neighborhoods, token);
+            if (value) {
+                return value;
+            }
+        }
+        return "";
+    };
+
+    const neighborhoodValue =
+        findNeighborhoodValueByLabel(neighborhoods, administrative.neighborhood || "") ||
+        findNeighborhoodFromTokens();
+
+    return {
+        countryKey,
+        cityKey,
+        districtKey,
+        neighborhoodValue,
+        extraAddress: administrative.extraAddress || "",
+    };
+}
+

@@ -2,8 +2,12 @@ package com.neph.features.profile.data
 
 import com.neph.features.auth.util.countryCodeOptions
 import org.json.JSONArray
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
 import java.text.Normalizer
 import java.util.Locale
+import java.util.TimeZone
 
 data class PhoneParts(
     val countryCode: String,
@@ -48,6 +52,54 @@ fun splitFullName(fullName: String): Pair<String, String> {
     val firstName = parts.firstOrNull().orEmpty()
     val lastName = parts.drop(1).joinToString(" ")
     return firstName to lastName
+}
+
+fun composeFullName(firstName: String?, lastName: String?): String? {
+    val fullName = listOfNotNull(
+        firstName?.trim()?.takeIf { it.isNotBlank() },
+        lastName?.trim()?.takeIf { it.isNotBlank() }
+    ).joinToString(" ")
+
+    return fullName.takeIf { it.isNotBlank() }
+}
+
+private val dateOfBirthPattern = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+
+fun normalizeDateOfBirth(value: String?): String? {
+    val raw = value?.trim().orEmpty()
+    if (raw.isBlank() || !dateOfBirthPattern.matches(raw)) {
+        return null
+    }
+
+    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+    }
+
+    val parsed = runCatching { parser.parse(raw) }.getOrNull() ?: return null
+    return parser.format(parsed)
+}
+
+fun calculateAgeFromDateOfBirth(value: String?): Int? {
+    val normalized = normalizeDateOfBirth(value) ?: return null
+    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+    }
+    val birthDate: Date = runCatching { parser.parse(normalized) }.getOrNull() ?: return null
+
+    val birthCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        time = birthDate
+    }
+    val todayCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+
+    var age = todayCalendar.get(Calendar.YEAR) - birthCalendar.get(Calendar.YEAR)
+    val monthDelta = todayCalendar.get(Calendar.MONTH) - birthCalendar.get(Calendar.MONTH)
+    val dayDelta = todayCalendar.get(Calendar.DAY_OF_MONTH) - birthCalendar.get(Calendar.DAY_OF_MONTH)
+
+    if (monthDelta < 0 || (monthDelta == 0 && dayDelta < 0)) {
+        age -= 1
+    }
+
+    return age.coerceAtLeast(0)
 }
 
 fun parseListField(value: String?): List<String> {

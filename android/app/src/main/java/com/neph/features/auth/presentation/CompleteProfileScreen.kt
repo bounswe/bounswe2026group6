@@ -1,8 +1,6 @@
 package com.neph.features.auth.presentation
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,36 +21,43 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
-import com.neph.features.profile.data.CurrentLocationShareWarning
-import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.bloodTypeOptions
+import com.neph.features.profile.data.calculateAgeFromDateOfBirth
 import com.neph.features.profile.data.combinePhoneNumber
+import com.neph.features.profile.data.composeFullName
 import com.neph.features.profile.data.expertiseOptionsFor
 import com.neph.features.profile.data.locationData
+import com.neph.features.profile.data.normalizeDateOfBirth
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseListField
 import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.profile.presentation.components.GenderSelector
 import com.neph.features.profile.presentation.components.LocationSelector
+import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SaveActionBar
 import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
-import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.layout.AuthScaffold
+import com.neph.ui.map.MapPickerDialog
+import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
-import com.neph.ui.map.SharedCoordinatesMapAction
+import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun CompleteProfileScreen(
@@ -64,14 +69,24 @@ fun CompleteProfileScreen(
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val existingNameParts = remember(existingProfile.firstName, existingProfile.lastName, existingProfile.fullName) {
+        val first = existingProfile.firstName?.trim().orEmpty()
+        val last = existingProfile.lastName?.trim().orEmpty()
+        if (first.isNotBlank() || last.isNotBlank()) {
+            first to last
+        } else {
+            splitFullName(existingProfile.fullName.orEmpty())
+        }
+    }
 
-    var fullName by rememberSaveable { mutableStateOf(existingProfile.fullName.orEmpty()) }
+    var firstName by rememberSaveable { mutableStateOf(existingNameParts.first) }
+    var lastName by rememberSaveable { mutableStateOf(existingNameParts.second) }
     var countryCode by rememberSaveable { mutableStateOf(existingPhoneParts.countryCode) }
     var phone by rememberSaveable { mutableStateOf(existingPhoneParts.phone) }
     var gender by rememberSaveable { mutableStateOf(existingProfile.gender.orEmpty()) }
     var height by rememberSaveable { mutableStateOf(existingProfile.height.toEditableString()) }
     var weight by rememberSaveable { mutableStateOf(existingProfile.weight.toEditableString()) }
-    var age by rememberSaveable { mutableStateOf(existingProfile.age?.toString().orEmpty()) }
+    var dateOfBirth by rememberSaveable { mutableStateOf(existingProfile.dateOfBirth.orEmpty()) }
     var bloodType by rememberSaveable { mutableStateOf(existingProfile.bloodType.orEmpty()) }
     var medicalHistory by rememberSaveable { mutableStateOf(existingProfile.medicalHistory.orEmpty()) }
     var chronicDiseases by rememberSaveable { mutableStateOf(existingProfile.chronicDiseases.orEmpty()) }
@@ -81,29 +96,18 @@ fun CompleteProfileScreen(
     var district by rememberSaveable { mutableStateOf(existingProfile.district.orEmpty()) }
     var neighborhood by rememberSaveable { mutableStateOf(existingProfile.neighborhood.orEmpty()) }
     var extraAddress by rememberSaveable { mutableStateOf(existingProfile.extraAddress.orEmpty()) }
-    var shareLocation by rememberSaveable { mutableStateOf(existingProfile.shareLocation ?: false) }
     var profession by rememberSaveable { mutableStateOf(existingProfile.profession) }
     var expertise by rememberSaveable { mutableStateOf(existingProfile.expertise) }
     var loading by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf("") }
     var info by rememberSaveable { mutableStateOf("") }
     var mapActionInfo by rememberSaveable { mutableStateOf("") }
+    var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
+    var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var availableLocationData by remember { mutableStateOf<LocationData>(locationData) }
     var locationLoading by remember { mutableStateOf(true) }
     var locationInfo by rememberSaveable { mutableStateOf("") }
-    var syncedSharedLatitude by rememberSaveable { mutableStateOf(existingProfile.sharedLatitude) }
-    var syncedSharedLongitude by rememberSaveable { mutableStateOf(existingProfile.sharedLongitude) }
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants.values.any { it }) {
-            shareLocation = true
-            info = "Location permission granted. Current location will be shared when you save."
-        } else {
-            shareLocation = false
-            info = "Location permission denied. Current location sharing remains off."
-        }
-    }
 
     LaunchedEffect(Unit) {
         try {
@@ -118,17 +122,71 @@ fun CompleteProfileScreen(
         }
     }
 
+    fun handleMapSelection(selection: MapPickerSelection) {
+        if (mapPickerLoading) return
+
+        mapPickerLoading = true
+        mapActionInfo = ""
+
+        scope.launch {
+            try {
+                val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
+                    latitude = selection.latitude,
+                    longitude = selection.longitude
+                )
+                val update = resolveMapPickerLocationUpdate(
+                    currentCountry = country,
+                    currentCity = city,
+                    currentDistrict = district,
+                    currentNeighborhood = neighborhood,
+                    currentExtraAddress = extraAddress,
+                    reverseLocation = reverseLocation,
+                    locations = availableLocationData
+                )
+
+                country = update.country
+                city = update.city
+                district = update.district
+                neighborhood = update.neighborhood
+                extraAddress = update.extraAddress
+                mapActionInfo = when {
+                    reverseLocation == null ->
+                        "Could not resolve selected coordinates. You can continue with manual location entry."
+                    update.isMeaningfulMapping ->
+                        "Selected location applied."
+                    else ->
+                        "Selected coordinates were detected. Please verify the location fields manually."
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                mapActionInfo = "Could not resolve selected coordinates. You can continue with manual location entry."
+            } finally {
+                mapPickerSelection = selection
+                mapPickerLoading = false
+                mapPickerOpen = false
+            }
+        }
+    }
+
     fun handleSave() {
         error = ""
         info = ""
         mapActionInfo = ""
 
-        val normalizedName = fullName.trim()
+        val normalizedFirstName = firstName.trim()
+        val normalizedLastName = lastName.trim()
         val normalizedPhone = phone.trim()
-        val (firstName, lastName) = splitFullName(normalizedName)
+        val normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth)
+        val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
-        if (firstName.isBlank() || lastName.isBlank()) {
+        if (normalizedFirstName.isBlank() || normalizedLastName.isBlank()) {
             error = "Please enter both first and last name."
+            return
+        }
+
+        if (normalizedDateOfBirth == null || normalizedDateOfBirth > todayIso) {
+            error = "Please enter a valid date of birth in YYYY-MM-DD format."
             return
         }
 
@@ -142,7 +200,7 @@ fun CompleteProfileScreen(
             return
         }
 
-        if (height.isBlank() || weight.isBlank() || age.isBlank() ||
+        if (height.isBlank() || weight.isBlank() ||
             country.isBlank() || city.isBlank() || district.isBlank() || neighborhood.isBlank()
         ) {
             error = "Please fill in all required fields."
@@ -151,14 +209,14 @@ fun CompleteProfileScreen(
 
         val heightFloat = height.toFloatOrNull()
         val weightFloat = weight.toFloatOrNull()
-        val ageInt = age.toIntOrNull()
+        val ageInt = calculateAgeFromDateOfBirth(normalizedDateOfBirth)
         if (heightFloat == null || weightFloat == null || heightFloat <= 0f || weightFloat <= 0f) {
             error = "Height and weight must be valid positive numbers."
             return
         }
 
-        if (ageInt == null || ageInt <= 0) {
-            error = "Age must be a valid positive number."
+        if (ageInt == null) {
+            error = "Please enter a valid date of birth in YYYY-MM-DD format."
             return
         }
 
@@ -166,11 +224,14 @@ fun CompleteProfileScreen(
         scope.launch {
             try {
                 val profileToSync = ProfileRepository.getProfile().copy(
-                    fullName = normalizedName,
+                    firstName = normalizedFirstName,
+                    lastName = normalizedLastName,
+                    fullName = composeFullName(normalizedFirstName, normalizedLastName),
                     phone = combinePhoneNumber(countryCode, normalizedPhone),
                     gender = gender.takeIf(String::isNotBlank),
                     height = heightFloat,
                     weight = weightFloat,
+                    dateOfBirth = normalizedDateOfBirth,
                     age = ageInt,
                     bloodType = bloodType.takeIf(String::isNotBlank),
                     medicalHistory = medicalHistory.takeIf(String::isNotBlank),
@@ -181,44 +242,13 @@ fun CompleteProfileScreen(
                     district = district,
                     neighborhood = neighborhood,
                     extraAddress = extraAddress.takeIf(String::isNotBlank),
-                    shareLocation = shareLocation,
                     profession = profession?.trim()?.takeIf(String::isNotBlank),
                     expertise = parseListField(expertise.joinToString(", "))
                 )
-                val locationShareAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
-                    context = context,
-                    sharingEnabled = profileToSync.shareLocation == true
+                ProfileRepository.syncProfile(
+                    profile = profileToSync
                 )
-                val profileWithSharePolicy = when (locationShareAttempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED -> profileToSync.copy(shareLocation = false)
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE -> profileToSync
-                    null -> profileToSync
-                }
-
-                val syncedProfile = ProfileRepository.syncProfile(
-                    profile = profileWithSharePolicy,
-                    currentDeviceLocation = locationShareAttempt.location,
-                    forceClearSharedCoordinates = locationShareAttempt.warning == CurrentLocationShareWarning.LOCATION_UNAVAILABLE
-                )
-                shareLocation = syncedProfile.shareLocation ?: false
-                syncedSharedLatitude = syncedProfile.sharedLatitude
-                syncedSharedLongitude = syncedProfile.sharedLongitude
-
-                val completionMessage = when (locationShareAttempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Profile saved. Location permission is denied, so location sharing was turned off and stored coordinates were cleared."
-
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE ->
-                        "Profile saved. Current location is unavailable, so sharing remains on and stale coordinates were cleared."
-
-                    null -> {
-                        if (locationShareAttempt.location != null) {
-                            "Profile saved. Current location shared."
-                        } else {
-                            "Profile saved."
-                        }
-                    }
-                }
+                val completionMessage = "Profile saved."
 
                 info = completionMessage
                 Toast.makeText(context, completionMessage, Toast.LENGTH_LONG).show()
@@ -241,13 +271,25 @@ fun CompleteProfileScreen(
         subtitle = "Set up your account details"
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-            AppTextField(
-                value = fullName,
-                onValueChange = { fullName = it },
-                label = "Full Name",
-                testTag = "complete_profile_full_name",
-                placeholder = "Enter your full name"
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                AppTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it },
+                    label = "First Name",
+                    testTag = "complete_profile_first_name",
+                    placeholder = "Enter your first name",
+                    modifier = Modifier.weight(1f)
+                )
+
+                AppTextField(
+                    value = lastName,
+                    onValueChange = { lastName = it },
+                    label = "Last Name",
+                    testTag = "complete_profile_last_name",
+                    placeholder = "Enter your last name",
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
                 AppDropdown(
@@ -297,12 +339,12 @@ fun CompleteProfileScreen(
             GenderSelector(value = gender, onValueChange = { gender = it })
 
             AppTextField(
-                value = age,
-                onValueChange = { age = it.filter(Char::isDigit).take(3) },
-                label = "Age",
-                testTag = "complete_profile_age",
-                placeholder = "Enter your age",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                value = dateOfBirth,
+                onValueChange = { dateOfBirth = it },
+                label = "Date of Birth",
+                testTag = "complete_profile_date_of_birth",
+                placeholder = "YYYY-MM-DD",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
             )
 
             Text("Medical Information (optional)", style = MaterialTheme.typography.titleMedium)
@@ -365,7 +407,8 @@ fun CompleteProfileScreen(
                 }
             }
 
-            Text("Location", style = MaterialTheme.typography.titleMedium)
+            Text("Residential Location", style = MaterialTheme.typography.titleMedium)
+            HelperText(text = "This is your home/neighborhood location. It is not automatically updated by GPS.")
 
             if (locationLoading) {
                 HelperText(text = "Loading location options...")
@@ -400,6 +443,12 @@ fun CompleteProfileScreen(
                 enabled = !locationLoading
             )
 
+            SecondaryButton(
+                text = "Select Home Location on Map",
+                onClick = { mapPickerOpen = true },
+                enabled = !locationLoading && !loading
+            )
+
             AppTextField(
                 value = extraAddress,
                 onValueChange = { extraAddress = it },
@@ -419,30 +468,16 @@ fun CompleteProfileScreen(
                 onOpenSuccess = { mapActionInfo = "" }
             )
 
-            SharedCoordinatesMapAction(
-                latitude = syncedSharedLatitude,
-                longitude = syncedSharedLongitude,
-                enabled = !loading,
-                onOpenFailure = { mapActionInfo = it },
-                onOpenSuccess = { mapActionInfo = "" }
-            )
-
-            AppToggleSwitch(
-                checked = shareLocation,
-                onCheckedChange = { shareEnabled ->
-                    if (!shareEnabled) {
-                        shareLocation = false
-                        return@AppToggleSwitch
-                    }
-
-                    if (DeviceLocationProvider.hasLocationPermission(context)) {
-                        shareLocation = true
-                    } else {
-                        locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
-                    }
-                },
-                label = "Share Current Location"
-            )
+            if (mapPickerOpen) {
+                MapPickerDialog(
+                    title = "Select Home Location on Map",
+                    initialLatitude = mapPickerSelection?.latitude,
+                    initialLongitude = mapPickerSelection?.longitude,
+                    loading = mapPickerLoading,
+                    onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
+                    onConfirm = ::handleMapSelection
+                )
+            }
 
             if (error.isNotBlank()) {
                 Text(error, color = MaterialTheme.colorScheme.error)

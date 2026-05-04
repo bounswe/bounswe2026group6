@@ -11,7 +11,7 @@ import {
     defaultEmergencyContacts,
     type EmergencyContact,
 } from "../../lib/emergencyNumbers";
-import { mockNews } from "@/lib/news";
+import { announcementToNewsItem, fetchAnnouncements, type NewsItem } from "@/lib/news";
 
 type HeroSlide = {
     title: string;
@@ -62,6 +62,9 @@ const heroSlides: HeroSlide[] = [
 export default function HomePage() {
     const router = useRouter();
     const [activeSlide, setActiveSlide] = React.useState(0);
+    const [previewNews, setPreviewNews] = React.useState<NewsItem[]>([]);
+    const [newsLoading, setNewsLoading] = React.useState(true);
+    const [newsError, setNewsError] = React.useState("");
 
     React.useEffect(() => {
         const timer = setInterval(() => {
@@ -71,8 +74,40 @@ export default function HomePage() {
         return () => clearInterval(timer);
     }, []);
 
+    React.useEffect(() => {
+        let isMounted = true;
+
+        async function loadPreviewNews() {
+            setNewsLoading(true);
+            setNewsError("");
+
+            try {
+                const announcements = await fetchAnnouncements({ limit: 3 });
+                if (!isMounted) {
+                    return;
+                }
+                setPreviewNews(announcements.map(announcementToNewsItem));
+            } catch (err) {
+                if (!isMounted) {
+                    return;
+                }
+                setPreviewNews([]);
+                setNewsError(err instanceof Error ? err.message : "Could not load latest announcements.");
+            } finally {
+                if (isMounted) {
+                    setNewsLoading(false);
+                }
+            }
+        }
+
+        void loadPreviewNews();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     const currentSlide = heroSlides[activeSlide];
-    const previewNews = mockNews.slice(0, 3);
     const previewContacts = defaultEmergencyContacts.slice(0, 3);
 
     return (
@@ -131,15 +166,29 @@ export default function HomePage() {
                             subtitle="A short preview from announcements and community updates."
                         />
 
-                        <div className="home-news-list">
-                            {previewNews.map((item) => (
-                                <article key={item.id} className="home-news-card">
-                                    <p className="home-news-category">{item.category}</p>
-                                    <h3 className="home-news-title">{item.title}</h3>
-                                    <p className="home-news-summary">{item.summary}</p>
-                                </article>
-                            ))}
-                        </div>
+                        {newsLoading ? (
+                            <div className="admin-empty-state">
+                                <p>Loading latest announcements...</p>
+                            </div>
+                        ) : newsError ? (
+                            <div className="admin-empty-state">
+                                <p className="admin-error-text">{newsError}</p>
+                            </div>
+                        ) : previewNews.length === 0 ? (
+                            <div className="admin-empty-state">
+                                <p>No announcements have been published yet.</p>
+                            </div>
+                        ) : (
+                            <div className="home-news-list">
+                                {previewNews.map((item) => (
+                                    <article key={item.id} className="home-news-card">
+                                        <p className="home-news-category">{item.category}</p>
+                                        <h3 className="home-news-title">{item.title}</h3>
+                                        <p className="home-news-summary">{item.summary}</p>
+                                    </article>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="home-news-action-wrap">
                             <SecondaryButton onClick={() => router.push("/news")}>View All News</SecondaryButton>

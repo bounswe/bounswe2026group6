@@ -8,6 +8,86 @@ import org.junit.Test
 
 class ProfileRepositoryLocationPayloadTest {
     @Test
+    fun isFirstTimeShareEnableWithoutCoordinates_returnsTrue_whenEnablingWithoutSavedOrFreshCoordinates() {
+        val previous = ProfileData(shareLocation = false, sharedLatitude = null, sharedLongitude = null)
+        val next = previous.copy(shareLocation = true)
+
+        val result = ProfileRepository.isFirstTimeShareEnableWithoutCoordinates(
+            previousProfile = previous,
+            nextProfile = next,
+            currentDeviceLocation = null,
+            hasTrustedSavedCoordinates = false
+        )
+
+        assertTrue(result)
+    }
+
+    @Test
+    fun isFirstTimeShareEnableWithoutCoordinates_returnsFalse_whenFreshCoordinatesExist() {
+        val previous = ProfileData(shareLocation = false, sharedLatitude = null, sharedLongitude = null)
+        val next = previous.copy(shareLocation = true)
+
+        val result = ProfileRepository.isFirstTimeShareEnableWithoutCoordinates(
+            previousProfile = previous,
+            nextProfile = next,
+            currentDeviceLocation = CurrentDeviceLocation(
+                latitude = 41.043,
+                longitude = 29.009,
+                accuracyMeters = 10.0,
+                capturedAt = "2026-04-20T10:20:30.000Z"
+            ),
+            hasTrustedSavedCoordinates = false
+        )
+
+        assertFalse(result)
+    }
+
+    @Test
+    fun isFirstTimeShareEnableWithoutCoordinates_returnsTrue_whenOnlyLocalSavedCoordinatesExist() {
+        val previous = ProfileData(shareLocation = false, sharedLatitude = 41.043, sharedLongitude = 29.009)
+        val next = previous.copy(shareLocation = true)
+
+        val result = ProfileRepository.isFirstTimeShareEnableWithoutCoordinates(
+            previousProfile = previous,
+            nextProfile = next,
+            currentDeviceLocation = null,
+            hasTrustedSavedCoordinates = false
+        )
+
+        assertTrue(result)
+    }
+
+    @Test
+    fun isFirstTimeShareEnableWithoutCoordinates_returnsFalse_whenTrustedSavedCoordinatesExist() {
+        val previous = ProfileData(shareLocation = false, sharedLatitude = null, sharedLongitude = null)
+        val next = previous.copy(shareLocation = true)
+
+        val result = ProfileRepository.isFirstTimeShareEnableWithoutCoordinates(
+            previousProfile = previous,
+            nextProfile = next,
+            currentDeviceLocation = null,
+            hasTrustedSavedCoordinates = true
+        )
+
+        assertFalse(result)
+    }
+
+    @Test
+    fun isFirstTimeShareEnableWithoutCoordinates_returnsFalse_whenAlreadyEnabled() {
+        val previous = ProfileData(shareLocation = true, sharedLatitude = null, sharedLongitude = null)
+        val next = previous.copy(shareLocation = true)
+
+        val result = ProfileRepository.isFirstTimeShareEnableWithoutCoordinates(
+            previousProfile = previous,
+            nextProfile = next,
+            currentDeviceLocation = null,
+            hasTrustedSavedCoordinates = false
+        )
+
+        assertFalse(result)
+    }
+
+    @Test
     fun buildLocationPatchPayload_includesCoordinateWhenSharingEnabledAndLocationAvailable() {
         val payload = ProfileRepository.buildLocationPatchPayload(
             profile = ProfileData(

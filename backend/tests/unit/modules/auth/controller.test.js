@@ -155,6 +155,24 @@ describe('login', () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
   });
+
+  test('403 - user is banned', async () => {
+    validateLoginInput.mockReturnValue(null);
+    const error = new Error('User banned');
+    error.code = 'USER_BANNED';
+    loginUser.mockRejectedValue(error);
+    const req = { body: {} };
+    const res = mockRes();
+
+    await login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'USER_BANNED',
+      }),
+    );
+  });
 });
 
 // ─── verifyEmail ──────────────────────────────────────────────────────────────
@@ -192,6 +210,24 @@ describe('verifyEmail', () => {
     await verifyEmail(req, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  test('403 - banned user cannot complete verification login flow', async () => {
+    validateVerificationInput.mockReturnValue(null);
+    const error = new Error('User banned');
+    error.code = 'USER_BANNED';
+    verifyUserEmail.mockRejectedValue(error);
+    const req = { query: { token: 'banned-token' } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'USER_BANNED',
+      }),
+    );
   });
 
   test('500 - internal error', async () => {

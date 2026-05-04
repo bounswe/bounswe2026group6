@@ -24,12 +24,14 @@ import com.neph.features.auth.presentation.VerifyEmailScreen
 import com.neph.features.auth.presentation.WelcomeScreen
 import com.neph.features.emergencyinfo.presentation.EmergencyInfoScreen
 import com.neph.features.gatheringareas.presentation.GatheringAreasScreen
+import com.neph.features.helprequestmap.presentation.HelpRequestMapScreen
 import com.neph.features.home.presentation.HomeScreen
 import com.neph.features.myhelprequests.presentation.MyHelpRequestsScreen
 import com.neph.features.news.presentation.NewsScreen
 import com.neph.features.notifications.presentation.NotificationsScreen
 import com.neph.features.privacysecurity.presentation.PrivacySecurityScreen
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.profile.data.composeFullName
 import com.neph.features.profile.presentation.EditProfileScreen
 import com.neph.features.profile.presentation.ProfileScreen
 import com.neph.features.requesthelp.presentation.RequestHelpScreen
@@ -83,7 +85,8 @@ fun AppNavGraph(
     fun resolveProfileBadgeText(authenticated: Boolean): String {
         if (!authenticated) return ""
 
-        val fullName = ProfileRepository.getProfile().fullName.orEmpty().trim()
+        val profile = ProfileRepository.getProfile()
+        val fullName = (composeFullName(profile.firstName, profile.lastName) ?: profile.fullName).orEmpty().trim()
         if (fullName.isBlank()) return "PP"
 
         val parts = fullName.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -105,8 +108,10 @@ fun AppNavGraph(
             val profileBadgeText = resolveProfileBadgeText(authenticated)
 
             HomeScreen(
-                onRequestHelp = {
-                    navController.navigate(Routes.RequestHelp.route)
+                onRequestHelp = { draftLocalId ->
+                    navController.navigate(
+                        draftLocalId?.let(Routes::requestHelpWithDraft) ?: Routes.RequestHelp.route
+                    )
                 },
                 onOpenAssignedRequest = {
                     navigateToDrawerRoute(Routes.AssignedRequest.route)
@@ -162,7 +167,13 @@ fun AppNavGraph(
             val authenticated = isAuthenticated()
             val profileBadgeText = resolveProfileBadgeText(authenticated)
             MyHelpRequestsScreen(
-                onNavigateToRoute = ::navigateToDrawerRoute,
+                onNavigateToRoute = { route ->
+                    if (route.startsWith(Routes.RequestHelp.route)) {
+                        navController.navigate(route)
+                    } else {
+                        navigateToDrawerRoute(route)
+                    }
+                },
                 onOpenSettings = if (authenticated) {
                     { navigateToDrawerRoute(Routes.Settings.route) }
                 } else {
@@ -288,6 +299,29 @@ fun AppNavGraph(
             )
         }
 
+        composable(Routes.HelpRequestMap.route) {
+            val authenticated = isAuthenticated()
+            val profileBadgeText = resolveProfileBadgeText(authenticated)
+
+            HelpRequestMapScreen(
+                onNavigateToRoute = ::navigateToDrawerRoute,
+                onOpenSettings = if (authenticated) {
+                    { navigateToDrawerRoute(Routes.Settings.route) }
+                } else {
+                    null
+                },
+                onProfileClick = {
+                    if (authenticated) {
+                        navigateToDrawerRoute(Routes.Profile.route)
+                    } else {
+                        navigateToLogin()
+                    }
+                },
+                profileBadgeText = profileBadgeText,
+                isAuthenticated = authenticated
+            )
+        }
+
         composable(Routes.Notifications.route) {
             val authenticated = isAuthenticated()
             val profileBadgeText = resolveProfileBadgeText(authenticated)
@@ -351,12 +385,25 @@ fun AppNavGraph(
             PrivacySecurityScreen(
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onResetPassword = {
+                    navController.navigate(Routes.ForgotPassword.route)
                 }
             )
         }
 
-        composable(Routes.RequestHelp.route) {
+        composable(
+            route = "${Routes.RequestHelp.route}?${Routes.RequestHelpDraftArg}={${Routes.RequestHelpDraftArg}}",
+            arguments = listOf(
+                navArgument(Routes.RequestHelpDraftArg) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
             RequestHelpScreen(
+                draftLocalId = backStackEntry.arguments?.getString(Routes.RequestHelpDraftArg),
                 onNavigateBack = {
                     navController.popBackStack()
                 },

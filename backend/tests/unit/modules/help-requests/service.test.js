@@ -13,6 +13,7 @@ jest.mock('../../../../src/modules/help-requests/repository', () => ({
 	markHelpRequestAsResolvedByRequestId: jest.fn(),
 	markHelpRequestAsCancelled: jest.fn(),
 	markHelpRequestAsCancelledByRequestId: jest.fn(),
+	listActiveHelpRequestsVisibility: jest.fn(),
 }));
 
 const repository = require('../../../../src/modules/help-requests/repository');
@@ -31,6 +32,7 @@ const {
 	getGuestHelpRequest,
 	updateMyHelpRequestStatus,
 	updateGuestHelpRequestStatus,
+	listActiveHelpRequestsForVisibility,
 } = require('../../../../src/modules/help-requests/service');
 
 describe('help-requests service', () => {
@@ -488,6 +490,25 @@ describe('help-requests service', () => {
 			await expect(updateGuestHelpRequestStatus('req_guest_locked', 'SYNCED', token))
 				.rejects
 				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
+		});
+	});
+
+	describe('listActiveHelpRequestsForVisibility', () => {
+		test('delegates visibility listing to repository', async () => {
+			const payload = {
+				typeFilters: ['first_aid'],
+				statusFilters: ['PENDING'],
+				limit: 10,
+				offset: 0,
+				isAdmin: false,
+			};
+			const expected = { items: [{ requestId: 'req_1' }], total: 1 };
+			repository.listActiveHelpRequestsVisibility.mockResolvedValueOnce(expected);
+
+			const result = await listActiveHelpRequestsForVisibility(payload);
+
+			expect(repository.listActiveHelpRequestsVisibility).toHaveBeenCalledWith(payload);
+			expect(result).toEqual(expected);
 		});
 	});
 });

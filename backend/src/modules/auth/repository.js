@@ -8,6 +8,7 @@ async function findUserByEmail(email) {
         email,
         password_hash,
         is_email_verified,
+        is_banned,
         created_at,
         is_deleted,
         accepted_terms
@@ -29,6 +30,7 @@ async function findUserById(userId) {
         email,
         password_hash,
         is_email_verified,
+        is_banned,
         created_at,
         is_deleted,
         accepted_terms
@@ -108,9 +110,28 @@ async function findAdminByUserId(userId) {
   return result.rows[0] || null;
 }
 
+async function findUserAuthStateById(userId) {
+  const result = await query(
+    `
+      SELECT
+        user_id,
+        email,
+        is_deleted,
+        is_banned
+      FROM users
+      WHERE user_id = $1
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  return result.rows[0] || null;
+}
+
 module.exports = {
   findUserByEmail,
   findUserById,
+  findUserAuthStateById,
   createUser,
   markEmailVerified,
   updateUserPassword,

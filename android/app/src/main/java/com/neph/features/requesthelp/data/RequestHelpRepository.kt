@@ -16,10 +16,13 @@ import com.neph.core.sync.SyncEntityType
 import com.neph.core.sync.SyncOperationStatus
 import com.neph.core.sync.SyncOperationType
 import com.neph.core.sync.SyncStatus
+import com.neph.features.profile.data.CurrentDeviceLocation
+import com.neph.features.profile.data.ProfileData
+import com.neph.features.profile.data.normalizePhoneParts
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.util.Locale
 import java.util.UUID
 
@@ -39,7 +42,11 @@ data class RequestHelpLocationSubmission(
     val city: String,
     val district: String,
     val neighborhood: String,
-    val extraAddress: String
+    val extraAddress: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val coordinateSource: String? = null,
+    val coordinateCapturedAt: String? = null
 )
 
 data class RequestHelpReverseLocation(
@@ -80,6 +87,10 @@ data class GuestTrackedHelpRequest(
     val requestId: String,
     val guestAccessToken: String
 )
+
+class EmergencyDraftRequirementsException(
+    message: String
+) : IllegalStateException(message)
 
 object RequestHelpRepository {
     private const val PrefsName = "neph_guest_help_requests"
@@ -152,6 +163,93 @@ object RequestHelpRepository {
         return CreateHelpRequestResult(requestId = localId, recordedLocally = true)
     }
 
+    suspend fun createEmergencyDraft(
+        token: String?,
+        profile: ProfileData,
+        currentLocation: CurrentDeviceLocation?,
+        reverseLocation: RequestHelpReverseLocation?
+    ): CreateHelpRequestResult {
+        val submission = buildEmergencyDraftSubmission(profile, currentLocation, reverseLocation)
+        return createHelpRequest(token = token, submission = submission)
+    }
+
+    suspend fun getLocalHelpRequest(localId: String): HelpRequestEntity? {
+        ensureInitialized()
+        return database.helpRequestDao().getByLocalId(localId)
+    }
+
+    fun observeLocalHelpRequest(localId: String): Flow<HelpRequestEntity?> {
+        ensureInitialized()
+        return database.helpRequestDao().observeByLocalId(localId)
+    }
+
+    suspend fun updateHelpRequest(
+        token: String?,
+        localId: String,
+        submission: RequestHelpSubmission
+    ): CreateHelpRequestResult {
+        ensureInitialized()
+
+        val now = System.currentTimeMillis()
+        val existing = database.helpRequestDao().getByLocalId(localId)
+            ?: return createHelpRequest(token = token, submission = submission)
+        val ownerType = ownerTypeForToken(token)
+        val submissionWithPreservedLocation = submission.withPreservedCoordinates(existing)
+        val updatedEntity = submissionWithPreservedLocation.toEntity(
+            localId = existing.localId,
+            ownerType = existing.ownerType,
+            now = now,
+            syncStatus = if (existing.remoteId.isNullOrBlank()) SyncStatus.PENDING_CREATE else SyncStatus.PENDING_UPDATE
+        ).copy(
+            remoteId = existing.remoteId,
+            ownerType = existing.ownerType.ifBlank { ownerType },
+            guestAccessToken = existing.guestAccessToken,
+            createdAtEpochMillis = existing.createdAtEpochMillis,
+            serverCreatedAt = existing.serverCreatedAt,
+            lastSyncedAtEpochMillis = existing.lastSyncedAtEpochMillis,
+            status = existing.status.takeUnless { it == PendingHelpRequestStatus } ?: PendingHelpRequestStatus
+        )
+
+        database.helpRequestDao().upsert(updatedEntity)
+        val pendingCreate = database.syncOperationDao().getLatestPendingOperation(
+            entityType = SyncEntityType.HELP_REQUEST,
+            entityId = existing.localId,
+            operationType = SyncOperationType.CREATE_HELP_REQUEST
+        )
+
+        if (pendingCreate != null) {
+            database.syncOperationDao().upsert(
+                pendingCreate.copy(
+                    payloadJson = submissionWithPreservedLocation.toJson().toString(),
+                    status = SyncOperationStatus.PENDING,
+                    error = null
+                )
+            )
+        } else {
+            val pendingUpdate = database.syncOperationDao().getLatestPendingOperation(
+                entityType = SyncEntityType.HELP_REQUEST,
+                entityId = existing.localId,
+                operationType = SyncOperationType.UPDATE_HELP_REQUEST
+            )
+            database.syncOperationDao().upsert(
+                pendingUpdate?.copy(
+                    payloadJson = submissionWithPreservedLocation.toJson().toString(),
+                    status = SyncOperationStatus.PENDING,
+                    error = null
+                ) ?: SyncOperationEntity(
+                        entityType = SyncEntityType.HELP_REQUEST,
+                        entityId = existing.localId,
+                        operationType = SyncOperationType.UPDATE_HELP_REQUEST,
+                        payloadJson = submissionWithPreservedLocation.toJson().toString(),
+                        createdAtEpochMillis = now
+                    )
+            )
+        }
+
+        OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "help-request-updated")
+        return CreateHelpRequestResult(requestId = existing.localId, recordedLocally = true)
+    }
+
     fun getGuestTrackedRequests(): List<GuestTrackedHelpRequest> {
         ensureInitialized()
 
@@ -197,9 +295,9 @@ object RequestHelpRepository {
     suspend fun fetchGuestHelpRequest(
         trackedRequest: GuestTrackedHelpRequest
     ): JSONObject? {
-        val encodedToken = URLEncoder.encode(trackedRequest.guestAccessToken, Charsets.UTF_8.name())
         val response = JsonHttpClient.request(
-            path = "/help-requests/${trackedRequest.requestId}?guestAccessToken=$encodedToken"
+            path = "/help-requests/${trackedRequest.requestId}",
+            headers = guestAccessHeaders(trackedRequest.guestAccessToken)
         )
 
         return response.optJSONObject("request")
@@ -279,6 +377,43 @@ object RequestHelpRepository {
         database.syncOperationDao().delete(operation.operationId)
     }
 
+    internal suspend fun pushUpdateOperation(operation: SyncOperationEntity, token: String?) {
+        val entity = database.helpRequestDao().getByLocalId(operation.entityId) ?: run {
+            database.syncOperationDao().delete(operation.operationId)
+            return
+        }
+        val remoteId = resolveRemoteRequestIdForSync(entity)
+        if (remoteId.isNullOrBlank()) {
+            database.syncOperationDao().updateStatus(
+                operationId = operation.operationId,
+                status = SyncOperationStatus.PENDING,
+                attemptCount = operation.attemptCount,
+                lastAttemptAtEpochMillis = operation.lastAttemptAtEpochMillis,
+                error = DeferredStatusSyncMessage
+            )
+            return
+        }
+
+        val guestAccessToken = entity.guestAccessToken
+
+        val response = JsonHttpClient.request(
+            path = "/help-requests/$remoteId",
+            method = "PATCH",
+            token = token.takeIf { entity.ownerType == LocalOwnerType.AUTHENTICATED && !it.isNullOrBlank() },
+            body = JSONObject(operation.payloadJson),
+            headers = guestAccessHeaders(guestAccessToken).takeIf { entity.ownerType == LocalOwnerType.GUEST } ?: emptyMap()
+        )
+
+        val remoteRequest = response.optJSONObject("request")
+            ?: throw ApiException("Server did not return the updated help request.", 200, "INVALID_RESPONSE")
+        upsertRemoteHelpRequest(
+            ownerType = entity.ownerType,
+            request = remoteRequest,
+            guestAccessToken = entity.guestAccessToken
+        )
+        database.syncOperationDao().delete(operation.operationId)
+    }
+
     internal suspend fun pushStatusOperation(operation: SyncOperationEntity, token: String?) {
         val entity = database.helpRequestDao().getByLocalId(operation.entityId) ?: run {
             database.syncOperationDao().delete(operation.operationId)
@@ -298,18 +433,13 @@ object RequestHelpRepository {
 
         val nextStatus = JSONObject(operation.payloadJson).optString("status").ifBlank { entity.status }
         val guestAccessToken = entity.guestAccessToken
-        val encodedGuestToken = guestAccessToken?.let { URLEncoder.encode(it, Charsets.UTF_8.name()) }
-        val path = if (entity.ownerType == LocalOwnerType.GUEST && encodedGuestToken != null) {
-            "/help-requests/$remoteId/status?guestAccessToken=$encodedGuestToken"
-        } else {
-            "/help-requests/$remoteId/status"
-        }
 
         val response = JsonHttpClient.request(
-            path = path,
+            path = "/help-requests/$remoteId/status",
             method = "PATCH",
             token = token.takeIf { entity.ownerType == LocalOwnerType.AUTHENTICATED && !it.isNullOrBlank() },
-            body = JSONObject().put("status", nextStatus)
+            body = JSONObject().put("status", nextStatus),
+            headers = guestAccessHeaders(guestAccessToken).takeIf { entity.ownerType == LocalOwnerType.GUEST } ?: emptyMap()
         )
 
         val remoteRequest = response.optJSONObject("request")
@@ -421,10 +551,22 @@ object RequestHelpRepository {
             "RequestHelpRepository must be initialized before use."
         }
     }
+
+    private fun guestAccessHeaders(guestAccessToken: String?): Map<String, String> {
+        return guestAccessToken
+            ?.takeIf { it.isNotBlank() }
+            ?.let { mapOf("x-help-request-access-token" to it) }
+            ?: emptyMap()
+    }
 }
 
 private fun JSONObject.optTrimmedString(key: String): String? {
     return optString(key).trim().takeIf { it.isNotBlank() }
+}
+
+private fun String.isUsefulBackendValue(): Boolean {
+    val value = trim()
+    return value.isNotBlank() && value != "null"
 }
 
 internal fun RequestHelpSubmission.toJson(): JSONObject {
@@ -444,6 +586,19 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
                 put("district", location.district)
                 put("neighborhood", location.neighborhood)
                 put("extraAddress", location.extraAddress)
+                if (location.latitude != null && location.longitude != null) {
+                    put("latitude", location.latitude)
+                    put("longitude", location.longitude)
+                    put(
+                        "coordinate",
+                        JSONObject().apply {
+                            put("latitude", location.latitude)
+                            put("longitude", location.longitude)
+                            location.coordinateSource?.let { put("source", it) }
+                            location.coordinateCapturedAt?.let { put("capturedAt", it) }
+                        }
+                    )
+                }
             }
         )
         put(
@@ -456,6 +611,88 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
         )
         put("consentGiven", consentGiven)
     }
+}
+
+internal fun buildEmergencyDraftSubmission(
+    profile: ProfileData,
+    currentLocation: CurrentDeviceLocation?,
+    reverseLocation: RequestHelpReverseLocation?
+): RequestHelpSubmission {
+    val phoneParts = normalizePhoneParts(profile.phone)
+    val primaryPhone = phoneParts.phone
+        .takeIf { phoneParts.countryCode == "+90" }
+        ?.toLongOrNull()
+        ?.takeIf { it in 5000000000L..5999999999L }
+        ?: throw EmergencyDraftRequirementsException(
+            "A valid Turkish mobile phone number is required before creating a quick emergency draft."
+        )
+    val contactName = profile.fullName?.trim()?.takeIf { it.isNotBlank() }
+        ?: listOfNotNull(profile.firstName, profile.lastName)
+            .joinToString(" ") { it.trim() }
+            .trim()
+            .takeIf { it.isNotBlank() }
+        ?: throw EmergencyDraftRequirementsException(
+            "A real contact name is required before creating a quick emergency draft."
+        )
+    val profileCoordinatesAllowed = profile.shareLocation == true
+        && profile.sharedLatitude != null
+        && profile.sharedLongitude != null
+    val latitude = currentLocation?.latitude ?: profile.sharedLatitude.takeIf { profileCoordinatesAllowed }
+    val longitude = currentLocation?.longitude ?: profile.sharedLongitude.takeIf { profileCoordinatesAllowed }
+    val coordinateSource = currentLocation?.source ?: latitude.takeIf { profileCoordinatesAllowed }?.let { "PROFILE_LAST_SHARED" }
+    val coordinateCapturedAt = currentLocation?.capturedAt
+    val country = reverseLocation?.country?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.country?.trim()?.takeIf { it.isNotBlank() }
+    val city = reverseLocation?.city?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.city?.trim()?.takeIf { it.isNotBlank() }
+    val district = reverseLocation?.district?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.district?.trim()?.takeIf { it.isNotBlank() }
+    val neighborhood = reverseLocation?.neighborhood?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.neighborhood?.trim()?.takeIf { it.isNotBlank() }
+
+    if (
+        latitude == null ||
+        longitude == null ||
+        country == null ||
+        city == null ||
+        district == null ||
+        neighborhood == null
+    ) {
+        throw EmergencyDraftRequirementsException(
+            "A real emergency location is required before creating a quick emergency draft."
+        )
+    }
+
+    val extraAddress = reverseLocation?.extraAddress?.trim()?.takeIf { it.isNotBlank() }
+        ?: profile.extraAddress?.trim()?.takeIf { it.isNotBlank() }
+        ?: ""
+
+    return RequestHelpSubmission(
+        helpTypes = listOf("other"),
+        otherHelpText = "Emergency assistance requested from mobile app",
+        affectedPeopleCount = 1,
+        description = "Emergency assistance requested from mobile app. Details pending.",
+        riskFlags = emptyList(),
+        vulnerableGroups = emptyList(),
+        bloodType = profile.bloodType.orEmpty(),
+        location = RequestHelpLocationSubmission(
+            country = country,
+            city = city,
+            district = district,
+            neighborhood = neighborhood,
+            extraAddress = extraAddress,
+            latitude = latitude,
+            longitude = longitude,
+            coordinateSource = coordinateSource,
+            coordinateCapturedAt = coordinateCapturedAt
+        ),
+        contact = RequestHelpContactSubmission(
+            fullName = contactName,
+            phone = primaryPhone,
+            alternativePhone = null
+        ),
+        consentGiven = true
+    )
 }
 
 internal fun RequestHelpSubmission.toEntity(
@@ -481,6 +718,10 @@ internal fun RequestHelpSubmission.toEntity(
         district = location.district,
         neighborhood = location.neighborhood,
         extraAddress = location.extraAddress,
+        latitude = location.latitude,
+        longitude = location.longitude,
+        coordinateSource = location.coordinateSource,
+        coordinateCapturedAt = location.coordinateCapturedAt,
         contactFullName = contact.fullName,
         contactPhone = contact.phone.toString(),
         contactAlternativePhone = contact.alternativePhone?.toString(),
@@ -540,14 +781,18 @@ internal fun JSONObject.toHelpRequestEntity(
         district = location.optString("district"),
         neighborhood = location.optString("neighborhood"),
         extraAddress = location.optString("extraAddress"),
+        latitude = readLocationLatitude(location, existing),
+        longitude = readLocationLongitude(location, existing),
+        coordinateSource = readLocationCoordinateSource(location, existing),
+        coordinateCapturedAt = readLocationCoordinateCapturedAt(location, existing),
         contactFullName = contact.optString("fullName"),
         contactPhone = contact.opt("phone")?.toString().orEmpty(),
         contactAlternativePhone = contact.opt("alternativePhone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
         status = optString("status").ifBlank { existing?.status ?: "SYNCED" },
         urgencyLevel = optString("urgencyLevel").takeIf { it.isNotBlank() } ?: existing?.urgencyLevel,
         priorityLevel = optString("priorityLevel").takeIf { it.isNotBlank() } ?: existing?.priorityLevel,
-        resolvedAt = optString("resolvedAt").takeIf { it.isNotBlank() } ?: existing?.resolvedAt,
-        cancelledAt = optString("cancelledAt").takeIf { it.isNotBlank() } ?: existing?.cancelledAt,
+        resolvedAt = optString("resolvedAt").takeIf { it.isUsefulBackendValue() } ?: existing?.resolvedAt,
+        cancelledAt = optString("cancelledAt").takeIf { it.isUsefulBackendValue() } ?: existing?.cancelledAt,
         helperFirstName = primaryHelper?.firstName,
         helperLastName = primaryHelper?.lastName,
         helperPhone = primaryHelper?.phone,
@@ -562,6 +807,55 @@ internal fun JSONObject.toHelpRequestEntity(
         serverCreatedAt = optString("createdAt").takeIf { it.isNotBlank() } ?: existing?.serverCreatedAt,
         isDeleted = false
     )
+}
+
+private fun RequestHelpSubmission.withPreservedCoordinates(existing: HelpRequestEntity): RequestHelpSubmission {
+    if (location.latitude != null && location.longitude != null) {
+        return this
+    }
+
+    if (existing.latitude == null || existing.longitude == null) {
+        return this
+    }
+
+    return copy(
+        location = location.copy(
+            latitude = existing.latitude,
+            longitude = existing.longitude,
+            coordinateSource = existing.coordinateSource,
+            coordinateCapturedAt = existing.coordinateCapturedAt
+        )
+    )
+}
+
+private fun readLocationLatitude(location: JSONObject, existing: HelpRequestEntity?): Double? {
+    return location.optNullableDouble("latitude")
+        ?: location.optJSONObject("coordinate")?.optNullableDouble("latitude")
+        ?: existing?.latitude
+}
+
+private fun readLocationLongitude(location: JSONObject, existing: HelpRequestEntity?): Double? {
+    return location.optNullableDouble("longitude")
+        ?: location.optJSONObject("coordinate")?.optNullableDouble("longitude")
+        ?: existing?.longitude
+}
+
+private fun readLocationCoordinateSource(location: JSONObject, existing: HelpRequestEntity?): String? {
+    return location.optJSONObject("coordinate")?.optString("source")?.takeIf { it.isNotBlank() }
+        ?: existing?.coordinateSource
+}
+
+private fun readLocationCoordinateCapturedAt(location: JSONObject, existing: HelpRequestEntity?): String? {
+    return location.optJSONObject("coordinate")?.optString("capturedAt")?.takeIf { it.isNotBlank() }
+        ?: existing?.coordinateCapturedAt
+}
+
+private fun JSONObject.optNullableDouble(key: String): Double? {
+    if (!has(key) || isNull(key)) {
+        return null
+    }
+
+    return optDouble(key).takeIf { !it.isNaN() }
 }
 
 internal fun JSONArray?.orEmptyJsonArrayString(): String = (this ?: JSONArray()).toString()

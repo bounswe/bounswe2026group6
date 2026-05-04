@@ -120,6 +120,14 @@ function validateOptionalString(fieldName, value, errors, { maxLength = 255 } = 
   return normalized;
 }
 
+function validateOptionalNonPlaceholderString(fieldName, value, errors, { maxLength = 255 } = {}) {
+  const normalized = validateOptionalString(fieldName, value, errors, { maxLength });
+  if (normalized && placeholderValues.has(normalized.toLowerCase())) {
+    errors.push(`\`${fieldName}\` must be real user-provided information.`);
+  }
+  return normalized;
+}
+
 function isValidTurkishMobileNumber(value) {
   return Number.isInteger(value) && value >= 5000000000 && value <= 5999999999;
 }
@@ -316,7 +324,7 @@ function validateCreateHelpRequest(payload) {
       district: validateRequiredNonPlaceholderString('location.district', payload.location.district, errors, {
         maxLength: 100,
       }),
-      neighborhood: validateOptionalString('location.neighborhood', payload.location.neighborhood, errors, {
+      neighborhood: validateOptionalNonPlaceholderString('location.neighborhood', payload.location.neighborhood, errors, {
         maxLength: 100,
       }),
       extraAddress: validateOptionalString('location.extraAddress', payload.location.extraAddress, errors, {
@@ -339,7 +347,7 @@ function validateCreateHelpRequest(payload) {
     errors.push('`contact` is required and must be an object.');
   } else {
     contact = {
-      fullName: validateOptionalString('contact.fullName', payload.contact.fullName, errors, {
+      fullName: validateOptionalNonPlaceholderString('contact.fullName', payload.contact.fullName, errors, {
         maxLength: 200,
       }),
       phone: validateRequiredPhoneNumber('contact.phone', payload.contact.phone, errors),

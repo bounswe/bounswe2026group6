@@ -292,7 +292,13 @@ function mapNominatimItem(item) {
 			city: address.city || address.town || address.village || '',
 			district: address.county || address.state_district || address.municipality || '',
 			neighborhood: address.neighbourhood || address.suburb || '',
-			extraAddress: [address.road, address.house_number].filter(Boolean).join(' ').trim(),
+			extraAddress: [
+				address.road || address.pedestrian || address.footway || address.path || '',
+				address.house_number || '',
+			]
+				.filter(Boolean)
+				.join(' ')
+				.trim(),
 			postalCode: address.postcode || '',
 		},
 	};

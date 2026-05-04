@@ -13,6 +13,24 @@ const {
   listExpertiseByProfileId,
 } = require('./repository');
 
+function toIsoDateString(value) {
+  if (!value) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const parsedMs = Date.parse(raw);
+  if (Number.isNaN(parsedMs)) {
+    return null;
+  }
+
+  return new Date(parsedMs).toISOString().slice(0, 10);
+}
+
 function mapProfileRow(row) {
   return {
     profile: {
@@ -37,6 +55,7 @@ function mapProfileRow(row) {
     },
     physicalInfo: {
       age: row.age,
+      dateOfBirth: toIsoDateString(row.date_of_birth),
       gender: row.gender,
       height: row.height,
       weight: row.weight,

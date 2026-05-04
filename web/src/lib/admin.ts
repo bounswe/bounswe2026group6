@@ -327,3 +327,162 @@ export async function fetchAdminDeploymentMonitoring(
 
     return response.monitoring;
 }
+
+export type AdminAnnouncement = {
+    id: string;
+    adminId: string;
+    title: string;
+    content: string;
+    createdAt: string;
+};
+
+type AdminAnnouncementsResponse = {
+    announcements: AdminAnnouncement[];
+};
+
+type AdminAnnouncementResponse = {
+    announcement: AdminAnnouncement;
+};
+
+export type AnnouncementMutationPayload = {
+    title: string;
+    content: string;
+};
+
+export async function fetchAdminAnnouncements(token: string, options: { limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (typeof options.limit === "number") {
+        params.set("limit", String(options.limit));
+    }
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const response = await apiRequest<AdminAnnouncementsResponse>(`/admin/announcements${query}`, {
+        token: token.trim(),
+    });
+
+    return response.announcements;
+}
+
+export async function createAdminAnnouncement(token: string, payload: AnnouncementMutationPayload) {
+    const response = await apiRequest<AdminAnnouncementResponse>("/admin/announcements", {
+        method: "POST",
+        token: token.trim(),
+        body: {
+            title: payload.title.trim(),
+            content: payload.content.trim(),
+        },
+    });
+
+    return response.announcement;
+}
+
+export async function updateAdminAnnouncement(
+    token: string,
+    announcementId: string,
+    payload: Partial<AnnouncementMutationPayload>
+) {
+    const body: Record<string, string> = {};
+    if (payload.title !== undefined) {
+        body.title = payload.title.trim();
+    }
+    if (payload.content !== undefined) {
+        body.content = payload.content.trim();
+    }
+
+    const response = await apiRequest<AdminAnnouncementResponse>(`/admin/announcements/${encodeURIComponent(announcementId)}`, {
+        method: "PATCH",
+        token: token.trim(),
+        body,
+    });
+
+    return response.announcement;
+}
+
+export async function deleteAdminAnnouncement(token: string, announcementId: string) {
+    await apiRequest<void>(`/admin/announcements/${encodeURIComponent(announcementId)}`, {
+        method: "DELETE",
+        token: token.trim(),
+    });
+}
+
+export type AdminUserListItem = {
+    userId: string;
+    username: string | null;
+    email: string;
+    isEmailVerified: boolean;
+    isBanned: boolean;
+    banReason: string | null;
+    bannedAt: string | null;
+    createdAt: string;
+    isAdmin: boolean;
+    adminRole: string | null;
+};
+
+export type AdminUserListFilters = {
+    email: string | null;
+    isEmailVerified: boolean | null;
+    isBanned: boolean | null;
+    limit: number;
+    offset: number;
+};
+
+export type AdminUserListResponse = {
+    users: AdminUserListItem[];
+    total: number;
+    filters: AdminUserListFilters;
+};
+
+export type AdminUserListOptions = {
+    limit?: number;
+    offset?: number;
+    email?: string | null;
+    isEmailVerified?: boolean | null;
+    isBanned?: boolean | null;
+};
+
+export async function fetchAdminUsers(token: string, options: AdminUserListOptions = {}) {
+    const params = new URLSearchParams();
+    if (typeof options.limit === "number") {
+        params.set("limit", String(options.limit));
+    }
+    if (typeof options.offset === "number") {
+        params.set("offset", String(options.offset));
+    }
+    if (options.email && options.email.trim() !== "") {
+        params.set("email", options.email.trim());
+    }
+    if (typeof options.isEmailVerified === "boolean") {
+        params.set("isEmailVerified", String(options.isEmailVerified));
+    }
+    if (typeof options.isBanned === "boolean") {
+        params.set("isBanned", String(options.isBanned));
+    }
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return apiRequest<AdminUserListResponse>(`/admin/users${query}`, {
+        token: token.trim(),
+    });
+}
+
+type AdminUserModerationResponse = {
+    user: AdminUserListItem;
+};
+
+export async function banAdminUser(token: string, userId: string, reason?: string | null) {
+    return apiRequest<AdminUserModerationResponse>(`/admin/users/${encodeURIComponent(userId)}/ban`, {
+        method: "PATCH",
+        token: token.trim(),
+        body: {
+            reason: typeof reason === "string" ? reason : null,
+        },
+    });
+}
+
+export async function unbanAdminUser(token: string, userId: string) {
+    return apiRequest<AdminUserModerationResponse>(`/admin/users/${encodeURIComponent(userId)}/unban`, {
+        method: "PATCH",
+        token: token.trim(),
+    });
+}
+
+

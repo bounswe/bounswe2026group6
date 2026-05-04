@@ -285,23 +285,104 @@ async function cancelMyAssignment(userId, { assignmentId }) {
   };
 }
 
-async function cancelAssignmentByRequestId(requestId) {
-  const assignments = await findActiveAssignmentsByRequestId(requestId);
+async function cancelAssignmentByRequestId(requestId, options = {}) {
+  const executor = options.db || null;
+  const shouldNotify = options.notify !== false;
+  const shouldRunMatching = options.runMatching !== false;
+
+  const assignments = executor
+    ? await findActiveAssignmentsByRequestId(requestId, executor)
+    : await findActiveAssignmentsByRequestId(requestId);
 
   for (const assignment of assignments) {
-    const volunteer = await findVolunteerById(assignment.volunteer_id);
-    await notifyVolunteerTaskUpdated(
-      volunteer ? volunteer.user_id : null,
-      requestId,
-      null,
-      'assignment_cancelled_by_request_update',
-    );
-    await cancelAssignment(assignment.assignment_id);
+    const volunteer = executor
+      ? await findVolunteerById(assignment.volunteer_id, executor)
+      : await findVolunteerById(assignment.volunteer_id);
+    if (shouldNotify) {
+      await notifyVolunteerTaskUpdated(
+        volunteer ? volunteer.user_id : null,
+        requestId,
+        null,
+        'assignment_cancelled_by_request_update',
+      );
+    }
+    if (executor) {
+      await cancelAssignment(assignment.assignment_id, executor);
+    } else {
+      await cancelAssignment(assignment.assignment_id);
+    }
   }
 
-  if (assignments.length > 0) {
+  if (assignments.length > 0 && shouldRunMatching) {
     await runAssignmentCycle();
   }
+}
+
+async function cancelAssignmentsForBannedVolunteer(userId, options = {}) {
+  const executor = options.db || null;
+  const shouldNotify = options.notify !== false;
+  const shouldRunMatching = options.runMatching !== false;
+
+  const volunteer = executor
+    ? await findVolunteerByUserId(userId, executor)
+    : await findVolunteerByUserId(userId);
+
+  if (!volunteer) {
+    return {
+      volunteerId: null,
+      cancelledAssignmentId: null,
+      affectedRequestId: null,
+    };
+  }
+
+  const activeAssignment = executor
+    ? await getAssignmentByVolunteerId(volunteer.volunteer_id, executor)
+    : await getAssignmentByVolunteerId(volunteer.volunteer_id);
+
+  if (activeAssignment) {
+    if (shouldNotify) {
+      await notifyVolunteerTaskUpdated(userId, activeAssignment.request_id, null, 'volunteer_banned');
+    }
+    if (executor) {
+      await cancelAssignment(activeAssignment.assignment_id, executor);
+    } else {
+      await cancelAssignment(activeAssignment.assignment_id);
+    }
+    if (executor) {
+      await syncRequestStatusPreservingInProgress(activeAssignment.request_id, executor);
+    } else {
+      await syncRequestStatusFromAssignments(activeAssignment.request_id);
+    }
+  }
+
+  if (executor) {
+    await updateVolunteerAvailability(
+      volunteer.volunteer_id,
+      false,
+      volunteer.last_known_latitude,
+      volunteer.last_known_longitude,
+      executor,
+    );
+    await createAvailabilityRecord(volunteer.volunteer_id, false, false, executor);
+  } else {
+    await updateVolunteerAvailability(
+      volunteer.volunteer_id,
+      false,
+      volunteer.last_known_latitude,
+      volunteer.last_known_longitude,
+    );
+    await createAvailabilityRecord(volunteer.volunteer_id, false, false);
+  }
+
+  if (activeAssignment && shouldRunMatching) {
+    await runAssignmentCycle();
+  }
+
+  return {
+    volunteerId: volunteer.volunteer_id,
+    cancelledAssignmentId: activeAssignment ? activeAssignment.assignment_id : null,
+    affectedRequestId: activeAssignment ? activeAssignment.request_id : null,
+  };
 }
 
 async function resolveMyAssignment(userId, { requestId }) {
@@ -398,4 +479,5 @@ module.exports = {
   getAvailabilityStatus,
   tryToAssignRequest,
   cancelAssignmentByRequestId,
+  cancelAssignmentsForBannedVolunteer,
 };

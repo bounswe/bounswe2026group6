@@ -185,6 +185,7 @@ class FakeNephBackend {
             route == "/availability/status" && method == "GET" -> handleAvailabilityStatus(token)
             route == "/availability/my-assignment" && method == "GET" -> handleCurrentAssignment(token)
             route == "/help-requests" && method == "GET" -> handleHelpRequestList(token)
+            route == "/help-requests/active" && method == "GET" -> handleActiveHelpRequests(uri)
             route == "/location/tree" && method == "GET" -> handleLocationTree(uri)
             route == "/gathering-areas/nearby" && method == "GET" -> handleNearbyGatheringAreas(uri)
             else -> throw ApiException(
@@ -286,6 +287,79 @@ class FakeNephBackend {
                         }
                     })
             )
+    }
+
+    private fun handleActiveHelpRequests(uri: Uri): JSONObject {
+        val status = uri.getQueryParameter("status").orEmpty().uppercase(Locale.ROOT).ifBlank { "PENDING" }
+        if (status != "PENDING") {
+            throw ApiException("`status` contains invalid values: $status.", 400, "VALIDATION_FAILED")
+        }
+
+        val limit = (uri.getQueryParameter("limit")?.toIntOrNull() ?: 300).coerceIn(1, 300)
+        val offset = (uri.getQueryParameter("offset")?.toIntOrNull() ?: 0).coerceAtLeast(0)
+
+        val allRequests = JSONArray().apply {
+            put(
+                JSONObject()
+                    .put("requestId", "fake-map-first-aid")
+                    .put("type", "first_aid")
+                    .put("status", "PENDING")
+                    .put("urgencyLevel", "HIGH")
+                    .put("createdAt", "2026-05-01T10:15:00.000Z")
+                    .put("assignmentState", "UNASSIGNED")
+                    .put(
+                        "location",
+                        JSONObject()
+                            .put("latitude", 41.043)
+                            .put("longitude", 29.009)
+                            .put("city", "istanbul")
+                            .put("district", "besiktas")
+                    )
+            )
+            put(
+                JSONObject()
+                    .put("requestId", "fake-map-shelter")
+                    .put("type", "shelter")
+                    .put("status", "PENDING")
+                    .put("urgencyLevel", "MEDIUM")
+                    .put("createdAt", "2026-05-01T10:05:00.000Z")
+                    .put("assignmentState", "UNASSIGNED")
+                    .put(
+                        "location",
+                        JSONObject()
+                            .put("latitude", 41.066)
+                            .put("longitude", 28.993)
+                            .put("city", "istanbul")
+                            .put("district", "sisli")
+                    )
+            )
+            put(
+                JSONObject()
+                    .put("requestId", "fake-map-assigned")
+                    .put("type", "search_and_rescue")
+                    .put("status", "PENDING")
+                    .put("urgencyLevel", "HIGH")
+                    .put("createdAt", "2026-05-01T09:55:00.000Z")
+                    .put("assignmentState", "ASSIGNED")
+                    .put(
+                        "location",
+                        JSONObject()
+                            .put("latitude", 41.079)
+                            .put("longitude", 29.022)
+                            .put("city", "istanbul")
+                            .put("district", "sariyer")
+                    )
+            )
+        }
+
+        return JSONObject()
+            .put("requests", JSONArray().apply {
+                for (index in offset until minOf(offset + limit, allRequests.length())) {
+                    put(allRequests.getJSONObject(index))
+                }
+            })
+            .put("total", allRequests.length())
+            .put("pagination", JSONObject().put("limit", limit).put("offset", offset))
     }
 
     private fun handleLocationTree(uri: Uri): JSONObject {

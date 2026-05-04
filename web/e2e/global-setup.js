@@ -14,7 +14,13 @@ const {
   applyDefaultTestEnv,
 } = require('./helpers/config');
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCommand = process.platform === 'win32' ? process.execPath : 'npm';
+const npmArgsPrefix = process.platform === 'win32'
+  ? [
+      process.env.npm_execpath
+      || path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ]
+  : [];
 
 function createLogFile(name) {
   fs.mkdirSync(TEST_RESULTS_DIR, { recursive: true });
@@ -25,7 +31,7 @@ function createLogFile(name) {
 
 function startProcess({ name, cwd, args, env }) {
   const { logFd, logPath } = createLogFile(name);
-  const child = spawn(npmCommand, args, {
+  const child = spawn(npmCommand, [...npmArgsPrefix, ...args], {
     cwd,
     env,
     detached: true,

@@ -19,6 +19,60 @@ function pickAllowed(body, allowedKeys) {
   );
 }
 
+const isoDatePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isLeapYear(year) {
+  if (year % 400 === 0) {
+    return true;
+  }
+
+  if (year % 100 === 0) {
+    return false;
+  }
+
+  return year % 4 === 0;
+}
+
+function parseStrictIsoDate(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  const match = isoDatePattern.exec(normalized);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (month < 1 || month > 12) {
+    return null;
+  }
+
+  const daysByMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const maxDay = daysByMonth[month - 1];
+
+  if (day < 1 || day > maxDay) {
+    return null;
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function calculateAgeFromDateOfBirth(isoDate) {
+  const [year, month, day] = isoDate.split('-').map((part) => Number(part));
+  const today = new Date();
+  let age = today.getUTCFullYear() - year;
+  const monthDelta = today.getUTCMonth() + 1 - month;
+  const dayDelta = today.getUTCDate() - day;
+
+  if (monthDelta < 0 || (monthDelta === 0 && dayDelta < 0)) {
+    age -= 1;
+  }
+
+  return age;
+}
+
 function validateProfilePatch(body, { requireNames } = { requireNames: false }) {
   if (!isPlainObject(body)) {
     return { ok: false, code: 'VALIDATION_ERROR', message: 'Payload must be an object' };
@@ -60,7 +114,7 @@ function validatePhysicalPatch(body) {
     return { ok: false, code: 'VALIDATION_ERROR', message: 'Payload must be an object' };
   }
 
-  const data = pickAllowed(body, ['age', 'gender', 'height', 'weight']);
+  const data = pickAllowed(body, ['age', 'dateOfBirth', 'gender', 'height', 'weight']);
 
   if (Object.keys(data).length === 0) {
     return { ok: false, code: 'VALIDATION_ERROR', message: 'At least one physical field must be provided' };
@@ -68,6 +122,30 @@ function validatePhysicalPatch(body) {
 
   if (data.age !== undefined && (typeof data.age !== 'number' || data.age < 0)) {
     return { ok: false, code: 'VALIDATION_ERROR', message: 'age must be a number >= 0' };
+  }
+
+  if (data.dateOfBirth !== undefined) {
+    if (data.dateOfBirth !== null && typeof data.dateOfBirth !== 'string') {
+      return { ok: false, code: 'VALIDATION_ERROR', message: 'dateOfBirth must be a string (YYYY-MM-DD) or null' };
+    }
+
+    if (typeof data.dateOfBirth === 'string') {
+      const normalizedDate = parseStrictIsoDate(data.dateOfBirth);
+      if (!normalizedDate) {
+        return { ok: false, code: 'VALIDATION_ERROR', message: 'dateOfBirth must be a valid date in YYYY-MM-DD format' };
+      }
+
+      const todayIso = new Date().toISOString().slice(0, 10);
+      if (normalizedDate > todayIso) {
+        return { ok: false, code: 'VALIDATION_ERROR', message: 'dateOfBirth cannot be in the future' };
+      }
+
+      data.dateOfBirth = normalizedDate;
+
+      if (data.age === undefined) {
+        data.age = calculateAgeFromDateOfBirth(normalizedDate);
+      }
+    }
   }
 
   if (data.gender !== undefined && data.gender !== null && typeof data.gender !== 'string') {

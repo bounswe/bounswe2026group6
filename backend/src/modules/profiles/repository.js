@@ -86,6 +86,24 @@ function normalizeOptionalTimestamp(value) {
   return new Date(parsedMs).toISOString();
 }
 
+function normalizeOptionalDate(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsedMs = Date.parse(trimmed);
+  if (Number.isNaN(parsedMs)) {
+    return null;
+  }
+
+  return new Date(parsedMs).toISOString().slice(0, 10);
+}
+
 function normalizeLocationInput(data) {
   const administrative = isPlainObject(data.administrative) ? data.administrative : null;
   const coordinate = isPlainObject(data.coordinate) ? data.coordinate : null;
@@ -246,19 +264,21 @@ async function updateProfileByUserId(userId, data) {
 async function upsertPhysicalInfo(profileId, data, providedFields = []) {
   const provided = new Set(providedFields);
   const hasAge = provided.has('age');
+  const hasDateOfBirth = provided.has('dateOfBirth');
   const hasGender = provided.has('gender');
   const hasHeight = provided.has('height');
   const hasWeight = provided.has('weight');
 
   const sql = `
-    INSERT INTO physical_info (physical_id, profile_id, age, gender, height, weight)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO physical_info (physical_id, profile_id, age, date_of_birth, gender, height, weight)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (profile_id)
     DO UPDATE SET
-      age = CASE WHEN $7 THEN EXCLUDED.age ELSE physical_info.age END,
-      gender = CASE WHEN $8 THEN EXCLUDED.gender ELSE physical_info.gender END,
-      height = CASE WHEN $9 THEN EXCLUDED.height ELSE physical_info.height END,
-      weight = CASE WHEN $10 THEN EXCLUDED.weight ELSE physical_info.weight END
+      age = CASE WHEN $8 THEN EXCLUDED.age ELSE physical_info.age END,
+      date_of_birth = CASE WHEN $9 THEN EXCLUDED.date_of_birth ELSE physical_info.date_of_birth END,
+      gender = CASE WHEN $10 THEN EXCLUDED.gender ELSE physical_info.gender END,
+      height = CASE WHEN $11 THEN EXCLUDED.height ELSE physical_info.height END,
+      weight = CASE WHEN $12 THEN EXCLUDED.weight ELSE physical_info.weight END
     RETURNING profile_id;
   `;
 
@@ -266,10 +286,12 @@ async function upsertPhysicalInfo(profileId, data, providedFields = []) {
     makeId('phy'),
     profileId,
     data.age ?? null,
+    normalizeOptionalDate(data.dateOfBirth),
     data.gender ?? null,
     data.height ?? null,
     data.weight ?? null,
     hasAge,
+    hasDateOfBirth,
     hasGender,
     hasHeight,
     hasWeight,
@@ -605,6 +627,7 @@ async function findProfileBundleByUserId(userId) {
       hi.medications,
       hi.blood_type,
       pi.age,
+      pi.date_of_birth,
       pi.gender,
       pi.height,
       pi.weight,

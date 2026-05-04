@@ -236,4 +236,5 @@ module.exports = {
   createPasswordResetTokenForEmail,
   createVerifiedUser,
   fetchMyProfile,
+  signupUser,
 };

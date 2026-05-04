@@ -72,6 +72,114 @@ describe('gathering-areas integration', () => {
     expect(response.body.collection.features[0].properties.distanceMeters).toBeGreaterThanOrEqual(0);
   });
 
+  test('GET /api/gathering-areas/nearby retries with lightweight query after provider 504', async () => {
+    const app = createApp();
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 504,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          elements: [
+            {
+              type: 'node',
+              id: 11001,
+              lat: 41.0152,
+              lon: 28.9798,
+              tags: {
+                name: 'Fallback Area',
+                amenity: 'shelter',
+              },
+            },
+          ],
+        }),
+      });
+
+    const response = await request(app)
+      .get('/api/gathering-areas/nearby?lat=41.015137&lon=28.97953&radius=1500&limit=10');
+
+    expect(response.status).toBe(200);
+    expect(response.body.collection.type).toBe('FeatureCollection');
+    expect(response.body.collection.features).toHaveLength(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('GET /api/gathering-areas/nearby retries with lightweight query after provider 503', async () => {
+    const app = createApp();
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          elements: [
+            {
+              type: 'node',
+              id: 11002,
+              lat: 41.0151,
+              lon: 28.9796,
+              tags: {
+                name: 'Fallback Area 503',
+                emergency: 'assembly_point',
+              },
+            },
+          ],
+        }),
+      });
+
+    const response = await request(app)
+      .get('/api/gathering-areas/nearby?lat=41.015137&lon=28.97953&radius=1500&limit=10');
+
+    expect(response.status).toBe(200);
+    expect(response.body.collection.type).toBe('FeatureCollection');
+    expect(response.body.collection.features).toHaveLength(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('GET /api/gathering-areas/nearby retries with lightweight query after provider 406', async () => {
+    const app = createApp();
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 406,
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          elements: [
+            {
+              type: 'node',
+              id: 11003,
+              lat: 41.0153,
+              lon: 28.9799,
+              tags: {
+                name: 'Fallback Area 406',
+                emergency: 'assembly_point',
+              },
+            },
+          ],
+        }),
+      });
+
+    const response = await request(app)
+      .get('/api/gathering-areas/nearby?lat=41.015137&lon=28.97953&radius=1500&limit=10');
+
+    expect(response.status).toBe(200);
+    expect(response.body.collection.type).toBe('FeatureCollection');
+    expect(response.body.collection.features).toHaveLength(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   test('GET /api/gathering-areas/nearby validates query params', async () => {
     const app = createApp();
 

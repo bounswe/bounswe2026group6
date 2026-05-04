@@ -117,10 +117,11 @@ describe('profiles integration', () => {
 		const response = await request(app)
 			.patch('/api/profiles/me/physical')
 			.set('Authorization', `Bearer ${token}`)
-			.send({ age: 22 });
+			.send({ dateOfBirth: '2004-04-19' });
 
 		expect(response.status).toBe(200);
-		expect(response.body.physicalInfo.age).toBe(22);
+		expect(response.body.physicalInfo.dateOfBirth).toBe('2004-04-19');
+		expect(typeof response.body.physicalInfo.age).toBe('number');
 	});
 
 	test('PATCH /api/profiles/me/health returns 200 with valid payload', async () => {

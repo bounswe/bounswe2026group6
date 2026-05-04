@@ -2,6 +2,7 @@ const DEFAULT_OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const DEFAULT_TIMEOUT_MS = 6000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_CACHE_MAX_ENTRIES = 500;
+const DEFAULT_OVERPASS_USER_AGENT = 'NEPH-Backend/1.0 (+https://github.com/bounswe/bounswe2026group6)';
 const CACHE_COORDINATE_DECIMALS = 4;
 
 const nearbyCache = new Map();
@@ -17,6 +18,11 @@ function readPositiveNumberEnv(value, fallback, { integer = false } = {}) {
 
 function getOverpassUrl() {
   return process.env.GATHERING_AREAS_OVERPASS_URL || DEFAULT_OVERPASS_URL;
+}
+
+function getOverpassUserAgent() {
+  const configured = (process.env.GATHERING_AREAS_USER_AGENT || '').trim();
+  return configured || DEFAULT_OVERPASS_USER_AGENT;
 }
 
 function getTimeoutMs() {
@@ -87,6 +93,17 @@ function buildOverpassQuery({ lat, lon, radius }) {
     `  relation(around:${radius},${lat},${lon})["amenity"="shelter"];`,
     ');',
     'out center tags;',
+  ].join('\n');
+}
+
+function buildOverpassLightweightQuery({ lat, lon, radius }) {
+  return [
+    '[out:json][timeout:25];',
+    '(',
+      `  node(around:${radius},${lat},${lon})["emergency"="assembly_point"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="shelter"];`,
+    ');',
+    'out tags;',
   ].join('\n');
 }
 
@@ -182,7 +199,7 @@ function toFeatureCollection(elements, limit, center) {
   };
 }
 
-async function fetchNearbyFromOverpass(params) {
+async function fetchNearbyFromOverpassWithQuery(params, queryText) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
 
@@ -191,15 +208,16 @@ async function fetchNearbyFromOverpass(params) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        Accept: 'application/json',
+        'User-Agent': getOverpassUserAgent(),
       },
-      body: new URLSearchParams({ data: buildOverpassQuery(params) }),
+      body: new URLSearchParams({ data: queryText }),
       signal: controller.signal,
     });
 
     if (!response.ok) {
       const error = new Error(`Overpass request failed with status ${response.status}`);
       error.code = 'OVERPASS_UNAVAILABLE';
+      error.status = response.status;
       throw error;
     }
 
@@ -228,6 +246,22 @@ async function fetchNearbyFromOverpass(params) {
     throw wrappedError;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function fetchNearbyFromOverpass(params) {
+  try {
+    return await fetchNearbyFromOverpassWithQuery(params, buildOverpassQuery(params));
+  } catch (error) {
+    const shouldRetryWithLightweightQuery =
+      error &&
+      (error.code === 'OVERPASS_UNAVAILABLE' || error.code === 'OVERPASS_TIMEOUT');
+
+    if (!shouldRetryWithLightweightQuery) {
+      throw error;
+    }
+
+    return fetchNearbyFromOverpassWithQuery(params, buildOverpassLightweightQuery(params));
   }
 }
 

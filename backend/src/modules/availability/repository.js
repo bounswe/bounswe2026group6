@@ -3,6 +3,13 @@ const { randomUUID } = require('crypto');
 const { deriveOperationalLevels } = require('../help-requests/operational');
 const { env } = require('../../config/env');
 
+function runQuery(executor, text, params = []) {
+  if (executor && typeof executor.query === 'function') {
+    return executor.query(text, params);
+  }
+  return query(text, params);
+}
+
 const DEFAULT_MAX_MATCH_DISTANCE_METERS = 1000;
 const FIRST_AID_HELP_TYPES = new Set(['first_aid', 'medical']);
 const SEARCH_AND_RESCUE_HELP_TYPES = new Set(['search_and_rescue', 'sar', 'fire_brigade', 'rescue']);
@@ -346,21 +353,21 @@ function compareRequestCandidates(leftCandidate, rightCandidate) {
   return leftCandidate.request_id.localeCompare(rightCandidate.request_id);
 }
 
-async function findVolunteerByUserId(userId) {
+async function findVolunteerByUserId(userId, executor = null) {
   const sql = `
     SELECT * FROM volunteers
     WHERE user_id = $1;
   `;
-  const result = await query(sql, [userId]);
+  const result = await runQuery(executor, sql, [userId]);
   return result.rows[0] || null;
 }
 
-async function findVolunteerById(volunteerId) {
+async function findVolunteerById(volunteerId, executor = null) {
   const sql = `
     SELECT * FROM volunteers
     WHERE volunteer_id = $1;
   `;
-  const result = await query(sql, [volunteerId]);
+  const result = await runQuery(executor, sql, [volunteerId]);
   return result.rows[0] || null;
 }
 
@@ -375,7 +382,7 @@ async function createVolunteer(userId) {
   return result.rows[0];
 }
 
-async function updateVolunteerAvailability(volunteerId, isAvailable, latitude, longitude) {
+async function updateVolunteerAvailability(volunteerId, isAvailable, latitude, longitude, executor = null) {
   const sql = `
     UPDATE volunteers
     SET is_available = $2,
@@ -385,18 +392,18 @@ async function updateVolunteerAvailability(volunteerId, isAvailable, latitude, l
     WHERE volunteer_id = $1
     RETURNING *;
   `;
-  const result = await query(sql, [volunteerId, isAvailable, latitude, longitude]);
+  const result = await runQuery(executor, sql, [volunteerId, isAvailable, latitude, longitude]);
   return result.rows[0];
 }
 
-async function createAvailabilityRecord(volunteerId, isAvailable, storedLocally) {
+async function createAvailabilityRecord(volunteerId, isAvailable, storedLocally, executor = null) {
   const availabilityId = makeId('avr');
   const sql = `
     INSERT INTO availability_records (availability_id, volunteer_id, is_available, stored_locally, synced_at)
     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
     RETURNING *;
   `;
-  const result = await query(sql, [availabilityId, volunteerId, isAvailable, storedLocally]);
+  const result = await runQuery(executor, sql, [availabilityId, volunteerId, isAvailable, storedLocally]);
   return result.rows[0];
 }
 
@@ -637,7 +644,7 @@ async function markRequestAssignedIfPending(requestId) {
   return result.rows[0] || null;
 }
 
-async function syncRequestStatusPreservingInProgress(requestId) {
+async function syncRequestStatusPreservingInProgress(requestId, executor = null) {
   const sql = `
     UPDATE help_requests hr
     SET status = CASE
@@ -653,7 +660,7 @@ async function syncRequestStatusPreservingInProgress(requestId) {
     WHERE hr.request_id = $1
     RETURNING *;
   `;
-  const result = await query(sql, [requestId]);
+  const result = await runQuery(executor, sql, [requestId]);
   return result.rows[0] || null;
 }
 
@@ -669,7 +676,7 @@ async function updateRequestStatus(requestId, status) {
   return result.rows[0];
 }
 
-async function getAssignmentByVolunteerId(volunteerId) {
+async function getAssignmentByVolunteerId(volunteerId, executor = null) {
   const sql = `
     SELECT a.*, hr.need_type, hr.description, hr.status as request_status,
            hr.help_types, hr.other_help_text, hr.affected_people_count,
@@ -690,7 +697,7 @@ async function getAssignmentByVolunteerId(volunteerId) {
     WHERE a.volunteer_id = $1 AND a.is_cancelled = FALSE AND hr.status != 'RESOLVED' AND hr.status != 'CANCELLED'
     LIMIT 1;
   `;
-  const result = await query(sql, [volunteerId]);
+  const result = await runQuery(executor, sql, [volunteerId]);
   const assignment = result.rows[0] || null;
 
   if (!assignment) {
@@ -729,23 +736,23 @@ async function findAssignmentByRequestId(requestId) {
   return result.rows[0] || null;
 }
 
-async function findActiveAssignmentsByRequestId(requestId) {
+async function findActiveAssignmentsByRequestId(requestId, executor = null) {
   const sql = `
     SELECT * FROM assignments
     WHERE request_id = $1 AND is_cancelled = FALSE
     ORDER BY assigned_at ASC, assignment_id ASC;
   `;
-  const result = await query(sql, [requestId]);
+  const result = await runQuery(executor, sql, [requestId]);
   return result.rows;
 }
 
-async function cancelAssignment(assignmentId) {
+async function cancelAssignment(assignmentId, executor = null) {
   const sql = `
     DELETE FROM assignments
     WHERE assignment_id = $1
     RETURNING *;
   `;
-  const result = await query(sql, [assignmentId]);
+  const result = await runQuery(executor, sql, [assignmentId]);
   return result.rows[0];
 }
 

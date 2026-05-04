@@ -179,6 +179,49 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeDefined();
   });
+
+  test('403 - banned user cannot log in', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/auth/signup').send(validUser);
+    await query(
+      `UPDATE users SET is_email_verified = TRUE, is_banned = TRUE WHERE email = $1`,
+      [validUser.email],
+    );
+
+    const res = await request(app).post('/api/auth/login').send({
+      email: validUser.email,
+      password: validUser.password,
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('USER_BANNED');
+  });
+
+  test('200 - previously banned user can log in after unban', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/auth/signup').send(validUser);
+    await query(
+      `UPDATE users SET is_email_verified = TRUE, is_banned = TRUE WHERE email = $1`,
+      [validUser.email],
+    );
+
+    const blocked = await request(app).post('/api/auth/login').send({
+      email: validUser.email,
+      password: validUser.password,
+    });
+    expect(blocked.status).toBe(403);
+
+    await query(`UPDATE users SET is_banned = FALSE, ban_reason = NULL, banned_at = NULL WHERE email = $1`, [
+      validUser.email,
+    ]);
+
+    const restored = await request(app).post('/api/auth/login').send({
+      email: validUser.email,
+      password: validUser.password,
+    });
+    expect(restored.status).toBe(200);
+    expect(restored.body.accessToken).toBeDefined();
+  });
 });
 
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
@@ -206,6 +249,29 @@ describe('GET /api/auth/me', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.email).toBe(validUser.email);
+  });
+
+  test('403 - active token is rejected after user gets banned', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/auth/signup').send(validUser);
+    await query(`UPDATE users SET is_email_verified = TRUE WHERE email = $1`, [validUser.email]);
+
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: validUser.email,
+      password: validUser.password,
+    });
+    const token = loginRes.body.accessToken;
+
+    await query(`UPDATE users SET is_banned = TRUE, ban_reason = 'Abuse', banned_at = NOW() WHERE email = $1`, [
+      validUser.email,
+    ]);
+
+    const meRes = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(meRes.status).toBe(403);
+    expect(meRes.body.code).toBe('USER_BANNED');
   });
 });
 
@@ -246,6 +312,33 @@ describe('GET /api/auth/verify-email', () => {
       .query({ token });
     expect(res.status).toBe(200);
     expect(res.body.message).toBeDefined();
+  });
+
+  test('403 - banned user cannot get access token via verify-email', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/auth/signup').send(validUser);
+
+    const userRow = await query(`SELECT user_id FROM users WHERE email = $1`, [validUser.email]);
+    const userId = userRow.rows[0].user_id;
+
+    await query(
+      `UPDATE users SET is_banned = TRUE, ban_reason = 'Abuse', banned_at = NOW() WHERE user_id = $1`,
+      [userId],
+    );
+
+    const token = jwt.sign(
+      { type: 'email-verification', userId, email: validUser.email },
+      process.env.JWT_SECRET || 'dev-secret-123',
+      { expiresIn: '1d' }
+    );
+
+    const res = await request(app)
+      .get('/api/auth/verify-email')
+      .query({ token });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('USER_BANNED');
+    expect(res.body.accessToken).toBeUndefined();
   });
 });
 

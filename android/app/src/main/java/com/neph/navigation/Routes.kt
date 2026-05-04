@@ -10,6 +10,7 @@ sealed class Routes(
     data object MyHelpRequests : Routes("my_help_requests", "My Help Requests")
     data object AssignedRequest : Routes("assigned_request", "Assigned Request")
     data object EmergencyInfo : Routes("emergency_info", "Emergency Numbers")
+    data object HelpRequestMap : Routes("help_request_map", "Help Request Map")
     data object GatheringAreas : Routes("gathering_areas", "Gathering Areas")
     data object Notifications : Routes("notifications", "Notifications")
     data object Settings : Routes("settings", "Settings")
@@ -27,12 +28,17 @@ sealed class Routes(
     data object EditProfile : Routes("edit_profile")
 
     companion object {
+        const val RequestHelpDraftArg = "draftLocalId"
+
+        fun requestHelpWithDraft(localId: String): String = "${RequestHelp.route}?$RequestHelpDraftArg=$localId"
+
         val authenticatedDrawerItems = listOf(
             Home,
             News,
             MyHelpRequests,
             AssignedRequest,
             EmergencyInfo,
+            HelpRequestMap,
             GatheringAreas,
             Notifications
         )
@@ -42,6 +48,7 @@ sealed class Routes(
             News,
             MyHelpRequests,
             EmergencyInfo,
+            HelpRequestMap,
             GatheringAreas
         )
 

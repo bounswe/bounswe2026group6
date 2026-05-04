@@ -1,17 +1,19 @@
 package com.neph.features.profile.data
 
 val expertiseOptions = listOf(
-    "First Aid",
-    "Driving",
-    "Search & Rescue",
-    "Cooking",
-    "Logistics"
+    "First Aid"
 )
 
-fun expertiseOptionsFor(selectedExpertise: List<String>): List<String> {
-    val extras = selectedExpertise
-        .map { it.trim() }
-        .filter { it.isNotEmpty() && it !in expertiseOptions }
+fun normalizeExpertise(selectedExpertise: List<String>): List<String> {
+    val allowed = expertiseOptions.first()
 
-    return expertiseOptions + extras
+    return selectedExpertise
+        .map { it.trim() }
+        .filter { it.equals(allowed, ignoreCase = true) }
+        .map { allowed }
+        .distinct()
+}
+
+fun expertiseOptionsFor(_selectedExpertise: List<String>): List<String> {
+    return expertiseOptions
 }

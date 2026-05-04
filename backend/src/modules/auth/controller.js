@@ -71,6 +71,13 @@ async function login(req, res) {
       });
     }
 
+    if (error.code === 'USER_BANNED') {
+      return res.status(403).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
     return res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Something went wrong',
@@ -92,6 +99,13 @@ async function verifyEmail(req, res) {
   } catch (error) {
     if (error.code === 'INVALID_VERIFICATION_TOKEN') {
       return res.status(400).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    if (error.code === 'USER_BANNED') {
+      return res.status(403).json({
         code: error.code,
         message: error.message,
       });

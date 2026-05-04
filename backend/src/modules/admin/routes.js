@@ -1,9 +1,11 @@
 const express = require('express');
 const { requireAuth, requireAdmin } = require('../auth/middleware');
+const { adminAnnouncementsRouter } = require('../announcements/routes');
 const {
   getAdminUsers,
+  patchAdminUserBan,
+  patchAdminUserUnban,
   getAdminHelpRequests,
-  getAdminAnnouncements,
   getAdminStats,
   getAdminEmergencyOverview,
   getAdminEmergencyHistory,
@@ -14,8 +16,10 @@ const {
 const adminRouter = express.Router();
 
 adminRouter.get('/users', requireAuth, requireAdmin, getAdminUsers);
+adminRouter.patch('/users/:userId/ban', requireAuth, requireAdmin, patchAdminUserBan);
+adminRouter.patch('/users/:userId/unban', requireAuth, requireAdmin, patchAdminUserUnban);
 adminRouter.get('/help-requests', requireAuth, requireAdmin, getAdminHelpRequests);
-adminRouter.get('/announcements', requireAuth, requireAdmin, getAdminAnnouncements);
+adminRouter.use('/announcements', adminAnnouncementsRouter);
 adminRouter.get('/stats', requireAuth, requireAdmin, getAdminStats);
 adminRouter.get('/emergency-overview', requireAuth, requireAdmin, getAdminEmergencyOverview);
 adminRouter.get('/emergency-history', requireAuth, requireAdmin, getAdminEmergencyHistory);

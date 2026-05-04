@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { GatheringAreasMap } from "@/components/feature/location/GatheringAreasMap";
 import { fetchNearbyGatheringAreas } from "@/lib/gatheringAreas";
+import { reverseLocation } from "@/lib/location";
 import type { GatheringAreaFeature } from "@/types/location";
 import type { GatheringAreaMapFeature } from "@/components/feature/location/LeafletGatheringAreasMap";
 
@@ -15,7 +16,103 @@ const DEFAULT_CENTER = {
 
 const DEFAULT_RADIUS = 2000;
 const DEFAULT_LIMIT = 20;
+const SEARCH_RADIUS_KM = DEFAULT_RADIUS / 1000;
+const ADDRESS_UNAVAILABLE = "Address unavailable";
 type FetchState = "idle" | "loading" | "success" | "empty" | "error";
+
+function formatCategoryLabel(category: string) {
+    const normalized = (category || "").trim().toLowerCase();
+
+    if (!normalized || normalized === "unknown") {
+        return "Gathering area";
+    }
+
+    if (normalized === "assembly_point") {
+        return "Assembly area";
+    }
+
+    if (normalized === "shelter") {
+        return "Shelter";
+    }
+
+    return normalized
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+function formatDistanceLabel(distanceMeters: number) {
+    if (distanceMeters >= 1000) {
+        return `${(distanceMeters / 1000).toFixed(1)} km`;
+    }
+
+    return `${distanceMeters} m`;
+}
+
+function readTagValue(rawTags: Record<string, unknown>, key: string) {
+    const value = rawTags[key];
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function buildAddressFromRawTags(rawTags: Record<string, unknown>) {
+    const direct =
+        readTagValue(rawTags, "addr:full") ||
+        readTagValue(rawTags, "address") ||
+        readTagValue(rawTags, "description");
+
+    if (direct) {
+        return direct;
+    }
+
+    const street = readTagValue(rawTags, "addr:street");
+    const houseNumber = readTagValue(rawTags, "addr:housenumber");
+    const neighborhood = readTagValue(rawTags, "addr:suburb") || readTagValue(rawTags, "addr:neighbourhood");
+    const district = readTagValue(rawTags, "addr:district");
+    const city = readTagValue(rawTags, "addr:city") || readTagValue(rawTags, "is_in:city");
+
+    const streetLine = [street, houseNumber].filter(Boolean).join(" ");
+    const localityLine = [neighborhood, district, city].filter(Boolean).join(", ");
+    const address = [streetLine, localityLine].filter(Boolean).join(", ");
+
+    return address || ADDRESS_UNAVAILABLE;
+}
+
+function buildAddressFromReverseLookup(item: {
+    displayName?: string;
+    administrative?: {
+        neighborhood?: string | null;
+        district?: string | null;
+        city?: string | null;
+        extraAddress?: string | null;
+        country?: string | null;
+    };
+}) {
+    const displayName = (item.displayName || "").trim();
+    if (displayName) {
+        return displayName;
+    }
+
+    const admin = item.administrative || {};
+    const locality = [admin.neighborhood, admin.district, admin.city]
+        .map((part) => (part || "").trim())
+        .filter(Boolean)
+        .join(", ");
+
+    const address = [admin.extraAddress, locality, admin.country]
+        .map((part) => (part || "").trim())
+        .filter(Boolean)
+        .join(", ");
+
+    return address || ADDRESS_UNAVAILABLE;
+}
+
+function isAddressUnavailable(address: string) {
+    return !address || address === ADDRESS_UNAVAILABLE;
+}
+
+function getCoordinateCacheKey(latitude: number, longitude: number) {
+    return `${latitude.toFixed(6)},${longitude.toFixed(6)}`;
+}
 
 function mapFeature(feature: GatheringAreaFeature): GatheringAreaMapFeature | null {
     const [longitude, latitude] = feature.geometry.coordinates;
@@ -32,6 +129,7 @@ function mapFeature(feature: GatheringAreaFeature): GatheringAreaMapFeature | nu
         id: baseId,
         osmType,
         name: feature.properties.name || "Unnamed gathering area",
+        address: buildAddressFromRawTags(feature.properties.rawTags || {}),
         category: feature.properties.category || "unknown",
         distanceMeters: feature.properties.distanceMeters,
         latitude,
@@ -49,6 +147,73 @@ export default function GatheringAreasPage() {
     const [error, setError] = React.useState("");
     const [locationNote, setLocationNote] = React.useState("Resolving your current location...");
     const requestIdRef = React.useRef(0);
+    const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
+
+    const hydrateMissingAddresses = React.useCallback(
+        async (items: GatheringAreaMapFeature[], requestId: number) => {
+            const unresolved = items.filter((item) => isAddressUnavailable(item.address));
+            if (!unresolved.length) {
+                return;
+            }
+
+            const updates = await Promise.all(
+                unresolved.map(async (item) => {
+                    const cacheKey = getCoordinateCacheKey(item.latitude, item.longitude);
+                    const cached = reverseAddressCacheRef.current.get(cacheKey);
+
+                    if (cached) {
+                        return { featureKey: item.featureKey, address: cached };
+                    }
+
+                    try {
+                        const response = await reverseLocation({
+                            latitude: item.latitude,
+                            longitude: item.longitude,
+                        });
+                        const address = buildAddressFromReverseLookup(response.item || {});
+
+                        if (isAddressUnavailable(address)) {
+                            return null;
+                        }
+
+                        reverseAddressCacheRef.current.set(cacheKey, address);
+                        return { featureKey: item.featureKey, address };
+                    } catch {
+                        return null;
+                    }
+                })
+            );
+
+            if (requestId !== requestIdRef.current) {
+                return;
+            }
+
+            const resolvedAddressByFeature = new Map(
+                updates
+                    .filter((entry): entry is { featureKey: string; address: string } => Boolean(entry))
+                    .map((entry) => [entry.featureKey, entry.address])
+            );
+
+            if (!resolvedAddressByFeature.size) {
+                return;
+            }
+
+            setAreas((current) =>
+                current.map((item) => {
+                    const resolvedAddress = resolvedAddressByFeature.get(item.featureKey);
+                    if (!resolvedAddress || !isAddressUnavailable(item.address)) {
+                        return item;
+                    }
+
+                    return {
+                        ...item,
+                        address: resolvedAddress,
+                    };
+                })
+            );
+        },
+        []
+    );
 
     const handleSelectArea = React.useCallback((featureId: string) => {
         setSelectedAreaId(featureId);
@@ -79,6 +244,7 @@ export default function GatheringAreasPage() {
                     .filter((item): item is GatheringAreaMapFeature => item !== null);
 
                 setAreas(mapped);
+                void hydrateMissingAddresses(mapped, currentRequestId);
                 setFetchState(mapped.length ? "success" : "empty");
                 setSelectedAreaId((current) => {
                     if (!mapped.length) {
@@ -116,7 +282,7 @@ export default function GatheringAreasPage() {
                 }
             }
         },
-        []
+        [hydrateMissingAddresses]
     );
 
     const resolveCurrentLocationAndLoad = React.useCallback(() => {
@@ -188,12 +354,8 @@ export default function GatheringAreasPage() {
                             features={areas}
                             selectedFeatureId={selectedAreaId}
                             onSelectFeature={handleSelectArea}
-                            heightClassName="h-[380px] md:h-[500px]"
+                            heightClassName="h-[460px] md:h-[620px]"
                         />
-
-                        {locationNote ? (
-                            <p className="gathering-areas-map-note">{locationNote}</p>
-                        ) : null}
 
                         <button
                             type="button"
@@ -201,7 +363,7 @@ export default function GatheringAreasPage() {
                             title="Retry Results"
                             className="gathering-areas-map-retry"
                             onClick={resolveCurrentLocationAndLoad}
-                                                        disabled={isLoading || resolvingLocation}
+                            disabled={isLoading || resolvingLocation}
                         >
                             <svg
                                 width="16"
@@ -237,13 +399,13 @@ export default function GatheringAreasPage() {
                                     <article className="gathering-areas-selected-card">
                                         <p className="gathering-areas-selected-name">{selectedArea.name}</p>
                                         <p className="gathering-areas-selected-meta">
-                                            Category: {selectedArea.category}
+                                            Type: {formatCategoryLabel(selectedArea.category)}
                                         </p>
                                         <p className="gathering-areas-selected-meta">
-                                            Distance: {selectedArea.distanceMeters} m
+                                            Distance: {formatDistanceLabel(selectedArea.distanceMeters)}
                                         </p>
                                         <p className="gathering-areas-selected-meta">
-                                            Coordinates: {selectedArea.latitude.toFixed(5)}, {selectedArea.longitude.toFixed(5)}
+                                            Address: {selectedArea.address}
                                         </p>
                                     </article>
                                 ) : (
@@ -269,7 +431,7 @@ export default function GatheringAreasPage() {
                                             >
                                                 <p className="gathering-areas-item-name">{area.name}</p>
                                                 <p className="gathering-areas-item-meta">
-                                                    {area.category} • {area.distanceMeters} m • {area.osmType}
+                                                    {formatCategoryLabel(area.category)} • {formatDistanceLabel(area.distanceMeters)}
                                                 </p>
                                             </button>
                                         ))
@@ -285,6 +447,13 @@ export default function GatheringAreasPage() {
                                 </div>
                             </aside>
                         ) : null}
+                    </div>
+
+                    <div className="gathering-areas-context-note">
+                        <p className="gathering-areas-context-line">{locationNote}</p>
+                        <p className="gathering-areas-context-line">
+                            Searching within {SEARCH_RADIUS_KM} km of your current location.
+                        </p>
                     </div>
 
                     {isLoading ? (
