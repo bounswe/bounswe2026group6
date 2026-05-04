@@ -35,6 +35,7 @@ import com.neph.features.profile.data.composeFullName
 import com.neph.features.profile.presentation.EditProfileScreen
 import com.neph.features.profile.presentation.ProfileScreen
 import com.neph.features.requesthelp.presentation.RequestHelpScreen
+import com.neph.features.safetycircles.presentation.SafetyCirclesScreen
 import com.neph.features.settings.presentation.SettingsScreen
 
 @Composable
@@ -61,6 +62,7 @@ fun AppNavGraph(
             Routes.Profile.route,
             Routes.EditProfile.route,
             Routes.Settings.route,
+            Routes.SafetyCircles.route,
             Routes.PrivacySecurity.route
         )
 
@@ -342,6 +344,31 @@ fun AppNavGraph(
                 },
                 profileBadgeText = profileBadgeText,
                 isAuthenticated = authenticated
+            )
+        }
+
+        composable(Routes.SafetyCircles.route) {
+            if (!isAuthenticated()) {
+                LaunchedEffect(Unit) {
+                    navigateToLogin()
+                }
+                return@composable
+            }
+
+            val profileBadgeText = resolveProfileBadgeText(authenticated = true)
+
+            SafetyCirclesScreen(
+                onNavigateToRoute = ::navigateToDrawerRoute,
+                onOpenSettings = {
+                    navigateToDrawerRoute(Routes.Settings.route)
+                },
+                onProfileClick = {
+                    navigateToDrawerRoute(Routes.Profile.route)
+                },
+                onNavigateToLogin = {
+                    navigateToLogin()
+                },
+                profileBadgeText = profileBadgeText
             )
         }
 
