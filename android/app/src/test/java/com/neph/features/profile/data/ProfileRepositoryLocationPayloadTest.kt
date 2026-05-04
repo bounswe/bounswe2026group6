@@ -5,8 +5,86 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 
 class ProfileRepositoryLocationPayloadTest {
+    @Test
+    fun buildPrivacySettingsPatchPayload_onlyIncludesPrivacyFields() {
+        val payload = ProfileRepository.buildPrivacySettingsPatchPayload(
+            profileVisibility = "public",
+            healthInfoVisibility = "EMERGENCY_ONLY",
+            locationVisibility = "unexpected-value",
+            locationSharingEnabled = true
+        )
+
+        assertEquals(4, payload.length())
+        assertEquals("PUBLIC", payload.getString("profileVisibility"))
+        assertEquals("EMERGENCY_ONLY", payload.getString("healthInfoVisibility"))
+        assertEquals("PRIVATE", payload.getString("locationVisibility"))
+        assertTrue(payload.getBoolean("locationSharingEnabled"))
+        assertFalse(payload.has("firstName"))
+        assertFalse(payload.has("medicalConditions"))
+        assertFalse(payload.has("latitude"))
+        assertFalse(payload.has("profession"))
+        assertFalse(payload.has("expertiseAreas"))
+    }
+
+    @Test
+    fun mergePrivacySettingsResponse_preservesUnrelatedCachedProfileFields() {
+        val cached = ProfileData(
+            firstName = "Ada",
+            lastName = "Lovelace",
+            fullName = "Ada Lovelace",
+            email = "ada@example.com",
+            phone = "+905551112233",
+            profession = "Engineer",
+            expertise = listOf("FIRST_AID"),
+            height = 165f,
+            weight = 58f,
+            bloodType = "A+",
+            gender = "FEMALE",
+            dateOfBirth = "1990-05-01",
+            age = 36,
+            medicalHistory = "asthma",
+            chronicDiseases = "diabetes",
+            allergies = "pollen",
+            country = "tr",
+            city = "istanbul",
+            district = "kadikoy",
+            neighborhood = "moda",
+            extraAddress = "Apt 4",
+            profileVisibility = "PRIVATE",
+            healthInfoVisibility = "PRIVATE",
+            locationVisibility = "PRIVATE",
+            shareLocation = false,
+            sharedLatitude = 41.043,
+            sharedLongitude = 29.009
+        )
+
+        val updated = ProfileRepository.mergePrivacySettingsResponse(
+            cachedProfileSnapshot = cached,
+            response = JSONObject().put(
+                "privacySettings",
+                JSONObject()
+                    .put("profileVisibility", "PUBLIC")
+                    .put("healthInfoVisibility", "EMERGENCY_ONLY")
+                    .put("locationVisibility", "PUBLIC")
+                    .put("locationSharingEnabled", true)
+            ),
+            requestedProfileVisibility = "PRIVATE",
+            requestedHealthInfoVisibility = "PRIVATE",
+            requestedLocationVisibility = "PRIVATE",
+            requestedLocationSharingEnabled = false
+        )
+
+        assertEquals(cached.copy(
+            profileVisibility = "PUBLIC",
+            healthInfoVisibility = "EMERGENCY_ONLY",
+            locationVisibility = "PUBLIC",
+            shareLocation = true
+        ), updated)
+    }
+
     @Test
     fun isFirstTimeShareEnableWithoutCoordinates_returnsTrue_whenEnablingWithoutSavedOrFreshCoordinates() {
         val previous = ProfileData(shareLocation = false, sharedLatitude = null, sharedLongitude = null)
