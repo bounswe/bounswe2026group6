@@ -385,6 +385,9 @@ fun AppNavGraph(
             PrivacySecurityScreen(
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onResetPassword = {
+                    navController.navigate(Routes.ForgotPassword.route)
                 }
             )
         }

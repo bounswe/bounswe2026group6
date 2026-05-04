@@ -27,6 +27,9 @@ data class ProfileData(
     val neighborhood: String? = null,
     val extraAddress: String? = null,
 
+    val profileVisibility: String? = null,
+    val healthInfoVisibility: String? = null,
+    val locationVisibility: String? = null,
     val shareLocation: Boolean? = null,
     val sharedLatitude: Double? = null,
     val sharedLongitude: Double? = null
