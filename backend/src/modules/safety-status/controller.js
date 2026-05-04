@@ -13,6 +13,14 @@ function sendError(response, status, code, message, details) {
   return response.status(status).json(payload);
 }
 
+function parseVisibleStatusesQuery(query) {
+  const nearbyOnly = String(query.nearby || '').toLowerCase() === 'true';
+
+  return {
+    nearbyOnly,
+  };
+}
+
 async function handleGetMySafetyStatus(request, response) {
   try {
     const safetyStatus = await getMySafetyStatus(request.user.userId);
@@ -40,8 +48,10 @@ async function handlePatchMySafetyStatus(request, response) {
 
 async function handleGetVisibleSafetyStatuses(request, response) {
   try {
+    const query = parseVisibleStatusesQuery(request.query || {});
     const safetyStatuses = await getVisibleSafetyStatuses(request.user.userId, {
       isAdmin: Boolean(request.user.isAdmin),
+      nearbyOnly: query.nearbyOnly,
     });
     return response.status(200).json({ safetyStatuses });
   } catch (error) {

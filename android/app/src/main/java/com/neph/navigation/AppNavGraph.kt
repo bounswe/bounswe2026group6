@@ -27,6 +27,7 @@ import com.neph.features.gatheringareas.presentation.GatheringAreasScreen
 import com.neph.features.helprequestmap.presentation.HelpRequestMapScreen
 import com.neph.features.home.presentation.HomeScreen
 import com.neph.features.myhelprequests.presentation.MyHelpRequestsScreen
+import com.neph.features.nearbyusers.presentation.NearbyVisibleUsersScreen
 import com.neph.features.news.presentation.NewsScreen
 import com.neph.features.notifications.presentation.NotificationsScreen
 import com.neph.features.privacysecurity.presentation.PrivacySecurityScreen
@@ -63,6 +64,7 @@ fun AppNavGraph(
             Routes.EditProfile.route,
             Routes.Settings.route,
             Routes.SafetyCircles.route,
+            Routes.NearbyUsers.route,
             Routes.PrivacySecurity.route
         )
 
@@ -321,6 +323,31 @@ fun AppNavGraph(
                 },
                 profileBadgeText = profileBadgeText,
                 isAuthenticated = authenticated
+            )
+        }
+
+        composable(Routes.NearbyUsers.route) {
+            if (!isAuthenticated()) {
+                LaunchedEffect(Unit) {
+                    navigateToLogin()
+                }
+                return@composable
+            }
+
+            val profileBadgeText = resolveProfileBadgeText(authenticated = true)
+
+            NearbyVisibleUsersScreen(
+                onNavigateToRoute = ::navigateToDrawerRoute,
+                onOpenSettings = {
+                    navigateToDrawerRoute(Routes.Settings.route)
+                },
+                onProfileClick = {
+                    navigateToDrawerRoute(Routes.Profile.route)
+                },
+                onNavigateToLogin = {
+                    navigateToLogin()
+                },
+                profileBadgeText = profileBadgeText
             )
         }
 

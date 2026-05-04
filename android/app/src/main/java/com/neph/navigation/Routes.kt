@@ -11,6 +11,7 @@ sealed class Routes(
     data object AssignedRequest : Routes("assigned_request", "Assigned Request")
     data object EmergencyInfo : Routes("emergency_info", "Emergency Numbers")
     data object HelpRequestMap : Routes("help_request_map", "Help Request Map")
+    data object NearbyUsers : Routes("nearby_users", "Nearby Users")
     data object GatheringAreas : Routes("gathering_areas", "Gathering Areas")
     data object SafetyCircles : Routes("safety_circles", "Safety Circles")
     data object Notifications : Routes("notifications", "Notifications")
@@ -40,6 +41,7 @@ sealed class Routes(
             AssignedRequest,
             EmergencyInfo,
             HelpRequestMap,
+            NearbyUsers,
             GatheringAreas,
             SafetyCircles,
             Notifications

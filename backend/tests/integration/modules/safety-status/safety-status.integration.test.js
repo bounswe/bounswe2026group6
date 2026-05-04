@@ -75,6 +75,32 @@ async function seedProfile(userId, options = {}) {
       Boolean(options.locationSharingEnabled),
     ],
   );
+
+  if (options.latitude !== undefined && options.longitude !== undefined) {
+    await query(
+      `
+        INSERT INTO location_profiles (
+          location_profile_id,
+          profile_id,
+          city,
+          district,
+          neighborhood,
+          latitude,
+          longitude
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7);
+      `,
+      [
+        `loc_${userId}`,
+        profileId,
+        options.city || 'Istanbul',
+        options.district || 'Besiktas',
+        options.neighborhood || 'Levazim',
+        options.latitude,
+        options.longitude,
+      ],
+    );
+  }
 }
 
 beforeEach(async () => {
@@ -91,6 +117,9 @@ beforeEach(async () => {
       news_announcements,
       reports,
       expertise,
+      safety_circle_invites,
+      safety_circle_members,
+      safety_circles,
       privacy_settings,
       location_profiles,
       health_info,
@@ -280,5 +309,171 @@ describe('safety-status integration', () => {
       status: 'not_safe',
     });
     expect(adminByUserId[privateId]).toBeTruthy();
+  });
+
+  test('GET /api/safety-status/visible nearby filters visible users by profile neighborhood and privacy', async () => {
+    const app = createTestApp();
+    const viewerId = 'user_nearby_viewer';
+    const nearId = 'user_nearby_public';
+    const farId = 'user_nearby_far';
+    const privateLocationId = 'user_nearby_private_location';
+    await seedActiveUser(viewerId);
+    await seedActiveUser(nearId);
+    await seedActiveUser(farId);
+    await seedActiveUser(privateLocationId);
+    await seedProfile(viewerId, {
+      profileVisibility: 'PRIVATE',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+      neighborhood: 'Levazim',
+      latitude: 41.043,
+      longitude: 29.009,
+    });
+    await seedProfile(nearId, {
+      firstName: 'Near',
+      lastName: 'Visible',
+      profileVisibility: 'PUBLIC',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+      neighborhood: 'Levazim',
+      latitude: 41.044,
+      longitude: 29.01,
+    });
+    await seedProfile(farId, {
+      firstName: 'Far',
+      lastName: 'Visible',
+      profileVisibility: 'PUBLIC',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+      neighborhood: 'Moda',
+      latitude: 40.19,
+      longitude: 29.06,
+    });
+    await seedProfile(privateLocationId, {
+      firstName: 'Private',
+      lastName: 'Location',
+      profileVisibility: 'PUBLIC',
+      locationVisibility: 'PRIVATE',
+      locationSharingEnabled: true,
+      neighborhood: 'Levazim',
+      latitude: 41.044,
+      longitude: 29.01,
+    });
+
+    for (const userId of [viewerId, nearId, farId, privateLocationId]) {
+      await request(app)
+        .patch('/api/safety-status/me')
+        .set('Authorization', `Bearer ${buildAuthToken(userId)}`)
+        .send({ status: userId === nearId ? 'safe' : 'not_safe' })
+        .expect(200);
+    }
+
+    const response = await request(app)
+      .get('/api/safety-status/visible?nearby=true')
+      .set('Authorization', `Bearer ${buildAuthToken(viewerId)}`);
+
+    expect(response.status).toBe(200);
+    const byUserId = Object.fromEntries(
+      response.body.safetyStatuses.map((item) => [item.userId, item]),
+    );
+    expect(byUserId[nearId]).toMatchObject({
+      displayName: 'Near Visible',
+      status: 'safe',
+    });
+    expect(byUserId[nearId]).not.toHaveProperty('neighborhood');
+    expect(byUserId[nearId]).not.toHaveProperty('district');
+    expect(byUserId[nearId]).not.toHaveProperty('city');
+    expect(byUserId[viewerId]).toBeUndefined();
+    expect(byUserId[farId]).toBeUndefined();
+    expect(byUserId[privateLocationId]).toMatchObject({
+      displayName: 'Private Location',
+      status: 'not_safe',
+      location: null,
+    });
+  });
+
+  test('GET /api/safety-status/visible nearby hides emergency-only location from non-circle viewers', async () => {
+    const app = createTestApp();
+    const viewerId = 'user_nearby_location_viewer';
+    const emergencyLocationId = 'user_nearby_location_emergency';
+    await seedActiveUser(viewerId);
+    await seedActiveUser(emergencyLocationId);
+    await seedProfile(viewerId, {
+      profileVisibility: 'PRIVATE',
+      locationVisibility: 'PRIVATE',
+      locationSharingEnabled: false,
+      neighborhood: 'Levazim',
+      latitude: 41.043,
+      longitude: 29.009,
+    });
+    await seedProfile(emergencyLocationId, {
+      firstName: 'Emergency',
+      lastName: 'Location',
+      profileVisibility: 'PUBLIC',
+      locationVisibility: 'EMERGENCY_ONLY',
+      locationSharingEnabled: true,
+      neighborhood: 'Levazim',
+      latitude: 41.044,
+      longitude: 29.01,
+    });
+
+    await request(app)
+      .patch('/api/safety-status/me')
+      .set('Authorization', `Bearer ${buildAuthToken(viewerId)}`)
+      .send({ status: 'safe' })
+      .expect(200);
+    await request(app)
+      .patch('/api/safety-status/me')
+      .set('Authorization', `Bearer ${buildAuthToken(emergencyLocationId)}`)
+      .send({
+        status: 'not_safe',
+        shareLocationConsent: true,
+        location: { latitude: 41.04444, longitude: 29.01001 },
+      })
+      .expect(200);
+
+    const nonCircleResponse = await request(app)
+      .get('/api/safety-status/visible?nearby=true')
+      .set('Authorization', `Bearer ${buildAuthToken(viewerId)}`);
+
+    expect(nonCircleResponse.status).toBe(200);
+    const nonCircleByUserId = Object.fromEntries(
+      nonCircleResponse.body.safetyStatuses.map((item) => [item.userId, item]),
+    );
+    expect(nonCircleByUserId[emergencyLocationId]).toMatchObject({
+      displayName: 'Emergency Location',
+      status: 'not_safe',
+      location: null,
+    });
+
+    await query(
+      `
+        INSERT INTO safety_circles (circle_id, owner_user_id, name)
+        VALUES ('circle_nearby_location', $1, 'Nearby Location Circle');
+      `,
+      [viewerId],
+    );
+    await query(
+      `
+        INSERT INTO safety_circle_members (circle_id, user_id, role)
+        VALUES
+          ('circle_nearby_location', $1, 'owner'),
+          ('circle_nearby_location', $2, 'member');
+      `,
+      [viewerId, emergencyLocationId],
+    );
+
+    const circleResponse = await request(app)
+      .get('/api/safety-status/visible?nearby=true')
+      .set('Authorization', `Bearer ${buildAuthToken(viewerId)}`);
+
+    expect(circleResponse.status).toBe(200);
+    const circleByUserId = Object.fromEntries(
+      circleResponse.body.safetyStatuses.map((item) => [item.userId, item]),
+    );
+    expect(circleByUserId[emergencyLocationId].location).toMatchObject({
+      latitude: 41.044,
+      longitude: 29.01,
+    });
   });
 });
