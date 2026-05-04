@@ -1,5 +1,5 @@
 const { randomUUID } = require('crypto');
-const { query } = require('../../db/pool');
+const { pool, query } = require('../../db/pool');
 
 function buildId(prefix) {
   return `${prefix}_${randomUUID().replace(/-/g, '')}`.slice(0, 64);
@@ -357,6 +357,66 @@ async function removeMember(circleId, userId) {
   return result.rows.length > 0;
 }
 
+async function deleteCircle(circleId, ownerUserId) {
+  const result = await query(
+    `
+      DELETE FROM safety_circles
+      WHERE circle_id = $1
+        AND owner_user_id = $2
+      RETURNING circle_id;
+    `,
+    [circleId, ownerUserId],
+  );
+
+  return result.rows.length > 0;
+}
+
+async function transferCircleOwnership(circleId, ownerUserId, nextOwnerUserId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const circleResult = await client.query(
+      `
+        UPDATE safety_circles
+        SET owner_user_id = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE circle_id = $1
+          AND owner_user_id = $2
+        RETURNING circle_id;
+      `,
+      [circleId, ownerUserId, nextOwnerUserId],
+    );
+
+    if (circleResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    await client.query(
+      `
+        UPDATE safety_circle_members
+        SET role = CASE
+          WHEN user_id = $3 THEN 'owner'
+          WHEN user_id = $2 THEN 'member'
+          ELSE role
+        END
+        WHERE circle_id = $1
+          AND user_id IN ($2, $3);
+      `,
+      [circleId, ownerUserId, nextOwnerUserId],
+    );
+
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   createCircle,
   listCirclesForUser,
@@ -368,4 +428,6 @@ module.exports = {
   listInvitesForUser,
   respondToInvite,
   removeMember,
+  deleteCircle,
+  transferCircleOwnership,
 };

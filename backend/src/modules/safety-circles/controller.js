@@ -7,11 +7,14 @@ const {
   respondToSafetyCircleInvite,
   checkInToSafetyCircle,
   leaveSafetyCircle,
+  deleteSafetyCircle,
+  transferSafetyCircleOwnership,
 } = require('./service');
 const {
   validateCreateCircle,
   validateCreateInvite,
   validateInviteResponse,
+  validateTransferOwnership,
 } = require('./validators');
 const { validateSafetyStatusPatch } = require('../safety-status/validators');
 
@@ -29,6 +32,9 @@ function handleServiceError(response, error) {
   }
   if (error.code === 'CONFLICT') {
     return sendError(response, 409, 'CONFLICT', error.message);
+  }
+  if (error.code === 'FORBIDDEN') {
+    return sendError(response, 403, 'FORBIDDEN', error.message);
   }
   console.error('safetyCircles request failed', error);
   return sendError(response, 500, 'INTERNAL_ERROR', 'Unexpected server error');
@@ -126,6 +132,33 @@ async function handleLeaveCircle(request, response) {
   }
 }
 
+async function handleDeleteCircle(request, response) {
+  try {
+    const result = await deleteSafetyCircle(request.user.userId, request.params.circleId);
+    return response.status(200).json(result);
+  } catch (error) {
+    return handleServiceError(response, error);
+  }
+}
+
+async function handleTransferOwnership(request, response) {
+  const { errors, value } = validateTransferOwnership(request.body || {});
+  if (errors.length > 0) {
+    return sendError(response, 400, 'VALIDATION_FAILED', 'Validation failed', errors);
+  }
+
+  try {
+    const result = await transferSafetyCircleOwnership(
+      request.user.userId,
+      request.params.circleId,
+      value.nextOwnerUserId,
+    );
+    return response.status(200).json(result);
+  } catch (error) {
+    return handleServiceError(response, error);
+  }
+}
+
 module.exports = {
   handleCreateCircle,
   handleListCircles,
@@ -135,4 +168,6 @@ module.exports = {
   handleRespondToInvite,
   handleCircleCheckIn,
   handleLeaveCircle,
+  handleDeleteCircle,
+  handleTransferOwnership,
 };

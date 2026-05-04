@@ -141,6 +141,7 @@ describe('safety-circles integration', () => {
         lastCheckedInAt: null,
       }),
     ]);
+    expect(detailResponse.body.currentUserRole).toBe('owner');
   });
 
   test('invitee can accept an invite and both members see latest safety statuses', async () => {
@@ -376,5 +377,91 @@ describe('safety-circles integration', () => {
       .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`);
 
     expect(ownerLeaveResponse.status).toBe(409);
+  });
+
+  test('owner can transfer ownership to an accepted member', async () => {
+    const app = createTestApp();
+    const ownerId = 'circle_owner_transfer';
+    const memberId = 'circle_member_transfer';
+    await seedActiveUser(ownerId);
+    await seedActiveUser(memberId);
+
+    const circleResponse = await request(app)
+      .post('/api/safety-circles')
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ name: 'Transfer Test' })
+      .expect(201);
+    const circleId = circleResponse.body.circle.circleId;
+
+    const inviteResponse = await request(app)
+      .post(`/api/safety-circles/${circleId}/invites`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ inviteeUserId: memberId })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/safety-circles/invites/${inviteResponse.body.invite.inviteId}/respond`)
+      .set('Authorization', `Bearer ${buildAuthToken(memberId)}`)
+      .send({ decision: 'accept' })
+      .expect(200);
+
+    const transferResponse = await request(app)
+      .patch(`/api/safety-circles/${circleId}/owner`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ nextOwnerUserId: memberId })
+      .expect(200);
+
+    expect(transferResponse.body.circle.ownerUserId).toBe(memberId);
+    expect(transferResponse.body.currentUserRole).toBe('member');
+    const roles = Object.fromEntries(transferResponse.body.members.map((member) => [member.userId, member.role]));
+    expect(roles[ownerId]).toBe('member');
+    expect(roles[memberId]).toBe('owner');
+
+    await request(app)
+      .delete(`/api/safety-circles/${circleId}/members/me`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .expect(200);
+  });
+
+  test('only the owner can delete a circle', async () => {
+    const app = createTestApp();
+    const ownerId = 'circle_owner_delete';
+    const memberId = 'circle_member_delete';
+    await seedActiveUser(ownerId);
+    await seedActiveUser(memberId);
+
+    const circleResponse = await request(app)
+      .post('/api/safety-circles')
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ name: 'Delete Test' })
+      .expect(201);
+    const circleId = circleResponse.body.circle.circleId;
+
+    const inviteResponse = await request(app)
+      .post(`/api/safety-circles/${circleId}/invites`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ inviteeUserId: memberId })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/safety-circles/invites/${inviteResponse.body.invite.inviteId}/respond`)
+      .set('Authorization', `Bearer ${buildAuthToken(memberId)}`)
+      .send({ decision: 'accept' })
+      .expect(200);
+
+    await request(app)
+      .delete(`/api/safety-circles/${circleId}`)
+      .set('Authorization', `Bearer ${buildAuthToken(memberId)}`)
+      .expect(403);
+
+    await request(app)
+      .delete(`/api/safety-circles/${circleId}`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .expect(200);
+
+    await request(app)
+      .get(`/api/safety-circles/${circleId}`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .expect(404);
   });
 });

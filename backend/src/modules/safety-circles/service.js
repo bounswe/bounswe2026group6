@@ -9,6 +9,8 @@ const {
   listInvitesForUser,
   respondToInvite,
   removeMember,
+  deleteCircle,
+  transferCircleOwnership,
 } = require('./repository');
 const { patchMySafetyStatus } = require('../safety-status/service');
 
@@ -21,6 +23,12 @@ function notFound(message = 'Safety circle not found') {
 function conflict(message) {
   const error = new Error(message);
   error.code = 'CONFLICT';
+  return error;
+}
+
+function forbidden(message) {
+  const error = new Error(message);
+  error.code = 'FORBIDDEN';
   return error;
 }
 
@@ -39,7 +47,8 @@ async function getSafetyCircle(userId, circleId) {
   }
 
   const members = await listCircleMembers(circleId, userId);
-  return { circle, members };
+  const currentUser = members.find((member) => member.userId === userId);
+  return { circle, currentUserRole: currentUser?.role || 'member', members };
 }
 
 async function inviteToSafetyCircle(userId, circleId, input) {
@@ -113,6 +122,46 @@ async function leaveSafetyCircle(userId, circleId) {
   return { message: 'You left the safety circle.' };
 }
 
+async function deleteSafetyCircle(userId, circleId) {
+  const circle = await findCircleForMember(circleId, userId);
+  if (!circle) {
+    throw notFound();
+  }
+  if (circle.ownerUserId !== userId) {
+    throw forbidden('Only the circle owner can delete this safety circle.');
+  }
+
+  const deleted = await deleteCircle(circleId, userId);
+  if (!deleted) {
+    throw notFound();
+  }
+
+  return { message: 'Safety circle deleted.' };
+}
+
+async function transferSafetyCircleOwnership(userId, circleId, nextOwnerUserId) {
+  const circle = await findCircleForMember(circleId, userId);
+  if (!circle) {
+    throw notFound();
+  }
+  if (circle.ownerUserId !== userId) {
+    throw forbidden('Only the circle owner can transfer ownership.');
+  }
+  if (nextOwnerUserId === userId) {
+    throw conflict('You are already the owner of this safety circle.');
+  }
+  if (!(await isCircleMember(circleId, nextOwnerUserId))) {
+    throw conflict('New owner must be an accepted circle member.');
+  }
+
+  const transferred = await transferCircleOwnership(circleId, userId, nextOwnerUserId);
+  if (!transferred) {
+    throw notFound();
+  }
+
+  return getSafetyCircle(userId, circleId);
+}
+
 module.exports = {
   createSafetyCircle,
   listMySafetyCircles,
@@ -122,4 +171,6 @@ module.exports = {
   respondToSafetyCircleInvite,
   checkInToSafetyCircle,
   leaveSafetyCircle,
+  deleteSafetyCircle,
+  transferSafetyCircleOwnership,
 };

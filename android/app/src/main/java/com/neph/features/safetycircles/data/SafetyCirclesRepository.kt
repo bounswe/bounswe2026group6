@@ -32,6 +32,7 @@ data class SafetyCircleInvite(
 
 data class SafetyCircleDetail(
     val circle: SafetyCircleSummary,
+    val currentUserRole: String,
     val members: List<SafetyCircleMember>
 )
 
@@ -67,6 +68,7 @@ object SafetyCirclesRepository {
         val membersJson = response.optJSONArray("members")
         return SafetyCircleDetail(
             circle = response.getJSONObject("circle").toCircleSummary(),
+            currentUserRole = response.optString("currentUserRole").ifBlank { "member" },
             members = buildList {
                 if (membersJson != null) {
                     for (index in 0 until membersJson.length()) {
@@ -149,6 +151,23 @@ object SafetyCirclesRepository {
             path = "/safety-circles/$circleId/members/me",
             method = "DELETE",
             token = token
+        )
+    }
+
+    suspend fun deleteCircle(token: String, circleId: String) {
+        JsonHttpClient.request(
+            path = "/safety-circles/$circleId",
+            method = "DELETE",
+            token = token
+        )
+    }
+
+    suspend fun transferOwnership(token: String, circleId: String, nextOwnerUserId: String) {
+        JsonHttpClient.request(
+            path = "/safety-circles/$circleId/owner",
+            method = "PATCH",
+            token = token,
+            body = JSONObject().put("nextOwnerUserId", nextOwnerUserId)
         )
     }
 }

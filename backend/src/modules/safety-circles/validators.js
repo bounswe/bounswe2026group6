@@ -47,8 +47,23 @@ function validateInviteResponse(payload) {
   };
 }
 
+function validateTransferOwnership(payload) {
+  const errors = [];
+  const nextOwnerUserId = hasText(payload.nextOwnerUserId) ? payload.nextOwnerUserId.trim() : '';
+
+  if (!nextOwnerUserId) {
+    errors.push('`nextOwnerUserId` is required.');
+  }
+
+  return {
+    errors,
+    value: { nextOwnerUserId },
+  };
+}
+
 module.exports = {
   validateCreateCircle,
   validateCreateInvite,
   validateInviteResponse,
+  validateTransferOwnership,
 };

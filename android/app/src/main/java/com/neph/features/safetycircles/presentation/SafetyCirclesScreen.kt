@@ -71,6 +71,7 @@ fun SafetyCirclesScreen(
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
     var pendingCheckIn by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingDeleteCircleId by remember { mutableStateOf<String?>(null) }
 
     fun handleAuthError(error: ApiException): Boolean {
         if (error.status != 401) return false
@@ -205,6 +206,37 @@ fun SafetyCirclesScreen(
         )
     }
 
+    pendingDeleteCircleId?.let { circleId ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteCircleId = null },
+            title = {
+                Text(text = "Delete safety circle?")
+            },
+            text = {
+                Text(text = "This removes the circle, invites, and memberships for everyone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteCircleId = null
+                        runAction("Circle deleted.") { safeToken ->
+                            SafetyCirclesRepository.deleteCircle(safeToken, circleId)
+                            selectedCircleId = null
+                            detail = null
+                        }
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteCircleId = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     AppDrawerScaffold(
         title = "Safety Circles",
         currentRoute = Routes.SafetyCircles.route,
@@ -315,6 +347,7 @@ fun SafetyCirclesScreen(
             }
 
             detail?.let { circleDetail ->
+                val isOwner = circleDetail.currentUserRole == "owner"
                 SectionCard {
                     Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
                         SectionHeader(
@@ -372,19 +405,47 @@ fun SafetyCirclesScreen(
                             )
                         }
                         circleDetail.members.forEach { member ->
-                            MemberRow(member = member)
-                        }
-                        SecondaryButton(
-                            text = "Leave circle",
-                            onClick = {
-                                runAction("You left the circle.") { safeToken ->
-                                    SafetyCirclesRepository.leave(safeToken, circleDetail.circle.circleId)
-                                    selectedCircleId = null
-                                    detail = null
+                            MemberRow(
+                                member = member,
+                                actionLoading = actionLoading,
+                                showTransferAction = isOwner && member.role != "owner",
+                                onTransferOwnership = {
+                                    runAction("Ownership transferred.") { safeToken ->
+                                        SafetyCirclesRepository.transferOwnership(
+                                            token = safeToken,
+                                            circleId = circleDetail.circle.circleId,
+                                            nextOwnerUserId = member.userId
+                                        )
+                                    }
                                 }
-                            },
-                            enabled = !actionLoading
-                        )
+                            )
+                        }
+                        if (isOwner) {
+                            Text(
+                                text = "Owners can delete the circle or transfer ownership to a member.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            SecondaryButton(
+                                text = "Delete circle",
+                                onClick = {
+                                    pendingDeleteCircleId = circleDetail.circle.circleId
+                                },
+                                enabled = !actionLoading
+                            )
+                        } else {
+                            SecondaryButton(
+                                text = "Leave circle",
+                                onClick = {
+                                    runAction("You left the circle.") { safeToken ->
+                                        SafetyCirclesRepository.leave(safeToken, circleDetail.circle.circleId)
+                                        selectedCircleId = null
+                                        detail = null
+                                    }
+                                },
+                                enabled = !actionLoading
+                            )
+                        }
                     }
                 }
             }
@@ -446,7 +507,12 @@ private fun InviteRow(
 }
 
 @Composable
-private fun MemberRow(member: SafetyCircleMember) {
+private fun MemberRow(
+    member: SafetyCircleMember,
+    actionLoading: Boolean,
+    showTransferAction: Boolean,
+    onTransferOwnership: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -473,6 +539,14 @@ private fun MemberRow(member: SafetyCircleMember) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        if (showTransferAction) {
+            TextButton(
+                onClick = onTransferOwnership,
+                enabled = !actionLoading
+            ) {
+                Text("Make owner")
+            }
         }
     }
 }
