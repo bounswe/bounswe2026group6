@@ -254,26 +254,22 @@ private fun findNeighborhoodLabel(
         .orEmpty()
 
 private fun validateForm(state: RequestHelpFormState): RequestHelpFieldErrors {
-    val affectedPeople = state.affectedPeopleCount.toIntOrNull()
+    val affectedPeople = if (state.affectedPeopleCount.isBlank()) 1 else state.affectedPeopleCount.toIntOrNull()
 
     return RequestHelpFieldErrors(
         helpTypes = if (state.helpTypes.isEmpty()) "Select at least one help type." else null,
         affectedPeopleCount = when {
-            state.affectedPeopleCount.isBlank() -> "Affected people count is required."
-            affectedPeople == null || affectedPeople < 1 -> "Enter a valid number greater than or equal to 1."
+            state.affectedPeopleCount.isNotBlank() && (affectedPeople == null || affectedPeople < 1) ->
+                "Enter a valid number greater than or equal to 1."
             else -> null
         },
-        situationDescription = if (state.situationDescription.isBlank()) {
-            "Situation description cannot be blank."
-        } else {
-            null
-        },
+        situationDescription = null,
         country = if (state.country.isBlank()) "Country is required." else null,
         city = if (state.city.isBlank()) "City is required." else null,
         district = if (state.district.isBlank()) "District is required." else null,
-        neighborhood = if (state.neighborhood.isBlank()) "Neighborhood is required." else null,
-        shortAddress = if (state.shortAddress.isBlank()) "Short address is required." else null,
-        fullName = if (state.fullName.isBlank()) "Full name cannot be blank." else null,
+        neighborhood = null,
+        shortAddress = null,
+        fullName = null,
         phoneNumber = when {
             state.phoneNumber.isBlank() -> "Phone number cannot be blank."
             parseBackendPhoneNumber(state.countryCode, state.phoneNumber) == null ->
@@ -311,6 +307,10 @@ private fun RequestHelpFieldErrors.hasAny(): Boolean {
     ).any { !it.isNullOrBlank() }
 }
 
+private fun shouldShowLowContextWarning(state: RequestHelpFormState): Boolean {
+    return state.situationDescription.isBlank() && state.fullName.isBlank()
+}
+
 private fun buildSubmission(
     state: RequestHelpFormState,
     locations: LocationData
@@ -323,7 +323,7 @@ private fun buildSubmission(
     return RequestHelpSubmission(
         helpTypes = state.helpTypes.mapNotNull { helpTypeApiValues[it] },
         otherHelpText = state.otherHelpType.trim(),
-        affectedPeopleCount = state.affectedPeopleCount.toInt(),
+        affectedPeopleCount = state.affectedPeopleCount.toIntOrNull() ?: 1,
         description = state.situationDescription.trim(),
         riskFlags = state.riskFlags.map { it.trim() },
         vulnerableGroups = state.vulnerableGroups.map { it.trim() },
@@ -789,7 +789,7 @@ fun RequestHelpScreen(
                                 affectedPeopleCount = it.filter(Char::isDigit)
                             )
                         },
-                        label = "Affected People Count",
+                        label = "Affected People Count (optional)",
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         error = fieldErrors.affectedPeopleCount
                     )
@@ -819,7 +819,7 @@ fun RequestHelpScreen(
                     AppTextArea(
                         value = formState.situationDescription,
                         onValueChange = { formState = formState.copy(situationDescription = it) },
-                        label = "Situation Description",
+                        label = "Situation Description (optional)",
                         placeholder = "Describe the situation briefly",
                         error = fieldErrors.situationDescription
                     )
@@ -886,7 +886,8 @@ fun RequestHelpScreen(
                         countryError = fieldErrors.country,
                         cityError = fieldErrors.city,
                         districtError = fieldErrors.district,
-                        neighborhoodError = fieldErrors.neighborhood
+                        neighborhoodError = fieldErrors.neighborhood,
+                        neighborhoodLabel = "Neighborhood (optional)"
                     )
 
                     SecondaryButton(
@@ -904,7 +905,7 @@ fun RequestHelpScreen(
                     AppTextField(
                         value = formState.shortAddress,
                         onValueChange = { formState = formState.copy(shortAddress = it) },
-                        label = "Short Address / Address Description",
+                        label = "Short Address / Address Description (optional)",
                         error = fieldErrors.shortAddress
                     )
 
@@ -942,9 +943,15 @@ fun RequestHelpScreen(
                     AppTextField(
                         value = formState.fullName,
                         onValueChange = { formState = formState.copy(fullName = it) },
-                        label = "Full Name",
+                        label = "Full Name (optional)",
                         error = fieldErrors.fullName
                     )
+
+                    if (shouldShowLowContextWarning(formState)) {
+                        HelperText(
+                            text = "Add a situation description or full name when possible to help coordinators triage faster."
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

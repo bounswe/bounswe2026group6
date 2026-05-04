@@ -20,7 +20,8 @@ fun LocationSelector(
     countryError: String? = null,
     cityError: String? = null,
     districtError: String? = null,
-    neighborhoodError: String? = null
+    neighborhoodError: String? = null,
+    neighborhoodLabel: String = "Neighborhood"
 ) {
     val countryData = country.takeIf { it.isNotEmpty() }?.let { locationData[it] }
 
@@ -84,7 +85,7 @@ fun LocationSelector(
     AppDropdown(
         value = neighborhood,
         onValueChange = onNeighborhoodChange,
-        label = "Neighborhood",
+        label = neighborhoodLabel,
         options = listOf(DropdownOption("Select Neighborhood", "")) + neighborhoodOptions.map { DropdownOption(it.label, it.value) },
         enabled = enabled && district.isNotEmpty(),
         testTag = "complete_profile_neighborhood",

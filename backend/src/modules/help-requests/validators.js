@@ -120,6 +120,14 @@ function validateOptionalString(fieldName, value, errors, { maxLength = 255 } = 
   return normalized;
 }
 
+function validateOptionalNonPlaceholderString(fieldName, value, errors, { maxLength = 255 } = {}) {
+  const normalized = validateOptionalString(fieldName, value, errors, { maxLength });
+  if (normalized && placeholderValues.has(normalized.toLowerCase())) {
+    errors.push(`\`${fieldName}\` must be real user-provided information.`);
+  }
+  return normalized;
+}
+
 function isValidTurkishMobileNumber(value) {
   return Number.isInteger(value) && value >= 5000000000 && value <= 5999999999;
 }
@@ -222,16 +230,18 @@ function validateCreateHelpRequest(payload) {
     maxLength: 500,
   });
 
-  let affectedPeopleCount = null;
-  if (!Number.isInteger(payload.affectedPeopleCount) || payload.affectedPeopleCount < 1) {
-    errors.push('`affectedPeopleCount` must be an integer greater than or equal to 1.');
-  } else {
-    affectedPeopleCount = payload.affectedPeopleCount;
+  let affectedPeopleCount = 1;
+  if (payload.affectedPeopleCount != null) {
+    if (!Number.isInteger(payload.affectedPeopleCount) || payload.affectedPeopleCount < 1) {
+      errors.push('`affectedPeopleCount` must be an integer greater than or equal to 1.');
+    } else {
+      affectedPeopleCount = payload.affectedPeopleCount;
+    }
   }
 
   const riskFlags = validateStringArray('riskFlags', payload.riskFlags, errors);
   const vulnerableGroups = validateStringArray('vulnerableGroups', payload.vulnerableGroups, errors);
-  const description = validateRequiredString('description', payload.description, errors, {
+  const description = validateOptionalString('description', payload.description, errors, {
     maxLength: 2000,
   });
   const bloodType = validateOptionalString('bloodType', payload.bloodType, errors, {
@@ -314,7 +324,7 @@ function validateCreateHelpRequest(payload) {
       district: validateRequiredNonPlaceholderString('location.district', payload.location.district, errors, {
         maxLength: 100,
       }),
-      neighborhood: validateRequiredNonPlaceholderString('location.neighborhood', payload.location.neighborhood, errors, {
+      neighborhood: validateOptionalNonPlaceholderString('location.neighborhood', payload.location.neighborhood, errors, {
         maxLength: 100,
       }),
       extraAddress: validateOptionalString('location.extraAddress', payload.location.extraAddress, errors, {
@@ -337,7 +347,7 @@ function validateCreateHelpRequest(payload) {
     errors.push('`contact` is required and must be an object.');
   } else {
     contact = {
-      fullName: validateRequiredNonPlaceholderString('contact.fullName', payload.contact.fullName, errors, {
+      fullName: validateOptionalNonPlaceholderString('contact.fullName', payload.contact.fullName, errors, {
         maxLength: 200,
       }),
       phone: validateRequiredPhoneNumber('contact.phone', payload.contact.phone, errors),
@@ -347,6 +357,13 @@ function validateCreateHelpRequest(payload) {
         errors,
       ),
     };
+  }
+
+  if (description === '' && contact?.fullName === '') {
+    warnings.push({
+      code: 'LOW_CONTEXT_HELP_REQUEST',
+      message: 'Description and contact full name are both empty. Add at least one when possible to improve emergency coordination.',
+    });
   }
 
   return {
