@@ -203,6 +203,26 @@ describe('Availability integration', () => {
     expect(vResult.rows[0].is_available).toBe(true);
   });
 
+  test.each([
+    ['latitude > 90', { isAvailable: true, latitude: 91, longitude: 29.0 }],
+    ['longitude > 180', { isAvailable: true, latitude: 41.0, longitude: 181 }],
+    ['latitude without longitude', { isAvailable: true, latitude: 41.0 }],
+    ['longitude without latitude', { isAvailable: true, longitude: 29.0 }],
+  ])('POST /api/availability/toggle rejects invalid coordinates: %s', async (_caseName, payload) => {
+    const app = createTestApp();
+    const userId = `user_av_toggle_invalid_${_caseName.replace(/\W+/g, '_')}`;
+    await seedActiveUser(userId, `${userId}@example.com`);
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+  });
+
   test('POST /api/availability/toggle matches a request if available', async () => {
     const app = createTestApp();
     const volunteerUserId = 'user_v_1';
@@ -875,6 +895,34 @@ describe('Availability integration', () => {
     expect(response.body.volunteer.is_available).toBe(true);
     expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
     expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+  });
+
+  test.each([
+    ['latitude > 90', { latitude: 91, longitude: 29.0 }],
+    ['longitude > 180', { latitude: 41.0, longitude: 181 }],
+    ['latitude without longitude', { latitude: 41.0 }],
+    ['longitude without latitude', { longitude: 29.0 }],
+  ])('POST /api/availability/sync rejects invalid coordinates: %s', async (_caseName, coordinateFields) => {
+    const app = createTestApp();
+    const userId = `user_av_sync_invalid_${_caseName.replace(/\W+/g, '_')}`;
+    await seedActiveUser(userId, `${userId}@example.com`);
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: true,
+            timestamp: new Date().toISOString(),
+            ...coordinateFields,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
   });
 
   test('GET /api/availability/my-assignment returns current assignment', async () => {

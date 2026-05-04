@@ -60,7 +60,7 @@ fun MapPickerDialog(
     val spacing = LocalNephSpacing.current
     val effectiveInitialLatitude = centerLatitude ?: initialLatitude
     val effectiveInitialLongitude = centerLongitude ?: initialLongitude
-    var selection by remember(initialLatitude, initialLongitude) {
+    var selection by remember(initialLatitude, initialLongitude, centerLatitude, centerLongitude) {
         mutableStateOf<MapPickerSelection?>(null)
     }
     var mapReady by remember { mutableStateOf(false) }

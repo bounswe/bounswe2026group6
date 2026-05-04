@@ -8,13 +8,13 @@ const {
 } = require('./service');
 const {
   validate,
-  setAvailabilitySchema,
-  syncAvailabilitySchema,
   resolveRequestSchema,
+  validateSetAvailabilityPayload,
+  validateSyncAvailabilityPayload,
 } = require('./validators');
 
 async function handleSetAvailability(req, res) {
-  const errors = validate(req.body, setAvailabilitySchema);
+  const errors = validateSetAvailabilityPayload(req.body);
   if (errors.length > 0) {
     return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
   }
@@ -29,7 +29,7 @@ async function handleSetAvailability(req, res) {
 }
 
 async function handleSyncAvailability(req, res) {
-  const errors = validate(req.body, syncAvailabilitySchema);
+  const errors = validateSyncAvailabilityPayload(req.body);
   if (errors.length > 0) {
     return res.status(400).json({ code: 'VALIDATION_ERROR', errors });
   }
