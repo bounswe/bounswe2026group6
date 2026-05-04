@@ -15,9 +15,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileData
@@ -47,6 +50,7 @@ import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.layout.AppScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
@@ -83,6 +87,10 @@ fun EditProfileScreen(
     var mapActionInfo by rememberSaveable { mutableStateOf("") }
     var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
     var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapCenterLoading by rememberSaveable { mutableStateOf(false) }
+    var mapCenterInfo by rememberSaveable { mutableStateOf("") }
+    var mapCenterLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
+    var mapCenterLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
 
     var countryCode by rememberSaveable { mutableStateOf(initialPhoneParts.countryCode) }
@@ -98,6 +106,7 @@ fun EditProfileScreen(
 
     val scope = rememberCoroutineScope()
     val spacing = LocalNephSpacing.current
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         try {
@@ -195,6 +204,51 @@ fun EditProfileScreen(
                 mapPickerLoading = false
                 mapPickerOpen = false
             }
+        }
+    }
+
+    fun centerProfileMapOnCurrentLocation() {
+        if (mapCenterLoading) return
+
+        mapCenterLoading = true
+        mapCenterInfo = ""
+
+        scope.launch {
+            try {
+                val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                val location = attempt.location
+                if (location == null) {
+                    mapCenterInfo = when (attempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission is denied. The map was not centered."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. The map was not centered."
+                    }
+                    return@launch
+                }
+
+                mapCenterLatitude = location.latitude
+                mapCenterLongitude = location.longitude
+                mapCenterInfo = "Map centered on your current location. Choose a point to update your residential location."
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                mapCenterInfo = "Current location is unavailable. The map was not centered."
+            } finally {
+                mapCenterLoading = false
+            }
+        }
+    }
+
+    val mapLocationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
+            centerProfileMapOnCurrentLocation()
+        } else {
+            mapCenterInfo = "Location permission is denied. The map was not centered."
         }
     }
 
@@ -508,9 +562,21 @@ fun EditProfileScreen(
                             title = "Select Home Location on Map",
                             initialLatitude = mapPickerSelection?.latitude,
                             initialLongitude = mapPickerSelection?.longitude,
+                            centerLatitude = mapCenterLatitude,
+                            centerLongitude = mapCenterLongitude,
+                            showCenterOnCurrentLocation = true,
+                            centerActionLoading = mapCenterLoading,
+                            centerActionMessage = mapCenterInfo,
                             loading = mapPickerLoading,
                             onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
-                            onConfirm = ::handleMapSelection
+                            onConfirm = ::handleMapSelection,
+                            onCenterOnCurrentLocation = {
+                                if (mapLocationPermissionRequester.refreshPermissionState()) {
+                                    centerProfileMapOnCurrentLocation()
+                                } else {
+                                    mapLocationPermissionRequester.requestPermission()
+                                }
+                            }
                         )
                     }
                 }

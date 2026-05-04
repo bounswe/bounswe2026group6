@@ -1,5 +1,6 @@
 package com.neph.features.home.presentation
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,7 @@ import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
+import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
@@ -39,6 +41,7 @@ import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -75,8 +78,20 @@ fun HomeScreen(
     var showMarkSafeLocationConsentDialog by remember { mutableStateOf(false) }
     var emergencyInfo by remember { mutableStateOf("") }
     var emergencyError by remember { mutableStateOf("") }
+    var locationPermissionInfo by remember { mutableStateOf("") }
+    var locationPermissionGranted by remember {
+        mutableStateOf(DeviceLocationProvider.hasLocationPermission(context))
+    }
+    var pendingLocationPermissionAction by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
 
-    fun handleAvailabilityChange(nextValue: Boolean) {
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        locationPermissionGranted = result.granted
+        val action = pendingLocationPermissionAction
+        pendingLocationPermissionAction = null
+        action?.invoke(result.granted)
+    }
+
+    fun syncAvailabilityChange(nextValue: Boolean) {
         availabilityError = ""
         availabilityInfo = ""
         availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
@@ -123,6 +138,80 @@ fun HomeScreen(
             } finally {
                 availabilityLoading = false
             }
+        }
+    }
+
+    fun enableAvailabilityWithCurrentLocation() {
+        availabilityError = ""
+        availabilityInfo = ""
+        availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
+        availabilityLoading = true
+
+        scope.launch {
+            try {
+                val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                if (locationAttempt.location == null) {
+                    availabilityError = when (locationAttempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission is required before you can become available to help."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. Availability was not enabled."
+                    }
+                    availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+                    availabilityLoading = false
+                    return@launch
+                }
+
+                availabilityLoading = false
+                syncAvailabilityChange(true)
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                availabilityError = "Current location is unavailable. Availability was not enabled."
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+                availabilityLoading = false
+            }
+        }
+    }
+
+    fun handleAvailabilityChange(nextValue: Boolean) {
+        if (!nextValue) {
+            syncAvailabilityChange(false)
+            return
+        }
+
+        availabilityError = ""
+        availabilityInfo = ""
+        availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
+
+        if (!AvailabilityAccessPolicy.canAccess(sessionToken)) {
+            availabilityError = "Please log in to manage your availability."
+            availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+            if (AvailabilityAccessPolicy.shouldRedirectToLogin()) {
+                onNavigateToLogin()
+            }
+            return
+        }
+
+        pendingLocationPermissionAction = { granted ->
+            if (granted) {
+                enableAvailabilityWithCurrentLocation()
+            } else {
+                availabilityError = "Location permission is required before you can become available to help."
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+            }
+        }
+
+        if (locationPermissionRequester.refreshPermissionState()) {
+            val action = pendingLocationPermissionAction
+            pendingLocationPermissionAction = null
+            action?.invoke(true)
+        } else {
+            locationPermissionRequester.requestPermission()
         }
     }
 
@@ -207,7 +296,10 @@ fun HomeScreen(
         showMarkSafeLocationConsentDialog = true
     }
 
-    fun handleMarkSafe(shareLocation: Boolean) {
+    fun handleMarkSafeWithOptionalLocation(
+        shareLocation: Boolean,
+        permissionDeniedBeforeCapture: Boolean = false
+    ) {
         val safeSessionToken = sessionToken
         if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
             showMarkSafeLocationConsentDialog = false
@@ -220,7 +312,7 @@ fun HomeScreen(
         markSafeLoading = true
         scope.launch {
             try {
-                val locationAttempt = if (shareLocation) {
+                val locationAttempt = if (shareLocation && !permissionDeniedBeforeCapture) {
                     DeviceLocationProvider.captureCurrentLocationForSharing(
                         context = context,
                         sharingEnabled = true
@@ -236,8 +328,12 @@ fun HomeScreen(
                 )
                 emergencyInfo = if (sharedLocation != null) {
                     "You are marked safe. Your current location was shared with your safety status."
+                } else if (shareLocation && permissionDeniedBeforeCapture) {
+                    "You are marked safe. Location was not shared because permission was denied."
+                } else if (shareLocation && locationAttempt?.warning == CurrentLocationShareWarning.PERMISSION_DENIED) {
+                    "You are marked safe. Location was not shared because permission was denied."
                 } else if (shareLocation) {
-                    "You are marked safe. Location was not shared because permission or location was unavailable."
+                    "You are marked safe. Location was not shared because current location was unavailable."
                 } else {
                     "You are marked safe. Your location was not shared."
                 }
@@ -256,6 +352,28 @@ fun HomeScreen(
             } finally {
                 markSafeLoading = false
             }
+        }
+    }
+
+    fun handleMarkSafe(shareLocation: Boolean) {
+        if (!shareLocation) {
+            handleMarkSafeWithOptionalLocation(shareLocation = false)
+            return
+        }
+
+        pendingLocationPermissionAction = { granted ->
+            handleMarkSafeWithOptionalLocation(
+                shareLocation = true,
+                permissionDeniedBeforeCapture = !granted
+            )
+        }
+
+        if (locationPermissionRequester.refreshPermissionState()) {
+            val action = pendingLocationPermissionAction
+            pendingLocationPermissionAction = null
+            action?.invoke(true)
+        } else {
+            locationPermissionRequester.requestPermission()
         }
     }
 
@@ -305,6 +423,39 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(spacing.md)
         ) {
+            if (!locationPermissionGranted) {
+                SectionCard(
+                    modifier = Modifier.clickable {
+                        pendingLocationPermissionAction = { granted ->
+                            locationPermissionGranted = granted
+                            locationPermissionInfo = if (granted) {
+                                ""
+                            } else {
+                                "Location permission was not enabled. You can still use NEPH with manual location entry."
+                            }
+                        }
+                        locationPermissionRequester.requestPermission()
+                    }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                        SectionHeader(
+                            title = "Enable location for faster emergency actions",
+                            subtitle = "Allow NEPH to use your location while the app is open so Request Help and volunteer matching can work faster."
+                        )
+                    }
+                }
+            }
+
+            if (locationPermissionInfo.isNotBlank()) {
+                Text(
+                    text = locationPermissionInfo,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+
             if (isAuthenticated) {
                 AvailableToHelpCard(
                     isAvailable = availabilityState.isAvailable,

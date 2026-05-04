@@ -1,7 +1,5 @@
 package com.neph.features.requesthelp.presentation
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -75,6 +73,7 @@ import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.components.selection.AppMultiSelectChipGroup
 import com.neph.ui.layout.AppScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
@@ -452,9 +451,7 @@ fun RequestHelpScreen(
     var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
-    var guestLocationAutoFillLoading by remember { mutableStateOf(false) }
-    var guestLocationPermissionHandled by rememberSaveable { mutableStateOf(false) }
-    val guestFormInteractionStarted = !isLoggedIn && formState != RequestHelpFormState()
+    var currentLocationLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(draftLocalId) {
         val nextDraftLocalId = draftLocalId.orEmpty()
@@ -468,10 +465,10 @@ fun RequestHelpScreen(
         }
     }
 
-    fun triggerGuestLocationAutofill() {
+    fun applyCurrentLocationToForm() {
         scope.launch {
-            if (guestLocationAutoFillLoading) return@launch
-            guestLocationAutoFillLoading = true
+            if (currentLocationLoading) return@launch
+            currentLocationLoading = true
             try {
                 val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
                     context = context,
@@ -527,7 +524,7 @@ fun RequestHelpScreen(
             } catch (_: Exception) {
                 infoMessage = "Could not retrieve your current location. You can continue with manual location entry."
             } finally {
-                guestLocationAutoFillLoading = false
+                currentLocationLoading = false
             }
         }
     }
@@ -580,11 +577,9 @@ fun RequestHelpScreen(
         }
     }
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants.values.any { it }) {
-            triggerGuestLocationAutofill()
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
+            applyCurrentLocationToForm()
         } else {
             infoMessage = "Location permission is denied. You can continue with manual location entry."
         }
@@ -651,21 +646,6 @@ fun RequestHelpScreen(
         } finally {
             checkingActiveRequest = false
         }
-    }
-
-    LaunchedEffect(isLoggedIn, guestFormInteractionStarted, guestLocationPermissionHandled) {
-        if (isLoggedIn || guestLocationPermissionHandled || !guestFormInteractionStarted) {
-            return@LaunchedEffect
-        }
-
-        guestLocationPermissionHandled = true
-
-        if (DeviceLocationProvider.hasLocationPermission(context)) {
-            triggerGuestLocationAutofill()
-            return@LaunchedEffect
-        }
-
-        locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
     }
 
     fun handleSubmit() {
@@ -846,23 +826,21 @@ fun RequestHelpScreen(
                         HelperText(text = "Loading location options...")
                     }
 
-                    if (!isLoggedIn && guestLocationAutoFillLoading) {
+                    if (currentLocationLoading) {
                         HelperText(text = "Detecting your current location. You can continue filling the form while this runs.")
                     }
 
-                    if (!isLoggedIn) {
-                        SecondaryButton(
-                            text = "Use Current Location",
-                            onClick = {
-                                if (DeviceLocationProvider.hasLocationPermission(context)) {
-                                    triggerGuestLocationAutofill()
-                                } else {
-                                    locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
-                                }
-                            },
-                            enabled = !guestLocationAutoFillLoading
-                        )
-                    }
+                    SecondaryButton(
+                        text = "Use Current Location",
+                        onClick = {
+                            if (locationPermissionRequester.refreshPermissionState()) {
+                                applyCurrentLocationToForm()
+                            } else {
+                                locationPermissionRequester.requestPermission()
+                            }
+                        },
+                        enabled = !currentLocationLoading
+                    )
 
                     LocationSelector(
                         country = formState.country,
