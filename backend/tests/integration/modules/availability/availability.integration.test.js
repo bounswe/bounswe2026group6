@@ -851,6 +851,32 @@ describe('Availability integration', () => {
     expect(arResult.rows).toHaveLength(2);
   });
 
+  test('POST /api/availability/sync stores latest available coordinates on volunteer', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_sync_location';
+    await seedActiveUser(userId, 'av-sync-location@example.com');
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: true,
+            timestamp: new Date().toISOString(),
+            latitude: 41.015,
+            longitude: 29.01,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(true);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+  });
+
   test('GET /api/availability/my-assignment returns current assignment', async () => {
     const app = createTestApp();
     const volunteerUserId = 'user_v_2';

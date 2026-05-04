@@ -205,12 +205,13 @@ async function syncAvailability(userId, { records }) {
   if (records.length > 0) {
     const sortedRecords = [...records].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const latest = sortedRecords[0];
+    const hasLatestCoordinates = Number.isFinite(latest.latitude) && Number.isFinite(latest.longitude);
 
     await updateVolunteerAvailability(
       volunteer.volunteer_id,
       latest.isAvailable,
-      null,
-      null
+      hasLatestCoordinates ? latest.latitude : null,
+      hasLatestCoordinates ? latest.longitude : null
     );
 
     for (const record of records) {

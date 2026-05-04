@@ -22,6 +22,8 @@ const syncAvailabilitySchema = {
       properties: {
         isAvailable: { type: 'boolean', required: true },
         timestamp: { type: 'string', required: true },
+        latitude: { type: 'number', required: false },
+        longitude: { type: 'number', required: false },
       },
     },
   },

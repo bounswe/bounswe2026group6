@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
@@ -19,9 +20,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
@@ -29,6 +33,7 @@ import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
+import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
@@ -91,7 +96,24 @@ fun HomeScreen(
         action?.invoke(result.granted)
     }
 
-    fun syncAvailabilityChange(nextValue: Boolean) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                locationPermissionGranted = DeviceLocationProvider.hasLocationPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    fun syncAvailabilityChange(
+        nextValue: Boolean,
+        currentDeviceLocation: CurrentDeviceLocation? = null
+    ) {
         availabilityError = ""
         availabilityInfo = ""
         availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
@@ -113,7 +135,8 @@ fun HomeScreen(
                 availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCING
                 AvailabilityRepository.setAvailability(
                     isAvailable = nextValue,
-                    token = sessionToken
+                    token = sessionToken,
+                    currentDeviceLocation = currentDeviceLocation
                 )
                 AvailabilityRepository.syncPendingAvailabilityNow(sessionToken)
                 availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCED
@@ -167,7 +190,10 @@ fun HomeScreen(
                 }
 
                 availabilityLoading = false
-                syncAvailabilityChange(true)
+                syncAvailabilityChange(
+                    nextValue = true,
+                    currentDeviceLocation = locationAttempt.location
+                )
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
