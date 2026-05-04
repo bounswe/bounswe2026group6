@@ -19,6 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.neph.core.network.ApiException
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.ui.components.buttons.PrimaryButton
+import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
@@ -43,7 +44,8 @@ private val visibilityOptions = listOf(
 
 @Composable
 fun PrivacySecurityScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onResetPassword: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -192,6 +194,12 @@ fun PrivacySecurityScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        SecondaryButton(
+                            text = "Reset your password",
+                            onClick = onResetPassword,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
 
@@ -222,6 +230,9 @@ fun PrivacySecurityScreen(
 @Composable
 private fun PrivacySecurityScreenPreview() {
     NephTheme {
-        PrivacySecurityScreen(onNavigateBack = {})
+        PrivacySecurityScreen(
+            onNavigateBack = {},
+            onResetPassword = {}
+        )
     }
 }
