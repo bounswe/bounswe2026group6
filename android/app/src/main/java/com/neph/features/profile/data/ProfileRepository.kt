@@ -275,21 +275,62 @@ object ProfileRepository {
             path = "/profiles/me/privacy",
             method = "PATCH",
             token = token,
-            body = JSONObject().apply {
-                put("profileVisibility", normalizeVisibility(profileVisibility))
-                put("healthInfoVisibility", normalizeVisibility(healthInfoVisibility))
-                put("locationVisibility", normalizeVisibility(locationVisibility))
-                put("locationSharingEnabled", locationSharingEnabled)
-            }
+            body = buildPrivacySettingsPatchPayload(
+                profileVisibility = profileVisibility,
+                healthInfoVisibility = healthInfoVisibility,
+                locationVisibility = locationVisibility,
+                locationSharingEnabled = locationSharingEnabled
+            )
         )
 
-        val updated = mapBackendProfile(
-            profileJson = response,
-            email = cachedProfile.email.orEmpty(),
-            cachedProfileSnapshot = cachedProfile
+        val updated = mergePrivacySettingsResponse(
+            cachedProfileSnapshot = cachedProfile,
+            response = response,
+            requestedProfileVisibility = profileVisibility,
+            requestedHealthInfoVisibility = healthInfoVisibility,
+            requestedLocationVisibility = locationVisibility,
+            requestedLocationSharingEnabled = locationSharingEnabled
         )
         saveProfile(updated)
         return updated
+    }
+
+    internal fun buildPrivacySettingsPatchPayload(
+        profileVisibility: String,
+        healthInfoVisibility: String,
+        locationVisibility: String,
+        locationSharingEnabled: Boolean
+    ): JSONObject {
+        return JSONObject().apply {
+            put("profileVisibility", normalizeVisibility(profileVisibility))
+            put("healthInfoVisibility", normalizeVisibility(healthInfoVisibility))
+            put("locationVisibility", normalizeVisibility(locationVisibility))
+            put("locationSharingEnabled", locationSharingEnabled)
+        }
+    }
+
+    internal fun mergePrivacySettingsResponse(
+        cachedProfileSnapshot: ProfileData,
+        response: JSONObject,
+        requestedProfileVisibility: String,
+        requestedHealthInfoVisibility: String,
+        requestedLocationVisibility: String,
+        requestedLocationSharingEnabled: Boolean
+    ): ProfileData {
+        val privacySettings = response.optJSONObject("privacySettings") ?: response
+        return cachedProfileSnapshot.copy(
+            profileVisibility = normalizeVisibility(
+                privacySettings.optStringOrNull("profileVisibility") ?: requestedProfileVisibility
+            ),
+            healthInfoVisibility = normalizeVisibility(
+                privacySettings.optStringOrNull("healthInfoVisibility") ?: requestedHealthInfoVisibility
+            ),
+            locationVisibility = normalizeVisibility(
+                privacySettings.optStringOrNull("locationVisibility") ?: requestedLocationVisibility
+            ),
+            shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled")
+                ?: requestedLocationSharingEnabled
+        )
     }
 
     private suspend fun hasTrustedRemoteSharedCoordinates(token: String): Boolean {
