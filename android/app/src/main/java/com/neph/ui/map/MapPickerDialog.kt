@@ -52,15 +52,8 @@ fun MapPickerDialog(
     onConfirm: (MapPickerSelection) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
-    val initialSelection = remember(initialLatitude, initialLongitude) {
-        if (initialLatitude != null && initialLongitude != null) {
-            MapPickerSelection(initialLatitude, initialLongitude)
-        } else {
-            null
-        }
-    }
     var selection by remember(initialLatitude, initialLongitude) {
-        mutableStateOf(initialSelection)
+        mutableStateOf<MapPickerSelection?>(null)
     }
     var mapReady by remember { mutableStateOf(false) }
     var mapError by remember { mutableStateOf("") }
@@ -83,7 +76,7 @@ fun MapPickerDialog(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                HelperText(text = "Tap on the map to place a pin.")
+                HelperText(text = "Tap on the map to place a pin, then confirm the selection.")
 
                 MapPickerMap(
                     initialLatitude = initialLatitude,
@@ -324,10 +317,6 @@ private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): S
                             fillOpacity: 0.85
                         }).addTo(map);
                     }
-                }
-
-                if (${hasInitial.toString()}) {
-                    setMarker($formattedLat, $formattedLon);
                 }
 
                 map.on('click', function(e) {

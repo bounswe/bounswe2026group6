@@ -1,8 +1,6 @@
 package com.neph.features.auth.presentation
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,12 +21,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
-import com.neph.features.profile.data.CurrentLocationShareWarning
-import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileRepository
-import com.neph.features.profile.data.ProfileRepository.LocationSharingInitializationRequiredException
 import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.calculateAgeFromDateOfBirth
 import com.neph.features.profile.data.combinePhoneNumber
@@ -52,13 +47,10 @@ import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
-import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
-import com.neph.ui.map.SharedCoordinatesMapAction
-import com.neph.ui.map.formatMapCoordinate
 import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
@@ -104,7 +96,6 @@ fun CompleteProfileScreen(
     var district by rememberSaveable { mutableStateOf(existingProfile.district.orEmpty()) }
     var neighborhood by rememberSaveable { mutableStateOf(existingProfile.neighborhood.orEmpty()) }
     var extraAddress by rememberSaveable { mutableStateOf(existingProfile.extraAddress.orEmpty()) }
-    var shareLocation by rememberSaveable { mutableStateOf(existingProfile.shareLocation ?: false) }
     var profession by rememberSaveable { mutableStateOf(existingProfile.profession) }
     var expertise by rememberSaveable { mutableStateOf(existingProfile.expertise) }
     var loading by rememberSaveable { mutableStateOf(false) }
@@ -117,19 +108,6 @@ fun CompleteProfileScreen(
     var availableLocationData by remember { mutableStateOf<LocationData>(locationData) }
     var locationLoading by remember { mutableStateOf(true) }
     var locationInfo by rememberSaveable { mutableStateOf("") }
-    var syncedSharedLatitude by rememberSaveable { mutableStateOf(existingProfile.sharedLatitude) }
-    var syncedSharedLongitude by rememberSaveable { mutableStateOf(existingProfile.sharedLongitude) }
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants.values.any { it }) {
-            shareLocation = true
-            info = "Location permission granted. Current location will be shared when you save."
-        } else {
-            shareLocation = false
-            info = "Location permission denied. Current location sharing remains off."
-        }
-    }
 
     LaunchedEffect(Unit) {
         try {
@@ -264,51 +242,18 @@ fun CompleteProfileScreen(
                     district = district,
                     neighborhood = neighborhood,
                     extraAddress = extraAddress.takeIf(String::isNotBlank),
-                    shareLocation = shareLocation,
                     profession = profession?.trim()?.takeIf(String::isNotBlank),
                     expertise = parseListField(expertise.joinToString(", "))
                 )
-                val locationShareAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
-                    context = context,
-                    sharingEnabled = profileToSync.shareLocation == true
+                ProfileRepository.syncProfile(
+                    profile = profileToSync
                 )
-                val profileWithSharePolicy = when (locationShareAttempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED -> profileToSync.copy(shareLocation = false)
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE -> profileToSync
-                    null -> profileToSync
-                }
-
-                val syncedProfile = ProfileRepository.syncProfile(
-                    profile = profileWithSharePolicy,
-                    currentDeviceLocation = locationShareAttempt.location,
-                    forceClearSharedCoordinates = locationShareAttempt.warning == CurrentLocationShareWarning.LOCATION_UNAVAILABLE
-                )
-                shareLocation = syncedProfile.shareLocation ?: false
-                syncedSharedLatitude = syncedProfile.sharedLatitude
-                syncedSharedLongitude = syncedProfile.sharedLongitude
-
-                val completionMessage = when (locationShareAttempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Profile saved. Location permission is denied, so location sharing was turned off and stored coordinates were cleared."
-
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE ->
-                        "Profile saved. Current location is unavailable, so sharing remains on and stale coordinates were cleared."
-
-                    null -> {
-                        if (locationShareAttempt.location != null) {
-                            "Profile saved. Current location shared."
-                        } else {
-                            "Profile saved."
-                        }
-                    }
-                }
+                val completionMessage = "Profile saved."
 
                 info = completionMessage
                 Toast.makeText(context, completionMessage, Toast.LENGTH_LONG).show()
 
                 onComplete()
-            } catch (guardError: LocationSharingInitializationRequiredException) {
-                error = guardError.message ?: "To enable Share Current Location, save a valid current location first."
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (errorResponse: ApiException) {
@@ -462,7 +407,8 @@ fun CompleteProfileScreen(
                 }
             }
 
-            Text("Location", style = MaterialTheme.typography.titleMedium)
+            Text("Residential Location", style = MaterialTheme.typography.titleMedium)
+            HelperText(text = "This is your home/neighborhood location. It is not automatically updated by GPS.")
 
             if (locationLoading) {
                 HelperText(text = "Loading location options...")
@@ -498,16 +444,10 @@ fun CompleteProfileScreen(
             )
 
             SecondaryButton(
-                text = "Select Location on Map",
+                text = "Select Home Location on Map",
                 onClick = { mapPickerOpen = true },
                 enabled = !locationLoading && !loading
             )
-
-            mapPickerSelection?.let { selection ->
-                HelperText(
-                    text = "Selected coordinates: ${formatMapCoordinate(selection.latitude)}, ${formatMapCoordinate(selection.longitude)}"
-                )
-            }
 
             AppTextField(
                 value = extraAddress,
@@ -528,35 +468,11 @@ fun CompleteProfileScreen(
                 onOpenSuccess = { mapActionInfo = "" }
             )
 
-            SharedCoordinatesMapAction(
-                latitude = syncedSharedLatitude,
-                longitude = syncedSharedLongitude,
-                enabled = !loading,
-                onOpenFailure = { mapActionInfo = it },
-                onOpenSuccess = { mapActionInfo = "" }
-            )
-
-            AppToggleSwitch(
-                checked = shareLocation,
-                onCheckedChange = { shareEnabled ->
-                    if (!shareEnabled) {
-                        shareLocation = false
-                        return@AppToggleSwitch
-                    }
-
-                    if (DeviceLocationProvider.hasLocationPermission(context)) {
-                        shareLocation = true
-                    } else {
-                        locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
-                    }
-                },
-                label = "Share Current Location"
-            )
-
             if (mapPickerOpen) {
                 MapPickerDialog(
-                    initialLatitude = mapPickerSelection?.latitude ?: syncedSharedLatitude,
-                    initialLongitude = mapPickerSelection?.longitude ?: syncedSharedLongitude,
+                    title = "Select Home Location on Map",
+                    initialLatitude = mapPickerSelection?.latitude,
+                    initialLongitude = mapPickerSelection?.longitude,
                     loading = mapPickerLoading,
                     onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
                     onConfirm = ::handleMapSelection
