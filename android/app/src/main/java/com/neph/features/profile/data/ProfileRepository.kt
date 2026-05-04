@@ -201,6 +201,9 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
+                    put("profileVisibility", normalizedProfile.profileVisibility ?: "PRIVATE")
+                    put("healthInfoVisibility", normalizedProfile.healthInfoVisibility ?: "PRIVATE")
+                    put("locationVisibility", normalizedProfile.locationVisibility ?: "PRIVATE")
                     put("locationSharingEnabled", profile.shareLocation ?: false)
                 }
             )
@@ -255,6 +258,38 @@ object ProfileRepository {
         val hasFreshCurrentCoordinates = currentDeviceLocation != null
 
         return !hasTrustedSavedCoordinates && !hasFreshCurrentCoordinates
+    }
+
+    suspend fun syncPrivacySettings(
+        profileVisibility: String,
+        healthInfoVisibility: String,
+        locationVisibility: String,
+        locationSharingEnabled: Boolean
+    ): ProfileData {
+        ensureInitialized()
+
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        check(token.isNotBlank()) { "Access token is required before saving privacy settings." }
+
+        val response = JsonHttpClient.request(
+            path = "/profiles/me/privacy",
+            method = "PATCH",
+            token = token,
+            body = JSONObject().apply {
+                put("profileVisibility", normalizeVisibility(profileVisibility))
+                put("healthInfoVisibility", normalizeVisibility(healthInfoVisibility))
+                put("locationVisibility", normalizeVisibility(locationVisibility))
+                put("locationSharingEnabled", locationSharingEnabled)
+            }
+        )
+
+        val updated = mapBackendProfile(
+            profileJson = response,
+            email = cachedProfile.email.orEmpty(),
+            cachedProfileSnapshot = cachedProfile
+        )
+        saveProfile(updated)
+        return updated
     }
 
     private suspend fun hasTrustedRemoteSharedCoordinates(token: String): Boolean {
@@ -417,6 +452,9 @@ object ProfileRepository {
             putString("district", profile.district)
             putString("neighborhood", profile.neighborhood)
             putString("extraAddress", profile.extraAddress)
+            putString("profileVisibility", normalizeVisibility(profile.profileVisibility))
+            putString("healthInfoVisibility", normalizeVisibility(profile.healthInfoVisibility))
+            putString("locationVisibility", normalizeVisibility(profile.locationVisibility))
             putBoolean("shareLocation", profile.shareLocation ?: false)
             putString("sharedLatitude", profile.sharedLatitude?.toString())
             putString("sharedLongitude", profile.sharedLongitude?.toString())
@@ -462,6 +500,9 @@ object ProfileRepository {
             district = prefs.getString("district", null),
             neighborhood = prefs.getString("neighborhood", null),
             extraAddress = prefs.getString("extraAddress", null),
+            profileVisibility = normalizeVisibility(prefs.getString("profileVisibility", null)),
+            healthInfoVisibility = normalizeVisibility(prefs.getString("healthInfoVisibility", null)),
+            locationVisibility = normalizeVisibility(prefs.getString("locationVisibility", null)),
             shareLocation = if (prefs.contains("shareLocation")) prefs.getBoolean("shareLocation", false) else null,
             sharedLatitude = prefs.getString("sharedLatitude", null)?.toDoubleOrNull(),
             sharedLongitude = prefs.getString("sharedLongitude", null)?.toDoubleOrNull()
@@ -546,6 +587,9 @@ object ProfileRepository {
                 .takeIf { it.isNotBlank() },
             extraAddress = extraAddressFromBackend
                 ?: cachedProfileSnapshot.extraAddress,
+            profileVisibility = normalizeVisibility(privacySettings.optStringOrNull("profileVisibility")),
+            healthInfoVisibility = normalizeVisibility(privacySettings.optStringOrNull("healthInfoVisibility")),
+            locationVisibility = normalizeVisibility(privacySettings.optStringOrNull("locationVisibility")),
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled"),
             sharedLatitude = sharedLatitude,
             sharedLongitude = sharedLongitude
@@ -658,6 +702,14 @@ object ProfileRepository {
 
     private fun JSONObject.optNullableDouble(key: String): Double? {
         return if (has(key) && !isNull(key)) optDouble(key) else null
+    }
+
+    private fun normalizeVisibility(value: String?): String {
+        return when (value?.uppercase(Locale.ROOT)) {
+            "PUBLIC" -> "PUBLIC"
+            "EMERGENCY_ONLY" -> "EMERGENCY_ONLY"
+            else -> "PRIVATE"
+        }
     }
 
     private fun ensureInitialized() {

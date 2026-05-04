@@ -320,7 +320,12 @@ export async function patchMyLocation(
 
 export async function patchMyPrivacy(
     token: string,
-    payload: { locationSharingEnabled?: boolean }
+    payload: {
+        profileVisibility?: string;
+        healthInfoVisibility?: string;
+        locationVisibility?: string;
+        locationSharingEnabled?: boolean;
+    }
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/privacy", {
         method: "PATCH",

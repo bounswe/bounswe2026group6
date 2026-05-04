@@ -6,6 +6,7 @@ import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
+import { RadioGroup } from "@/components/ui/selection/RadioGroup";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
@@ -17,12 +18,21 @@ const DEFAULT_MAP_CENTER = {
     longitude: 28.9784,
 };
 
+const visibilityOptions = [
+    { label: "Private", value: "PRIVATE" },
+    { label: "Emergency only", value: "EMERGENCY_ONLY" },
+    { label: "Public", value: "PUBLIC" },
+];
+
 export default function PrivacySecurityView() {
     const router = useRouter();
     const pathname = usePathname();
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [profileVisibility, setProfileVisibility] = React.useState("PRIVATE");
+    const [healthInfoVisibility, setHealthInfoVisibility] = React.useState("PRIVATE");
+    const [locationVisibility, setLocationVisibility] = React.useState("PRIVATE");
     const [shareLocation, setShareLocation] = React.useState(false);
     const [initialShareLocation, setInitialShareLocation] = React.useState(false);
     const [locationPreview, setLocationPreview] = React.useState<{
@@ -49,6 +59,9 @@ export default function PrivacySecurityView() {
 
             try {
                 const profile = await fetchMyProfile(token);
+                setProfileVisibility(profile.privacySettings.profileVisibility || "PRIVATE");
+                setHealthInfoVisibility(profile.privacySettings.healthInfoVisibility || "PRIVATE");
+                setLocationVisibility(profile.privacySettings.locationVisibility || "PRIVATE");
                 setShareLocation(profile.privacySettings.locationSharingEnabled);
                 setInitialShareLocation(profile.privacySettings.locationSharingEnabled);
 
@@ -95,7 +108,7 @@ export default function PrivacySecurityView() {
             setError("");
             setInfo("");
 
-            if (!initialShareLocation && shareLocation) {
+            if (!initialShareLocation && shareLocation && !locationPreview) {
                 setError(
                     "To enable Share Current Location, go to Profile, click Use Current Location, and save there first."
                 );
@@ -103,9 +116,13 @@ export default function PrivacySecurityView() {
             }
 
             await patchMyPrivacy(token, {
+                profileVisibility,
+                healthInfoVisibility,
+                locationVisibility,
                 locationSharingEnabled: shareLocation,
             });
 
+            setInitialShareLocation(shareLocation);
             setInfo("Privacy settings updated successfully.");
         } catch (err) {
             if (err instanceof ApiError && err.status === 401) {
@@ -137,10 +154,39 @@ export default function PrivacySecurityView() {
             <SectionCard>
                 <SectionHeader
                     title="Privacy"
-                    subtitle="Control the account settings the backend currently supports."
+                    subtitle="Choose who can see profile, health, and location details."
                 />
 
-                <div className="mt-4 flex items-center justify-between gap-4">
+                <div className="mt-4 grid gap-5">
+                    <RadioGroup
+                        label="Profile visibility"
+                        name="profileVisibility"
+                        value={profileVisibility}
+                        options={visibilityOptions}
+                        onValueChange={setProfileVisibility}
+                        direction="column"
+                    />
+
+                    <RadioGroup
+                        label="Health information visibility"
+                        name="healthInfoVisibility"
+                        value={healthInfoVisibility}
+                        options={visibilityOptions}
+                        onValueChange={setHealthInfoVisibility}
+                        direction="column"
+                    />
+
+                    <RadioGroup
+                        label="Saved location visibility"
+                        name="locationVisibility"
+                        value={locationVisibility}
+                        options={visibilityOptions}
+                        onValueChange={setLocationVisibility}
+                        direction="column"
+                    />
+                </div>
+
+                <div className="mt-5 flex items-center justify-between gap-4 border-t border-gray-100 pt-5">
                     <div>
                         <p className="text-sm font-medium text-[color:var(--text-primary)]">
                             Share Current Location
@@ -159,7 +205,7 @@ export default function PrivacySecurityView() {
                 </div>
 
                 <div className="mt-5 flex justify-end">
-                    <PrimaryButton onClick={handleSave} loading={saving}>
+                    <PrimaryButton className="w-auto" onClick={handleSave} loading={saving}>
                         Save Privacy Settings
                     </PrimaryButton>
                 </div>
