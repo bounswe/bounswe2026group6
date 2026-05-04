@@ -132,13 +132,28 @@ describe('help-requests validators', () => {
 				consentGiven: true,
 			};
 
-			const { errors, value } = validateCreateHelpRequest(payload);
+			const { errors, warnings, value } = validateCreateHelpRequest(payload);
 
 			expect(errors).toHaveLength(0);
+			expect(warnings).toEqual([
+				{
+					code: 'LOW_CONTEXT_HELP_REQUEST',
+					message: 'Description and contact full name are both empty. Add at least one when possible to improve emergency coordination.',
+				},
+			]);
 			expect(value.affectedPeopleCount).toBe(1);
 			expect(value.description).toBe('');
 			expect(value.location.neighborhood).toBe('');
 			expect(value.contact.fullName).toBe('');
+		});
+
+		test('rejects invalid provided affectedPeopleCount instead of defaulting it', () => {
+			const payload = buildPayload();
+			payload.affectedPeopleCount = 'invalid';
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`affectedPeopleCount` must be an integer greater than or equal to 1.');
 		});
 
 		test('rejects empty helpTypes', () => {

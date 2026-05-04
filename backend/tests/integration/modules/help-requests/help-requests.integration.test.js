@@ -252,6 +252,66 @@ describe('help-requests integration', () => {
 		expect(response.body.warnings).toEqual([]);
 	});
 
+	test('POST /api/help-requests persists minimal optional payload with defaults and nulls', async () => {
+		const app = createTestApp();
+		const userId = 'user_hr_minimal_1';
+		await seedActiveUser(userId, 'hrminimal1@example.com');
+		const token = buildAuthToken(userId);
+
+		const response = await request(app)
+			.post('/api/help-requests')
+			.set('Authorization', `Bearer ${token}`)
+			.send({
+				helpTypes: ['first_aid'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+				},
+				contact: {
+					phone: 5052318546,
+				},
+				consentGiven: true,
+			});
+
+		expect(response.status).toBe(201);
+		expect(response.body.request.affectedPeopleCount).toBe(1);
+		expect(response.body.request.description).toBeNull();
+		expect(response.body.request.location.neighborhood).toBeNull();
+		expect(response.body.request.location.extraAddress).toBe('');
+		expect(response.body.request.contact.fullName).toBeNull();
+		expect(response.body.warnings).toEqual([
+			{
+				code: 'LOW_CONTEXT_HELP_REQUEST',
+				message: 'Description and contact full name are both empty. Add at least one when possible to improve emergency coordination.',
+			},
+		]);
+
+		const persisted = await query(
+			`
+				SELECT
+					hr.affected_people_count,
+					hr.description,
+					hr.contact_full_name,
+					rl.neighborhood,
+					rl.extra_address
+				FROM help_requests hr
+				JOIN request_locations rl ON rl.request_id = hr.request_id
+				WHERE hr.request_id = $1;
+			`,
+			[response.body.request.id],
+		);
+
+		expect(persisted.rows).toHaveLength(1);
+		expect(persisted.rows[0]).toMatchObject({
+			affected_people_count: 1,
+			description: null,
+			contact_full_name: null,
+			neighborhood: null,
+			extra_address: null,
+		});
+	});
+
 	test('POST /api/help-requests trims optional string fields and preserves numeric phones', async () => {
 		const app = createTestApp();
 		const userId = 'user_hr_2';

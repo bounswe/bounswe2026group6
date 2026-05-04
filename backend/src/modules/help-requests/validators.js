@@ -331,6 +331,13 @@ function validateCreateHelpRequest(payload) {
     };
   }
 
+  if (description === '' && contact?.fullName === '') {
+    warnings.push({
+      code: 'LOW_CONTEXT_HELP_REQUEST',
+      message: 'Description and contact full name are both empty. Add at least one when possible to improve emergency coordination.',
+    });
+  }
+
   return {
     errors,
     warnings,

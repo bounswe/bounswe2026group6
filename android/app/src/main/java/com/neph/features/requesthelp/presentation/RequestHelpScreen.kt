@@ -258,6 +258,10 @@ private fun RequestHelpFieldErrors.hasAny(): Boolean {
     ).any { !it.isNullOrBlank() }
 }
 
+private fun shouldShowLowContextWarning(state: RequestHelpFormState): Boolean {
+    return state.situationDescription.isBlank() && state.fullName.isBlank()
+}
+
 private fun buildSubmission(
     state: RequestHelpFormState,
     locations: LocationData
@@ -771,6 +775,12 @@ fun RequestHelpScreen(
                         label = "Full Name (optional)",
                         error = fieldErrors.fullName
                     )
+
+                    if (shouldShowLowContextWarning(formState)) {
+                        HelperText(
+                            text = "Add a situation description or full name when possible to help coordinators triage faster."
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

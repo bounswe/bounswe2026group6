@@ -144,6 +144,8 @@ Location payload compatibility:
 
 - Existing payloads for `PATCH /api/profiles/me/location` and `POST /api/help-requests` remain valid.
 - Hybrid payloads are also supported (administrative + coordinate fields together).
+- For `POST /api/help-requests`, omitted or `null` `affectedPeopleCount` defaults to `1`; an invalid provided value still returns a validation error.
+- If both `description` and `contact.fullName` are empty, request creation remains valid but the response includes a non-blocking low-context warning.
 
 Hybrid location payload example:
 
