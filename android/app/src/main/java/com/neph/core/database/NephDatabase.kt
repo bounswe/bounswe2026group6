@@ -17,7 +17,7 @@ import com.neph.BuildConfig
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -76,6 +76,11 @@ object NephDatabaseProvider {
             )
         }
     }
+    private val Migration5To6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE help_requests ADD COLUMN coordinateAccuracyMeters REAL")
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -87,7 +92,7 @@ object NephDatabaseProvider {
                 context.applicationContext,
                 NephDatabase::class.java,
                 DatabaseName
-            ).addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5)
+            ).addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5, Migration5To6)
                 .build()
                 .also { instance = it }
         }

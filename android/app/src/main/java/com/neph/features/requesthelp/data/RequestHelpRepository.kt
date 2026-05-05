@@ -36,6 +36,7 @@ internal data class AssignedResponderSnapshot(
 
 private const val PendingHelpRequestStatus = "PENDING_SYNC"
 private const val ReverseGeocodeTimeoutMillis = 7000L
+private const val RequestHelpGpsCoordinateSource = "gps"
 
 data class RequestHelpLocationSubmission(
     val country: String,
@@ -46,7 +47,8 @@ data class RequestHelpLocationSubmission(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val coordinateSource: String? = null,
-    val coordinateCapturedAt: String? = null
+    val coordinateCapturedAt: String? = null,
+    val coordinateAccuracyMeters: Double? = null
 )
 
 data class RequestHelpReverseLocation(
@@ -594,6 +596,7 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
                         JSONObject().apply {
                             put("latitude", location.latitude)
                             put("longitude", location.longitude)
+                            location.coordinateAccuracyMeters?.let { put("accuracyMeters", it) }
                             location.coordinateSource?.let { put("source", it) }
                             location.coordinateCapturedAt?.let { put("capturedAt", it) }
                         }
@@ -634,12 +637,9 @@ internal fun buildEmergencyDraftSubmission(
         ?: throw EmergencyDraftRequirementsException(
             "A real contact name is required before creating a quick emergency draft."
         )
-    val profileCoordinatesAllowed = profile.shareLocation == true
-        && profile.sharedLatitude != null
-        && profile.sharedLongitude != null
-    val latitude = currentLocation?.latitude ?: profile.sharedLatitude.takeIf { profileCoordinatesAllowed }
-    val longitude = currentLocation?.longitude ?: profile.sharedLongitude.takeIf { profileCoordinatesAllowed }
-    val coordinateSource = currentLocation?.source ?: latitude.takeIf { profileCoordinatesAllowed }?.let { "PROFILE_LAST_SHARED" }
+    val latitude = currentLocation?.latitude
+    val longitude = currentLocation?.longitude
+    val coordinateSource = currentLocation?.let { RequestHelpGpsCoordinateSource }
     val coordinateCapturedAt = currentLocation?.capturedAt
     val country = reverseLocation?.country?.trim()?.takeIf { it.isNotBlank() }
         ?: profile.country?.trim()?.takeIf { it.isNotBlank() }
@@ -684,7 +684,8 @@ internal fun buildEmergencyDraftSubmission(
             latitude = latitude,
             longitude = longitude,
             coordinateSource = coordinateSource,
-            coordinateCapturedAt = coordinateCapturedAt
+            coordinateCapturedAt = coordinateCapturedAt,
+            coordinateAccuracyMeters = currentLocation.accuracyMeters
         ),
         contact = RequestHelpContactSubmission(
             fullName = contactName,
@@ -722,6 +723,7 @@ internal fun RequestHelpSubmission.toEntity(
         longitude = location.longitude,
         coordinateSource = location.coordinateSource,
         coordinateCapturedAt = location.coordinateCapturedAt,
+        coordinateAccuracyMeters = location.coordinateAccuracyMeters,
         contactFullName = contact.fullName,
         contactPhone = contact.phone.toString(),
         contactAlternativePhone = contact.alternativePhone?.toString(),
@@ -785,6 +787,7 @@ internal fun JSONObject.toHelpRequestEntity(
         longitude = readLocationLongitude(location, existing),
         coordinateSource = readLocationCoordinateSource(location, existing),
         coordinateCapturedAt = readLocationCoordinateCapturedAt(location, existing),
+        coordinateAccuracyMeters = readLocationCoordinateAccuracyMeters(location, existing),
         contactFullName = contact.optString("fullName"),
         contactPhone = contact.opt("phone")?.toString().orEmpty(),
         contactAlternativePhone = contact.opt("alternativePhone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
@@ -823,7 +826,8 @@ private fun RequestHelpSubmission.withPreservedCoordinates(existing: HelpRequest
             latitude = existing.latitude,
             longitude = existing.longitude,
             coordinateSource = existing.coordinateSource,
-            coordinateCapturedAt = existing.coordinateCapturedAt
+            coordinateCapturedAt = existing.coordinateCapturedAt,
+            coordinateAccuracyMeters = existing.coordinateAccuracyMeters
         )
     )
 }
@@ -848,6 +852,11 @@ private fun readLocationCoordinateSource(location: JSONObject, existing: HelpReq
 private fun readLocationCoordinateCapturedAt(location: JSONObject, existing: HelpRequestEntity?): String? {
     return location.optJSONObject("coordinate")?.optString("capturedAt")?.takeIf { it.isNotBlank() }
         ?: existing?.coordinateCapturedAt
+}
+
+private fun readLocationCoordinateAccuracyMeters(location: JSONObject, existing: HelpRequestEntity?): Double? {
+    return location.optJSONObject("coordinate")?.optNullableDouble("accuracyMeters")
+        ?: existing?.coordinateAccuracyMeters
 }
 
 private fun JSONObject.optNullableDouble(key: String): Double? {

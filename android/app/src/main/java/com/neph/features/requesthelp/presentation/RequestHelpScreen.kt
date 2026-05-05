@@ -54,6 +54,7 @@ import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizeBloodType
 import com.neph.features.profile.data.normalizePhoneParts
+import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
 import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
 import com.neph.features.profile.presentation.components.LocationSelector
@@ -83,6 +84,10 @@ import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 private val helpTypeOptions = listOf(
     "First Aid",
@@ -112,6 +117,9 @@ private val vulnerableGroupOptions = listOf(
     "Chronic Condition"
 )
 
+private const val RequestHelpGpsCoordinateSource = "gps"
+private const val RequestHelpMapCoordinateSource = "map_selection"
+
 private data class RequestHelpFormState(
     val helpTypes: List<String> = emptyList(),
     val otherHelpType: String = "",
@@ -125,6 +133,11 @@ private data class RequestHelpFormState(
     val district: String = "",
     val neighborhood: String = "",
     val shortAddress: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val coordinateSource: String? = null,
+    val coordinateCapturedAt: String? = null,
+    val coordinateAccuracyMeters: Double? = null,
     val fullName: String = "",
     val countryCode: String = "+90",
     val phoneNumber: String = "",
@@ -205,6 +218,11 @@ private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
         district = district,
         neighborhood = neighborhood,
         shortAddress = extraAddress,
+        latitude = latitude,
+        longitude = longitude,
+        coordinateSource = coordinateSource,
+        coordinateCapturedAt = coordinateCapturedAt,
+        coordinateAccuracyMeters = coordinateAccuracyMeters,
         fullName = contactFullName,
         countryCode = phoneParts.countryCode,
         phoneNumber = phoneParts.phone,
@@ -339,7 +357,12 @@ private fun buildSubmission(
                 state.neighborhood,
                 locations
             ).ifBlank { state.neighborhood.trim() },
-            extraAddress = state.shortAddress.trim()
+            extraAddress = state.shortAddress.trim(),
+            latitude = state.latitude,
+            longitude = state.longitude,
+            coordinateSource = state.coordinateSource,
+            coordinateCapturedAt = state.coordinateCapturedAt,
+            coordinateAccuracyMeters = state.coordinateAccuracyMeters
         ),
         contact = RequestHelpContactSubmission(
             fullName = state.fullName.trim(),
@@ -348,6 +371,12 @@ private fun buildSubmission(
         ),
         consentGiven = state.confirmationAccepted
     )
+}
+
+private fun currentIsoUtc(): String {
+    return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date())
 }
 
 internal data class GuestLocationAutofillSelection(
@@ -469,6 +498,7 @@ fun RequestHelpScreen(
         scope.launch {
             if (currentLocationLoading) return@launch
             currentLocationLoading = true
+            var capturedSnapshot = false
             try {
                 val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
                     context = context,
@@ -486,12 +516,25 @@ fun RequestHelpScreen(
                     return@launch
                 }
 
+                runCatching {
+                    OperationalLocationRepository.saveAndSyncIfAuthenticated(location)
+                }
+
+                formState = formState.copy(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    coordinateSource = RequestHelpGpsCoordinateSource,
+                    coordinateCapturedAt = location.capturedAt,
+                    coordinateAccuracyMeters = location.accuracyMeters
+                )
+                capturedSnapshot = true
+
                 val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
                     latitude = location.latitude,
                     longitude = location.longitude
                 )
                 if (reverseLocation == null) {
-                    infoMessage = "Could not resolve your current location. You can continue with manual location entry."
+                    infoMessage = "Current coordinates were saved for this request. Please complete the location fields manually."
                     return@launch
                 }
 
@@ -511,7 +554,12 @@ fun RequestHelpScreen(
                     city = autofill.city,
                     district = autofill.district,
                     neighborhood = autofill.neighborhood,
-                    shortAddress = autofill.shortAddress
+                    shortAddress = autofill.shortAddress,
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    coordinateSource = RequestHelpGpsCoordinateSource,
+                    coordinateCapturedAt = location.capturedAt,
+                    coordinateAccuracyMeters = location.accuracyMeters
                 )
                 if (nextFormState != previousFormState) {
                     formState = nextFormState
@@ -522,7 +570,11 @@ fun RequestHelpScreen(
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                infoMessage = "Could not retrieve your current location. You can continue with manual location entry."
+                infoMessage = if (capturedSnapshot) {
+                    "Current coordinates were saved for this request. Please complete the location fields manually."
+                } else {
+                    "Could not retrieve your current location. You can continue with manual location entry."
+                }
             } finally {
                 currentLocationLoading = false
             }
@@ -536,7 +588,15 @@ fun RequestHelpScreen(
         mapActionMessage = ""
 
         scope.launch {
+            val selectedCapturedAt = currentIsoUtc()
             try {
+                formState = formState.copy(
+                    latitude = selection.latitude,
+                    longitude = selection.longitude,
+                    coordinateSource = RequestHelpMapCoordinateSource,
+                    coordinateCapturedAt = selectedCapturedAt,
+                    coordinateAccuracyMeters = null
+                )
                 val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
                     latitude = selection.latitude,
                     longitude = selection.longitude
@@ -555,7 +615,12 @@ fun RequestHelpScreen(
                     city = update.city,
                     district = update.district,
                     neighborhood = update.neighborhood,
-                    shortAddress = update.extraAddress
+                    shortAddress = update.extraAddress,
+                    latitude = selection.latitude,
+                    longitude = selection.longitude,
+                    coordinateSource = RequestHelpMapCoordinateSource,
+                    coordinateCapturedAt = selectedCapturedAt,
+                    coordinateAccuracyMeters = null
                 )
                 mapActionMessage = when {
                     reverseLocation == null ->
@@ -818,8 +883,8 @@ fun RequestHelpScreen(
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                     SectionHeader(
-                        title = "Location",
-                        subtitle = "Use the same location structure as your profile."
+                        title = "Emergency Location",
+                        subtitle = "Where do you need help right now? Profile location may prefill fields, but this request uses the event location you confirm here."
                     )
 
                     if (locationLoading) {
@@ -869,14 +934,16 @@ fun RequestHelpScreen(
                     )
 
                     SecondaryButton(
-                        text = "Select Location on Map",
+                        text = "Select Emergency Location on Map",
                         onClick = { mapPickerOpen = true },
                         enabled = !locationLoading && !loading
                     )
 
-                    mapPickerSelection?.let { selection ->
+                    val requestLatitude = formState.latitude
+                    val requestLongitude = formState.longitude
+                    if (requestLatitude != null && requestLongitude != null) {
                         HelperText(
-                            text = "Selected coordinates: ${formatMapCoordinate(selection.latitude)}, ${formatMapCoordinate(selection.longitude)}"
+                            text = "Request coordinate snapshot: ${formatMapCoordinate(requestLatitude)}, ${formatMapCoordinate(requestLongitude)}"
                         )
                     }
 
@@ -901,8 +968,8 @@ fun RequestHelpScreen(
 
                     if (mapPickerOpen) {
                         MapPickerDialog(
-                            initialLatitude = mapPickerSelection?.latitude,
-                            initialLongitude = mapPickerSelection?.longitude,
+                            initialLatitude = mapPickerSelection?.latitude ?: formState.latitude,
+                            initialLongitude = mapPickerSelection?.longitude ?: formState.longitude,
                             loading = mapPickerLoading,
                             onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
                             onConfirm = ::handleMapSelection

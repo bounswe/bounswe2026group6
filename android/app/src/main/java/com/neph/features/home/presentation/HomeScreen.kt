@@ -33,6 +33,7 @@ import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
+import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
@@ -267,11 +268,28 @@ fun HomeScreen(
                 } else if (!isAuthenticated || sessionToken.isNullOrBlank()) {
                     onRequestHelp(null)
                 } else {
+                    if (!DeviceLocationProvider.hasLocationPermission(context)) {
+                        requestHelpLoading = false
+                        pendingLocationPermissionAction = { granted ->
+                            if (granted) {
+                                handleRequestHelp()
+                            } else {
+                                onRequestHelp(null)
+                            }
+                        }
+                        locationPermissionRequester.requestPermission()
+                        return@launch
+                    }
                     val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
                         context = context,
                         sharingEnabled = true
                     )
                     val currentLocation = locationAttempt.location
+                    if (currentLocation != null) {
+                        runCatching {
+                            OperationalLocationRepository.saveAndSyncIfAuthenticated(currentLocation)
+                        }
+                    }
                     val reverseLocation = if (currentLocation != null) {
                         RequestHelpRepository.reverseGeocodeCurrentLocation(
                             latitude = currentLocation.latitude,

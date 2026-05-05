@@ -56,8 +56,9 @@ class RequestHelpOfflineMappingTest {
                 extraAddress = "Near park",
                 latitude = 40.987,
                 longitude = 29.025,
-                coordinateSource = "DEVICE_GPS",
-                coordinateCapturedAt = "2026-05-02T10:00:00.000Z"
+                coordinateSource = "gps",
+                coordinateCapturedAt = "2026-05-02T10:00:00.000Z",
+                coordinateAccuracyMeters = 18.5
             )
         )
         val json = submission.toJson()
@@ -71,12 +72,14 @@ class RequestHelpOfflineMappingTest {
         val location = json.getJSONObject("location")
         assertEquals(40.987, location.getDouble("latitude"), 0.0)
         assertEquals(29.025, location.getDouble("longitude"), 0.0)
-        assertEquals("DEVICE_GPS", location.getJSONObject("coordinate").getString("source"))
+        assertEquals(18.5, location.getJSONObject("coordinate").getDouble("accuracyMeters"), 0.0)
+        assertEquals("gps", location.getJSONObject("coordinate").getString("source"))
         assertEquals("2026-05-02T10:00:00.000Z", location.getJSONObject("coordinate").getString("capturedAt"))
         assertEquals(40.987, entity.latitude ?: 0.0, 0.0)
         assertEquals(29.025, entity.longitude ?: 0.0, 0.0)
-        assertEquals("DEVICE_GPS", entity.coordinateSource)
+        assertEquals("gps", entity.coordinateSource)
         assertEquals("2026-05-02T10:00:00.000Z", entity.coordinateCapturedAt)
+        assertEquals(18.5, entity.coordinateAccuracyMeters ?: 0.0, 0.0)
     }
 
     @Test
@@ -140,6 +143,26 @@ class RequestHelpOfflineMappingTest {
     }
 
     @Test
+    fun emergencyDraftDoesNotUseProfileSharedCoordinatesAsEventLocation() {
+        assertThrows(EmergencyDraftRequirementsException::class.java) {
+            buildEmergencyDraftSubmission(
+                profile = completeProfile().copy(
+                    shareLocation = true,
+                    sharedLatitude = 41.01,
+                    sharedLongitude = 29.02
+                ),
+                currentLocation = null,
+                reverseLocation = RequestHelpReverseLocation(
+                    country = "Turkey",
+                    city = "Istanbul",
+                    district = "Kadikoy",
+                    neighborhood = "Moda"
+                )
+            )
+        }
+    }
+
+    @Test
     fun emergencyDraftUsesVerifiedProfileAndCurrentLocationWithoutFakeValues() {
         val submission = buildEmergencyDraftSubmission(
             profile = completeProfile(),
@@ -162,7 +185,8 @@ class RequestHelpOfflineMappingTest {
         assertEquals("Besiktas assembly area", submission.location.extraAddress)
         assertEquals(41.043, submission.location.latitude ?: 0.0, 0.0)
         assertEquals(29.009, submission.location.longitude ?: 0.0, 0.0)
-        assertEquals("DEVICE_GPS", submission.location.coordinateSource)
+        assertEquals("gps", submission.location.coordinateSource)
+        assertEquals(12.0, submission.location.coordinateAccuracyMeters ?: 0.0, 0.0)
         assertTrue(submission.consentGiven)
     }
 
