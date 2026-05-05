@@ -5,37 +5,7 @@ const DEFAULT_STALE_CACHE_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_CACHE_MAX_ENTRIES = 500;
 const DEFAULT_OVERPASS_USER_AGENT = 'NEPH-Backend/1.0 (+https://github.com/bounswe/bounswe2026group6)';
 const CACHE_COORDINATE_DECIMALS = 4;
-
-const FALLBACK_GATHERING_AREAS = [
-  {
-    id: 'fallback-istanbul-kadikoy-1',
-    name: 'Curated Kadikoy Assembly Area',
-    lat: 41.0105,
-    lon: 29.0105,
-    category: 'assembly_point',
-  },
-  {
-    id: 'fallback-istanbul-besiktas-1',
-    name: 'Curated Besiktas Assembly Area',
-    lat: 41.0438,
-    lon: 29.0094,
-    category: 'assembly_point',
-  },
-  {
-    id: 'fallback-ankara-cankaya-1',
-    name: 'Curated Cankaya Shelter Area',
-    lat: 39.9208,
-    lon: 32.8541,
-    category: 'shelter',
-  },
-  {
-    id: 'fallback-izmir-konak-1',
-    name: 'Curated Konak Assembly Area',
-    lat: 38.4192,
-    lon: 27.1287,
-    category: 'assembly_point',
-  },
-];
+const FALLBACK_REASON = 'No verified backend fallback gathering-area data is available';
 
 const nearbyCache = new Map();
 
@@ -177,6 +147,14 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isProviderFailure(error) {
+  return Boolean(error && [
+    'OVERPASS_TIMEOUT',
+    'OVERPASS_UNAVAILABLE',
+    'OVERPASS_INVALID_PAYLOAD',
+  ].includes(error.code));
+}
+
 function toRadians(value) {
   return (value * Math.PI) / 180;
 }
@@ -260,33 +238,10 @@ function toFeatureCollection(elements, limit, center) {
   };
 }
 
-function toFallbackFeatureCollection(params) {
-  const features = FALLBACK_GATHERING_AREAS
-    .map((area) => {
-      const distanceMeters = Math.round(calculateDistanceMeters(params.lat, params.lon, area.lat, area.lon));
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [area.lon, area.lat],
-        },
-        properties: {
-          id: area.id,
-          osmType: 'fallback',
-          name: area.name,
-          category: area.category,
-          distanceMeters,
-          rawTags: {},
-        },
-      };
-    })
-    .filter((feature) => feature.properties.distanceMeters <= params.radius)
-    .sort((left, right) => left.properties.distanceMeters - right.properties.distanceMeters)
-    .slice(0, params.limit);
-
+function toFallbackFeatureCollection() {
   return {
     type: 'FeatureCollection',
-    features,
+    features: [],
   };
 }
 
@@ -412,6 +367,10 @@ async function getNearbyGatheringAreas(params) {
     writeToCache(cacheKey, result);
     return result;
   } catch (error) {
+    if (!isProviderFailure(error)) {
+      throw error;
+    }
+
     const staleCached = readStaleCache(cacheKey);
     if (staleCached) {
       return withSource(staleCached, 'stale_cache', {
@@ -420,7 +379,7 @@ async function getNearbyGatheringAreas(params) {
       });
     }
 
-    const collection = toFallbackFeatureCollection(params);
+    const collection = toFallbackFeatureCollection();
     return {
       center: {
         lat: params.lat,
@@ -432,6 +391,7 @@ async function getNearbyGatheringAreas(params) {
         requestedLimit: params.limit,
         returnedCount: collection.features.length,
         providerErrorCode: error.code,
+        fallbackReason: FALLBACK_REASON,
       },
       collection,
     };

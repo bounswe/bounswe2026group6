@@ -148,7 +148,7 @@ describe('gathering-areas integration - provider failures', () => {
     expect(second.body.collection.features[0].properties.name).toBe('Unavailable Cached Area');
   });
 
-  test('GET /api/gathering-areas/nearby returns fallback data when provider is unavailable and no cache exists', async () => {
+  test('GET /api/gathering-areas/nearby returns empty fallback when provider is unavailable and no cache exists', async () => {
     const app = createApp();
 
     global.fetch.mockResolvedValue({
@@ -164,14 +164,16 @@ describe('gathering-areas integration - provider failures', () => {
     expect(response.body.source).toBe('fallback');
     expect(response.body.meta).toMatchObject({
       requestedLimit: 10,
+      returnedCount: 0,
       providerErrorCode: 'OVERPASS_UNAVAILABLE',
     });
+    expect(response.body.meta.fallbackReason).toContain('No verified backend fallback');
     expect(response.body.collection.type).toBe('FeatureCollection');
-    expect(response.body.collection.features.length).toBeGreaterThan(0);
+    expect(response.body.collection.features).toHaveLength(0);
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  test('GET /api/gathering-areas/nearby returns fallback data when provider times out and no cache exists', async () => {
+  test('GET /api/gathering-areas/nearby returns empty fallback when provider times out and no cache exists', async () => {
     const app = createApp();
 
     const timeoutError = new Error('timeout');
@@ -185,25 +187,16 @@ describe('gathering-areas integration - provider failures', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.source).toBe('fallback');
-    expect(response.body.meta.providerErrorCode).toBe('OVERPASS_TIMEOUT');
+    expect(response.body.meta).toMatchObject({
+      returnedCount: 0,
+      providerErrorCode: 'OVERPASS_TIMEOUT',
+    });
+    expect(response.body.meta.fallbackReason).toContain('No verified backend fallback');
     expect(response.body.collection.type).toBe('FeatureCollection');
-  });
-
-  test('GET /api/gathering-areas/nearby returns empty fallback collection when no curated area is nearby', async () => {
-    const app = createApp();
-
-    global.fetch.mockRejectedValue(new Error('network down'));
-
-    const response = await request(app)
-      .get('/api/gathering-areas/nearby?lat=0&lon=0&radius=1500&limit=10');
-
-    expect(response.status).toBe(200);
-    expect(response.body.source).toBe('fallback');
-    expect(response.body.meta.returnedCount).toBe(0);
     expect(response.body.collection.features).toHaveLength(0);
   });
 
-  test('GET /api/gathering-areas/nearby returns fallback data on invalid provider payload', async () => {
+  test('GET /api/gathering-areas/nearby returns empty fallback on invalid provider payload', async () => {
     const app = createApp();
 
     global.fetch.mockResolvedValueOnce({
@@ -216,7 +209,12 @@ describe('gathering-areas integration - provider failures', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.source).toBe('fallback');
-    expect(response.body.meta.providerErrorCode).toBe('OVERPASS_INVALID_PAYLOAD');
+    expect(response.body.meta).toMatchObject({
+      returnedCount: 0,
+      providerErrorCode: 'OVERPASS_INVALID_PAYLOAD',
+    });
+    expect(response.body.meta.fallbackReason).toContain('No verified backend fallback');
+    expect(response.body.collection.features).toHaveLength(0);
   });
 
   test('GET /api/gathering-areas/nearby attempts fallback Overpass endpoint after primary fails', async () => {
