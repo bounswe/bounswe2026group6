@@ -79,6 +79,9 @@ interface OperationalLocationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: OperationalLocationEntity)
+
+    @Query("DELETE FROM operational_location")
+    suspend fun clear()
 }
 
 @Dao

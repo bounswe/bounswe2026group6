@@ -8,6 +8,7 @@ import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.core.network.JsonHttpClient
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsRepository
+import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import org.json.JSONObject
@@ -82,6 +83,10 @@ object AuthRepository {
             ?.trim()
             ?.equals(userEmail, ignoreCase = true)
             ?: false
+
+        if (!canReuseLocalProfileFields) {
+            OperationalLocationRepository.clearLocalCache()
+        }
 
         AuthSessionStore.saveAccessToken(accessToken, rememberMe)
         PushTokenSync.syncCurrentToken()
@@ -204,6 +209,13 @@ object AuthRepository {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
+        ioScope.launch {
+            try {
+                OperationalLocationRepository.clearLocalCache()
+            } catch (error: Exception) {
+                Log.w("AuthRepository", "Failed to clear operational location on logout", error)
+            }
+        }
     }
 
     private fun extractTokenFromLink(tokenOrLink: String): String {

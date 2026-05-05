@@ -44,8 +44,7 @@ object OperationalLocationRepository {
     }
 
     suspend fun shouldRefresh(nowEpochMillis: Long = System.currentTimeMillis()): Boolean {
-        val latest = getLatestLocation() ?: return true
-        return nowEpochMillis - latest.updatedAtEpochMillis >= OPERATIONAL_LOCATION_REFRESH_THROTTLE
+        return shouldRefreshLocation(getLatestLocation(), nowEpochMillis)
     }
 
     suspend fun saveLocationLocally(
@@ -81,15 +80,20 @@ object OperationalLocationRepository {
         return syncLocation(local, token)
     }
 
+    suspend fun clearLocalCache() {
+        database.operationalLocationDao().clear()
+    }
+
     suspend fun syncPendingIfAuthenticated() {
         val token = AuthSessionStore.getAccessToken()
-        if (token.isNullOrBlank() || AuthSessionStore.isGuestMode()) {
+        if (!shouldSyncForSession(token, AuthSessionStore.isGuestMode())) {
             return
         }
+        val authenticatedToken = token.orEmpty()
 
         val latest = getLatestLocation() ?: return
         if (latest.syncStatus == SyncStatus.PENDING_UPDATE || latest.syncStatus == SyncStatus.FAILED) {
-            syncLocation(latest, token)
+            syncLocation(latest, authenticatedToken)
         }
     }
 
@@ -101,10 +105,7 @@ object OperationalLocationRepository {
                 token = token,
                 body = location.toRequestBody()
             )
-            val synced = location.copy(
-                syncStatus = SyncStatus.SYNCED,
-                updatedAtEpochMillis = System.currentTimeMillis()
-            )
+            val synced = withSyncStatus(location, SyncStatus.SYNCED)
             database.operationalLocationDao().upsert(synced.toEntity())
             synced
         } catch (error: ApiException) {
@@ -120,12 +121,31 @@ object OperationalLocationRepository {
         location: OperationalLocation,
         syncStatus: String
     ): OperationalLocation {
-        val pending = location.copy(
-            syncStatus = syncStatus,
-            updatedAtEpochMillis = System.currentTimeMillis()
-        )
+        val pending = withSyncStatus(location, syncStatus)
         database.operationalLocationDao().upsert(pending.toEntity())
         return pending
+    }
+
+    internal fun shouldRefreshLocation(
+        latest: OperationalLocation?,
+        nowEpochMillis: Long
+    ): Boolean {
+        if (latest == null) {
+            return true
+        }
+
+        return nowEpochMillis - latest.updatedAtEpochMillis >= OPERATIONAL_LOCATION_REFRESH_THROTTLE
+    }
+
+    internal fun withSyncStatus(
+        location: OperationalLocation,
+        syncStatus: String
+    ): OperationalLocation {
+        return location.copy(syncStatus = syncStatus)
+    }
+
+    internal fun shouldSyncForSession(token: String?, isGuest: Boolean): Boolean {
+        return !token.isNullOrBlank() && !isGuest
     }
 
     private fun OperationalLocation.toRequestBody(): JSONObject {
