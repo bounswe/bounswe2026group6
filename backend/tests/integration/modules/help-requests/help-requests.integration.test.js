@@ -33,6 +33,10 @@ function availabilityOnPayload(latitude = 41.0, longitude = 29.0) {
 	return { isAvailable: true, latitude, longitude };
 }
 
+function minutesFromNow(minutes) {
+	return new Date(Date.now() + minutes * 60 * 1000).toISOString();
+}
+
 function buildCreatePayload(overrides = {}) {
 	return {
 		helpTypes: ['first_aid', 'fire_brigade'],
@@ -80,9 +84,10 @@ async function seedVolunteer({
 	volunteerId,
 	userId,
 	isAvailable = true,
-	latitude = null,
-	longitude = null,
-	locationUpdatedAt = '2026-04-23T08:00:00.000Z',
+	latitude = 41.0,
+	longitude = 29.0,
+	locationUpdatedAt = new Date().toISOString(),
+	availableUntil = isAvailable ? minutesFromNow(360) : null,
 }) {
 	await query(
 		`
@@ -92,11 +97,22 @@ async function seedVolunteer({
 				is_available,
 				last_known_latitude,
 				last_known_longitude,
-				location_updated_at
+				location_updated_at,
+				available_until,
+				availability_confirmed_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6);
+			VALUES (
+				$1,
+				$2,
+				$3,
+				$4,
+				$5,
+				$6::timestamp,
+				$7::timestamp,
+				CASE WHEN $3 THEN $6::timestamp ELSE NULL END
+			);
 		`,
-		[volunteerId, userId, isAvailable, latitude, longitude, locationUpdatedAt],
+		[volunteerId, userId, isAvailable, latitude, longitude, locationUpdatedAt, availableUntil],
 	);
 }
 
@@ -1589,14 +1605,14 @@ describe('help-requests integration', () => {
 			userId: medicalHelperId,
 			latitude: 41.043,
 			longitude: 29.009,
-			locationUpdatedAt: '2026-04-23T08:00:00.000Z',
+			locationUpdatedAt: minutesFromNow(-10),
 		});
 		await seedVolunteer({
 			volunteerId: 'vol_general_helper',
 			userId: generalHelperId,
 			latitude: 41.0431,
 			longitude: 29.0091,
-			locationUpdatedAt: '2026-04-23T08:10:00.000Z',
+			locationUpdatedAt: minutesFromNow(-5),
 		});
 		await seedVolunteerProfile(medicalHelperId, '["First Aid","Logistics"]');
 
@@ -1713,12 +1729,12 @@ describe('help-requests integration', () => {
 		await seedVolunteer({
 			volunteerId: 'vol_combo_fallback_a',
 			userId: firstHelperId,
-			locationUpdatedAt: '2026-04-23T08:00:00.000Z',
+			locationUpdatedAt: minutesFromNow(-10),
 		});
 		await seedVolunteer({
 			volunteerId: 'vol_combo_fallback_b',
 			userId: secondHelperId,
-			locationUpdatedAt: '2026-04-23T08:00:00.000Z',
+			locationUpdatedAt: minutesFromNow(-10),
 		});
 
 		const response = await request(app)

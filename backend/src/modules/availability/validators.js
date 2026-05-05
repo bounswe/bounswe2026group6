@@ -11,6 +11,14 @@ const setAvailabilitySchema = {
     type: 'number',
     required: false,
   },
+  accuracyMeters: {
+    type: 'number',
+    required: false,
+  },
+  source: {
+    type: 'string',
+    required: false,
+  },
 };
 
 const syncAvailabilitySchema = {
@@ -24,6 +32,8 @@ const syncAvailabilitySchema = {
         timestamp: { type: 'string', required: true },
         latitude: { type: 'number', required: false },
         longitude: { type: 'number', required: false },
+        accuracyMeters: { type: 'number', required: false },
+        source: { type: 'string', required: false },
       },
     },
   },
@@ -68,9 +78,35 @@ function validateCoordinatePair(data, errors, prefix = '') {
   }
 }
 
+function validateLocationMetadata(data, errors, prefix = '') {
+  const accuracyKey = prefix ? `${prefix}.accuracyMeters` : 'accuracyMeters';
+  const sourceKey = prefix ? `${prefix}.source` : 'source';
+
+  if (
+    hasOwn(data, 'accuracyMeters')
+    && data.accuracyMeters !== null
+    && (
+      typeof data.accuracyMeters !== 'number'
+      || !Number.isFinite(data.accuracyMeters)
+      || data.accuracyMeters < 0
+    )
+  ) {
+    errors.push(`${accuracyKey} must be a finite number greater than or equal to 0`);
+  }
+
+  if (
+    hasOwn(data, 'source')
+    && data.source !== null
+    && (typeof data.source !== 'string' || data.source.length > 100)
+  ) {
+    errors.push(`${sourceKey} must be a string of at most 100 characters`);
+  }
+}
+
 function validateSetAvailabilityPayload(data) {
   const errors = validate(data, setAvailabilitySchema);
   validateCoordinatePair(data || {}, errors);
+  validateLocationMetadata(data || {}, errors);
   if (data && data.isAvailable === true && (!hasOwn(data, 'latitude') || !hasOwn(data, 'longitude'))) {
     errors.push('latitude and longitude are required when isAvailable is true');
   }
@@ -109,6 +145,7 @@ function validateSyncAvailabilityPayload(data) {
     }
 
     validateCoordinatePair(record, errors, prefix);
+    validateLocationMetadata(record, errors, prefix);
   });
 
   if (errors.length === 0 && data.records.length > 0) {
