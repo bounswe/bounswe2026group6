@@ -79,6 +79,14 @@ data class RequestHelpSubmission(
     val consentGiven: Boolean
 )
 
+data class RequestHelpCoordinateSnapshot(
+    val latitude: Double,
+    val longitude: Double,
+    val coordinateSource: String,
+    val coordinateCapturedAt: String,
+    val coordinateAccuracyMeters: Double?
+)
+
 data class CreateHelpRequestResult(
     val requestId: String,
     val guestAccessToken: String? = null,
@@ -102,6 +110,7 @@ object RequestHelpRepository {
         "Waiting for the help request creation to sync before sending the status update."
 
     private lateinit var prefs: SharedPreferences
+    private var pendingCoordinateSnapshot: RequestHelpCoordinateSnapshot? = null
 
     private val database get() = NephDatabaseProvider.requireInstance()
 
@@ -173,6 +182,16 @@ object RequestHelpRepository {
     ): CreateHelpRequestResult {
         val submission = buildEmergencyDraftSubmission(profile, currentLocation, reverseLocation)
         return createHelpRequest(token = token, submission = submission)
+    }
+
+    fun storePendingCoordinateSnapshot(currentLocation: CurrentDeviceLocation) {
+        pendingCoordinateSnapshot = currentLocation.toRequestHelpCoordinateSnapshot()
+    }
+
+    fun consumePendingCoordinateSnapshot(): RequestHelpCoordinateSnapshot? {
+        return pendingCoordinateSnapshot.also {
+            pendingCoordinateSnapshot = null
+        }
     }
 
     suspend fun getLocalHelpRequest(localId: String): HelpRequestEntity? {
@@ -283,6 +302,7 @@ object RequestHelpRepository {
     fun resetForTesting() {
         requireDebugBuildForTestingReset()
 
+        pendingCoordinateSnapshot = null
         if (::prefs.isInitialized) {
             prefs.edit().clear().commit()
         }
@@ -642,13 +662,9 @@ internal fun buildEmergencyDraftSubmission(
     val coordinateSource = currentLocation?.let { RequestHelpGpsCoordinateSource }
     val coordinateCapturedAt = currentLocation?.capturedAt
     val country = reverseLocation?.country?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.country?.trim()?.takeIf { it.isNotBlank() }
     val city = reverseLocation?.city?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.city?.trim()?.takeIf { it.isNotBlank() }
     val district = reverseLocation?.district?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.district?.trim()?.takeIf { it.isNotBlank() }
     val neighborhood = reverseLocation?.neighborhood?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.neighborhood?.trim()?.takeIf { it.isNotBlank() }
 
     if (
         latitude == null ||
@@ -663,9 +679,7 @@ internal fun buildEmergencyDraftSubmission(
         )
     }
 
-    val extraAddress = reverseLocation?.extraAddress?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.extraAddress?.trim()?.takeIf { it.isNotBlank() }
-        ?: ""
+    val extraAddress = reverseLocation.extraAddress?.trim()?.takeIf { it.isNotBlank() } ?: ""
 
     return RequestHelpSubmission(
         helpTypes = listOf("other"),
@@ -857,6 +871,16 @@ private fun readLocationCoordinateCapturedAt(location: JSONObject, existing: Hel
 private fun readLocationCoordinateAccuracyMeters(location: JSONObject, existing: HelpRequestEntity?): Double? {
     return location.optJSONObject("coordinate")?.optNullableDouble("accuracyMeters")
         ?: existing?.coordinateAccuracyMeters
+}
+
+private fun CurrentDeviceLocation.toRequestHelpCoordinateSnapshot(): RequestHelpCoordinateSnapshot {
+    return RequestHelpCoordinateSnapshot(
+        latitude = latitude,
+        longitude = longitude,
+        coordinateSource = RequestHelpGpsCoordinateSource,
+        coordinateCapturedAt = capturedAt,
+        coordinateAccuracyMeters = accuracyMeters
+    )
 }
 
 private fun JSONObject.optNullableDouble(key: String): Double? {

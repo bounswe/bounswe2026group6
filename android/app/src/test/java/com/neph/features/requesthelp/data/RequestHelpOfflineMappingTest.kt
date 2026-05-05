@@ -163,6 +163,17 @@ class RequestHelpOfflineMappingTest {
     }
 
     @Test
+    fun emergencyDraftDoesNotMixCurrentCoordinatesWithProfileAdministrativeLocation() {
+        assertThrows(EmergencyDraftRequirementsException::class.java) {
+            buildEmergencyDraftSubmission(
+                profile = completeProfile(),
+                currentLocation = sampleCurrentLocation(),
+                reverseLocation = null
+            )
+        }
+    }
+
+    @Test
     fun emergencyDraftUsesVerifiedProfileAndCurrentLocationWithoutFakeValues() {
         val submission = buildEmergencyDraftSubmission(
             profile = completeProfile(),

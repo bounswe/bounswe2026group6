@@ -39,6 +39,7 @@ import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
+import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.Routes
@@ -242,6 +243,14 @@ fun HomeScreen(
         }
     }
 
+    fun RequestHelpReverseLocation?.hasCompleteEmergencyAdministrativeLocation(): Boolean {
+        return this != null &&
+            !country.isNullOrBlank() &&
+            !city.isNullOrBlank() &&
+            !district.isNullOrBlank() &&
+            !neighborhood.isNullOrBlank()
+    }
+
     fun handleRequestHelp() {
         availabilityError = ""
         availabilityInfo = ""
@@ -297,6 +306,11 @@ fun HomeScreen(
                         )
                     } else {
                         null
+                    }
+                    if (currentLocation != null && !reverseLocation.hasCompleteEmergencyAdministrativeLocation()) {
+                        RequestHelpRepository.storePendingCoordinateSnapshot(currentLocation)
+                        onRequestHelp(null)
+                        return@launch
                     }
                     val draft = RequestHelpRepository.createEmergencyDraft(
                         token = sessionToken,

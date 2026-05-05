@@ -328,6 +328,20 @@ private fun shouldShowLowContextWarning(state: RequestHelpFormState): Boolean {
     return state.situationDescription.isBlank() && state.fullName.isBlank()
 }
 
+private fun RequestHelpFormState.withoutCoordinateSnapshot(): RequestHelpFormState {
+    return copy(
+        latitude = null,
+        longitude = null,
+        coordinateSource = null,
+        coordinateCapturedAt = null,
+        coordinateAccuracyMeters = null
+    )
+}
+
+private fun RequestHelpFormState.hasCoordinateSnapshot(): Boolean {
+    return latitude != null && longitude != null
+}
+
 private fun buildSubmission(
     state: RequestHelpFormState,
     locations: LocationData
@@ -481,6 +495,36 @@ fun RequestHelpScreen(
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
     var currentLocationLoading by remember { mutableStateOf(false) }
+
+    fun applyPendingCoordinateSnapshot(
+        baseState: RequestHelpFormState,
+        clearAdministrativeFields: Boolean
+    ): RequestHelpFormState {
+        val snapshot = RequestHelpRepository.consumePendingCoordinateSnapshot() ?: return baseState
+        infoMessage = "Current coordinates were saved for this request. Please complete the emergency location fields manually."
+        return baseState.copy(
+            country = if (clearAdministrativeFields) "" else baseState.country,
+            city = if (clearAdministrativeFields) "" else baseState.city,
+            district = if (clearAdministrativeFields) "" else baseState.district,
+            neighborhood = if (clearAdministrativeFields) "" else baseState.neighborhood,
+            shortAddress = if (clearAdministrativeFields) "" else baseState.shortAddress,
+            latitude = snapshot.latitude,
+            longitude = snapshot.longitude,
+            coordinateSource = snapshot.coordinateSource,
+            coordinateCapturedAt = snapshot.coordinateCapturedAt,
+            coordinateAccuracyMeters = snapshot.coordinateAccuracyMeters
+        )
+    }
+
+    fun updateManualLocation(nextState: RequestHelpFormState) {
+        val hadCoordinateSnapshot = formState.hasCoordinateSnapshot()
+        formState = nextState.withoutCoordinateSnapshot()
+        mapPickerSelection = null
+        mapActionMessage = ""
+        if (hadCoordinateSnapshot) {
+            infoMessage = "Coordinate snapshot cleared because the emergency location fields changed."
+        }
+    }
 
     LaunchedEffect(draftLocalId) {
         val nextDraftLocalId = draftLocalId.orEmpty()
@@ -679,7 +723,10 @@ fun RequestHelpScreen(
         }
 
         if (!isLoggedIn) {
-            formState = RequestHelpFormState()
+            formState = applyPendingCoordinateSnapshot(
+                baseState = RequestHelpFormState(),
+                clearAdministrativeFields = true
+            )
             checkingActiveRequest = false
             return@LaunchedEffect
         }
@@ -692,8 +739,10 @@ fun RequestHelpScreen(
             }
 
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
-            formState = buildPrefilledForm(profile)
-            infoMessage = ""
+            formState = applyPendingCoordinateSnapshot(
+                baseState = buildPrefilledForm(profile),
+                clearAdministrativeFields = true
+            )
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (error: ApiException) {
@@ -703,11 +752,21 @@ fun RequestHelpScreen(
                 onNavigateToLogin()
                 return@LaunchedEffect
             }
-            formState = buildPrefilledForm(ProfileRepository.getProfile())
-            infoMessage = "Could not refresh profile details. Using saved information where available."
+            formState = applyPendingCoordinateSnapshot(
+                baseState = buildPrefilledForm(ProfileRepository.getProfile()),
+                clearAdministrativeFields = true
+            )
+            if (infoMessage.isBlank()) {
+                infoMessage = "Could not refresh profile details. Using saved information where available."
+            }
         } catch (_: Exception) {
-            formState = buildPrefilledForm(ProfileRepository.getProfile())
-            infoMessage = "Could not refresh profile details. Using saved information where available."
+            formState = applyPendingCoordinateSnapshot(
+                baseState = buildPrefilledForm(ProfileRepository.getProfile()),
+                clearAdministrativeFields = true
+            )
+            if (infoMessage.isBlank()) {
+                infoMessage = "Could not refresh profile details. Using saved information where available."
+            }
         } finally {
             checkingActiveRequest = false
         }
@@ -913,16 +972,22 @@ fun RequestHelpScreen(
                         district = formState.district,
                         neighborhood = formState.neighborhood,
                         onCountryChange = {
-                            formState = formState.copy(country = it, city = "", district = "", neighborhood = "")
+                            updateManualLocation(
+                                formState.copy(country = it, city = "", district = "", neighborhood = "")
+                            )
                         },
                         onCityChange = {
-                            formState = formState.copy(city = it, district = "", neighborhood = "")
+                            updateManualLocation(
+                                formState.copy(city = it, district = "", neighborhood = "")
+                            )
                         },
                         onDistrictChange = {
-                            formState = formState.copy(district = it, neighborhood = "")
+                            updateManualLocation(
+                                formState.copy(district = it, neighborhood = "")
+                            )
                         },
                         onNeighborhoodChange = {
-                            formState = formState.copy(neighborhood = it)
+                            updateManualLocation(formState.copy(neighborhood = it))
                         },
                         locationData = availableLocationData,
                         enabled = !locationLoading,
@@ -949,7 +1014,7 @@ fun RequestHelpScreen(
 
                     AppTextField(
                         value = formState.shortAddress,
-                        onValueChange = { formState = formState.copy(shortAddress = it) },
+                        onValueChange = { updateManualLocation(formState.copy(shortAddress = it)) },
                         label = "Short Address / Address Description (optional)",
                         error = fieldErrors.shortAddress
                     )
