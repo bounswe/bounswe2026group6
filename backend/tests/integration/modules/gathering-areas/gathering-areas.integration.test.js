@@ -237,6 +237,8 @@ describe('gathering-areas integration', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
+    expect(first.body.source).toBe('overpass');
+    expect(second.body.source).toBe('overpass');
     expect(second.body.collection.features).toHaveLength(1);
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
