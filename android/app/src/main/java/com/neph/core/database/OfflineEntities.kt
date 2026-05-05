@@ -74,6 +74,22 @@ data class AvailabilityEntity(
     }
 }
 
+@Entity(tableName = "operational_location")
+data class OperationalLocationEntity(
+    @PrimaryKey val key: String = CURRENT_KEY,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float?,
+    val source: String,
+    val capturedAt: Long,
+    val updatedAtEpochMillis: Long,
+    val syncStatus: String? = null
+) {
+    companion object {
+        const val CURRENT_KEY = "current"
+    }
+}
+
 @Entity(
     tableName = "assigned_requests",
     indices = [Index(value = ["requestId"]), Index(value = ["syncStatus"])]

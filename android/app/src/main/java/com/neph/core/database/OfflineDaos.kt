@@ -73,6 +73,18 @@ interface AvailabilityDao {
 }
 
 @Dao
+interface OperationalLocationDao {
+    @Query("SELECT * FROM operational_location WHERE `key` = 'current' LIMIT 1")
+    suspend fun getLatest(): OperationalLocationEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: OperationalLocationEntity)
+
+    @Query("DELETE FROM operational_location")
+    suspend fun clear()
+}
+
+@Dao
 interface AssignedRequestDao {
     @Query("SELECT * FROM assigned_requests WHERE locallyCancelled = 0 ORDER BY fetchedAtEpochMillis DESC LIMIT 1")
     fun observeCurrent(): Flow<AssignedRequestEntity?>

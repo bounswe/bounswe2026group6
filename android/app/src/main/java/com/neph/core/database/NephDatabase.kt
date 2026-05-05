@@ -12,16 +12,18 @@ import com.neph.BuildConfig
     entities = [
         HelpRequestEntity::class,
         AvailabilityEntity::class,
+        OperationalLocationEntity::class,
         AssignedRequestEntity::class,
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
     abstract fun helpRequestDao(): HelpRequestDao
     abstract fun availabilityDao(): AvailabilityDao
+    abstract fun operationalLocationDao(): OperationalLocationDao
     abstract fun assignedRequestDao(): AssignedRequestDao
     abstract fun syncOperationDao(): SyncOperationDao
     abstract fun syncMetadataDao(): SyncMetadataDao
@@ -56,6 +58,24 @@ object NephDatabaseProvider {
             database.execSQL("ALTER TABLE help_requests ADD COLUMN coordinateCapturedAt TEXT")
         }
     }
+    private val Migration4To5 = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS operational_location (
+                    `key` TEXT NOT NULL PRIMARY KEY,
+                    latitude REAL NOT NULL,
+                    longitude REAL NOT NULL,
+                    accuracyMeters REAL,
+                    source TEXT NOT NULL,
+                    capturedAt INTEGER NOT NULL,
+                    updatedAtEpochMillis INTEGER NOT NULL,
+                    syncStatus TEXT
+                )
+                """.trimIndent()
+            )
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -67,7 +87,7 @@ object NephDatabaseProvider {
                 context.applicationContext,
                 NephDatabase::class.java,
                 DatabaseName
-            ).addMigrations(Migration1To2, Migration2To3, Migration3To4)
+            ).addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5)
                 .build()
                 .also { instance = it }
         }
