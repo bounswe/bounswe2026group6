@@ -138,6 +138,7 @@ private data class RequestHelpFormState(
     val coordinateSource: String? = null,
     val coordinateCapturedAt: String? = null,
     val coordinateAccuracyMeters: Double? = null,
+    val locationWasManuallyChanged: Boolean = false,
     val fullName: String = "",
     val countryCode: String = "+90",
     val phoneNumber: String = "",
@@ -223,6 +224,7 @@ private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
         coordinateSource = coordinateSource,
         coordinateCapturedAt = coordinateCapturedAt,
         coordinateAccuracyMeters = coordinateAccuracyMeters,
+        locationWasManuallyChanged = false,
         fullName = contactFullName,
         countryCode = phoneParts.countryCode,
         phoneNumber = phoneParts.phone,
@@ -334,7 +336,8 @@ private fun RequestHelpFormState.withoutCoordinateSnapshot(): RequestHelpFormSta
         longitude = null,
         coordinateSource = null,
         coordinateCapturedAt = null,
-        coordinateAccuracyMeters = null
+        coordinateAccuracyMeters = null,
+        locationWasManuallyChanged = true
     )
 }
 
@@ -460,6 +463,41 @@ internal fun resolveGuestLocationAutofillSelection(
     )
 }
 
+private fun resolveEventLocationAutofillSelection(
+    reverseLocation: RequestHelpReverseLocation,
+    locations: LocationData
+): GuestLocationAutofillSelection? {
+    val countryFromCode = reverseLocation.countryCode
+        ?.lowercase()
+        ?.takeIf { locations.containsKey(it) }
+        .orEmpty()
+    val countryFromLabel = findCountryKeyByLabel(reverseLocation.country, locations)
+    val country = countryFromCode.ifBlank { countryFromLabel }
+    if (country.isBlank()) return null
+
+    val city = findCityKeyByLabel(country, reverseLocation.city, locations)
+    if (city.isBlank()) return null
+
+    val district = findDistrictKeyByLabel(country, city, reverseLocation.district, locations)
+    if (district.isBlank()) return null
+
+    val neighborhood = findNeighborhoodValueByLabel(
+        country,
+        city,
+        district,
+        reverseLocation.neighborhood,
+        locations
+    )
+
+    return GuestLocationAutofillSelection(
+        country = country,
+        city = city,
+        district = district,
+        neighborhood = neighborhood,
+        shortAddress = reverseLocation.extraAddress?.takeIf { it.isNotBlank() }.orEmpty()
+    )
+}
+
 @Composable
 fun RequestHelpScreen(
     draftLocalId: String? = null,
@@ -512,7 +550,8 @@ fun RequestHelpScreen(
             longitude = snapshot.longitude,
             coordinateSource = snapshot.coordinateSource,
             coordinateCapturedAt = snapshot.coordinateCapturedAt,
-            coordinateAccuracyMeters = snapshot.coordinateAccuracyMeters
+            coordinateAccuracyMeters = snapshot.coordinateAccuracyMeters,
+            locationWasManuallyChanged = false
         )
     }
 
@@ -569,7 +608,8 @@ fun RequestHelpScreen(
                     longitude = location.longitude,
                     coordinateSource = RequestHelpGpsCoordinateSource,
                     coordinateCapturedAt = location.capturedAt,
-                    coordinateAccuracyMeters = location.accuracyMeters
+                    coordinateAccuracyMeters = location.accuracyMeters,
+                    locationWasManuallyChanged = false
                 )
                 capturedSnapshot = true
 
@@ -578,20 +618,33 @@ fun RequestHelpScreen(
                     longitude = location.longitude
                 )
                 if (reverseLocation == null) {
+                    formState = formState.copy(country = "", city = "", district = "", neighborhood = "", shortAddress = "")
                     infoMessage = "Current coordinates were saved for this request. Please complete the location fields manually."
                     return@launch
                 }
 
                 val previousFormState = formState
-                val autofill = resolveGuestLocationAutofillSelection(
-                    currentCountry = previousFormState.country,
-                    currentCity = previousFormState.city,
-                    currentDistrict = previousFormState.district,
-                    currentNeighborhood = previousFormState.neighborhood,
-                    currentShortAddress = previousFormState.shortAddress,
+                val autofill = resolveEventLocationAutofillSelection(
                     reverseLocation = reverseLocation,
                     locations = availableLocationData
                 )
+                if (autofill == null) {
+                    formState = previousFormState.copy(
+                        country = "",
+                        city = "",
+                        district = "",
+                        neighborhood = "",
+                        shortAddress = "",
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        coordinateSource = RequestHelpGpsCoordinateSource,
+                        coordinateCapturedAt = location.capturedAt,
+                        coordinateAccuracyMeters = location.accuracyMeters,
+                        locationWasManuallyChanged = false
+                    )
+                    infoMessage = "Current coordinates were saved for this request. Please complete the location fields manually."
+                    return@launch
+                }
 
                 val nextFormState = previousFormState.copy(
                     country = autofill.country,
@@ -603,11 +656,12 @@ fun RequestHelpScreen(
                     longitude = location.longitude,
                     coordinateSource = RequestHelpGpsCoordinateSource,
                     coordinateCapturedAt = location.capturedAt,
-                    coordinateAccuracyMeters = location.accuracyMeters
+                    coordinateAccuracyMeters = location.accuracyMeters,
+                    locationWasManuallyChanged = false
                 )
                 if (nextFormState != previousFormState) {
                     formState = nextFormState
-                    infoMessage = "Current location applied without changing non-empty fields."
+                    infoMessage = "Current location applied. Please verify the emergency location fields."
                 } else {
                     infoMessage = "Current location detected. Existing location values were kept."
                 }
@@ -639,37 +693,57 @@ fun RequestHelpScreen(
                     longitude = selection.longitude,
                     coordinateSource = RequestHelpMapCoordinateSource,
                     coordinateCapturedAt = selectedCapturedAt,
-                    coordinateAccuracyMeters = null
+                    coordinateAccuracyMeters = null,
+                    locationWasManuallyChanged = false
                 )
                 val reverseLocation = RequestHelpRepository.reverseGeocodeCurrentLocation(
                     latitude = selection.latitude,
                     longitude = selection.longitude
                 )
-                val update = resolveMapPickerLocationUpdate(
-                    currentCountry = formState.country,
-                    currentCity = formState.city,
-                    currentDistrict = formState.district,
-                    currentNeighborhood = formState.neighborhood,
-                    currentExtraAddress = formState.shortAddress,
-                    reverseLocation = reverseLocation,
-                    locations = availableLocationData
-                )
+                val reverseUpdate = reverseLocation?.let {
+                    resolveMapPickerLocationUpdate(
+                        currentCountry = "",
+                        currentCity = "",
+                        currentDistrict = "",
+                        currentNeighborhood = "",
+                        currentExtraAddress = "",
+                        reverseLocation = it,
+                        locations = availableLocationData
+                    )
+                }
+                val mappedUpdate = reverseUpdate?.takeIf { it.country.isNotBlank() && it.city.isNotBlank() && it.district.isNotBlank() }
+                if (mappedUpdate == null) {
+                    formState = formState.copy(
+                        country = "",
+                        city = "",
+                        district = "",
+                        neighborhood = "",
+                        shortAddress = "",
+                        latitude = selection.latitude,
+                        longitude = selection.longitude,
+                        coordinateSource = RequestHelpMapCoordinateSource,
+                        coordinateCapturedAt = selectedCapturedAt,
+                        coordinateAccuracyMeters = null,
+                        locationWasManuallyChanged = false
+                    )
+                    mapActionMessage = "Could not resolve selected coordinates. You can continue with manual location entry."
+                    return@launch
+                }
                 formState = formState.copy(
-                    country = update.country,
-                    city = update.city,
-                    district = update.district,
-                    neighborhood = update.neighborhood,
-                    shortAddress = update.extraAddress,
+                    country = mappedUpdate.country,
+                    city = mappedUpdate.city,
+                    district = mappedUpdate.district,
+                    neighborhood = mappedUpdate.neighborhood,
+                    shortAddress = mappedUpdate.extraAddress,
                     latitude = selection.latitude,
                     longitude = selection.longitude,
                     coordinateSource = RequestHelpMapCoordinateSource,
                     coordinateCapturedAt = selectedCapturedAt,
-                    coordinateAccuracyMeters = null
+                    coordinateAccuracyMeters = null,
+                    locationWasManuallyChanged = false
                 )
                 mapActionMessage = when {
-                    reverseLocation == null ->
-                        "Could not resolve selected coordinates. You can continue with manual location entry."
-                    update.isMeaningfulMapping ->
+                    mappedUpdate.isMeaningfulMapping ->
                         "Selected location applied."
                     else ->
                         "Selected coordinates were detected. Please verify the location fields manually."
@@ -799,7 +873,8 @@ fun RequestHelpScreen(
                     RequestHelpRepository.updateHelpRequest(
                         token = sessionToken,
                         localId = activeDraftLocalId,
-                        submission = submission
+                        submission = submission,
+                        preserveExistingCoordinates = !formState.locationWasManuallyChanged
                     )
                 } else {
                     RequestHelpRepository.createHelpRequest(

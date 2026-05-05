@@ -207,7 +207,8 @@ object RequestHelpRepository {
     suspend fun updateHelpRequest(
         token: String?,
         localId: String,
-        submission: RequestHelpSubmission
+        submission: RequestHelpSubmission,
+        preserveExistingCoordinates: Boolean = true
     ): CreateHelpRequestResult {
         ensureInitialized()
 
@@ -215,7 +216,10 @@ object RequestHelpRepository {
         val existing = database.helpRequestDao().getByLocalId(localId)
             ?: return createHelpRequest(token = token, submission = submission)
         val ownerType = ownerTypeForToken(token)
-        val submissionWithPreservedLocation = submission.withPreservedCoordinates(existing)
+        val submissionWithPreservedLocation = submission.withPreservedCoordinates(
+            existing = existing,
+            preserveExistingCoordinates = preserveExistingCoordinates
+        )
         val updatedEntity = submissionWithPreservedLocation.toEntity(
             localId = existing.localId,
             ownerType = existing.ownerType,
@@ -826,7 +830,14 @@ internal fun JSONObject.toHelpRequestEntity(
     )
 }
 
-private fun RequestHelpSubmission.withPreservedCoordinates(existing: HelpRequestEntity): RequestHelpSubmission {
+internal fun RequestHelpSubmission.withPreservedCoordinates(
+    existing: HelpRequestEntity,
+    preserveExistingCoordinates: Boolean = true
+): RequestHelpSubmission {
+    if (!preserveExistingCoordinates) {
+        return this
+    }
+
     if (location.latitude != null && location.longitude != null) {
         return this
     }

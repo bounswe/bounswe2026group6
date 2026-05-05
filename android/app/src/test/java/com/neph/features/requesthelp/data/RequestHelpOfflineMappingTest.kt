@@ -83,6 +83,72 @@ class RequestHelpOfflineMappingTest {
     }
 
     @Test
+    fun draftUpdatePreservesExistingCoordinatesWhenLocationWasNotChanged() {
+        val existing = sampleSubmission().copy(
+            location = sampleSubmission().location.copy(
+                latitude = 40.987,
+                longitude = 29.025,
+                coordinateSource = "gps",
+                coordinateCapturedAt = "2026-05-02T10:00:00.000Z",
+                coordinateAccuracyMeters = 18.5
+            )
+        ).toEntity(
+            localId = "local-draft-with-coordinates",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            now = 1234L,
+            syncStatus = SyncStatus.PENDING_UPDATE
+        )
+
+        val updated = sampleSubmission().copy(
+            description = "Need water, medication, and blankets"
+        ).withPreservedCoordinates(
+            existing = existing,
+            preserveExistingCoordinates = true
+        )
+
+        assertEquals(40.987, updated.location.latitude ?: 0.0, 0.0)
+        assertEquals(29.025, updated.location.longitude ?: 0.0, 0.0)
+        assertEquals("gps", updated.location.coordinateSource)
+        assertEquals("2026-05-02T10:00:00.000Z", updated.location.coordinateCapturedAt)
+        assertEquals(18.5, updated.location.coordinateAccuracyMeters ?: 0.0, 0.0)
+    }
+
+    @Test
+    fun draftUpdateDoesNotRestoreCoordinatesWhenLocationWasManuallyChanged() {
+        val existing = sampleSubmission().copy(
+            location = sampleSubmission().location.copy(
+                latitude = 40.987,
+                longitude = 29.025,
+                coordinateSource = "map_selection",
+                coordinateCapturedAt = "2026-05-02T10:00:00.000Z",
+                coordinateAccuracyMeters = null
+            )
+        ).toEntity(
+            localId = "local-draft-with-stale-coordinates",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            now = 1234L,
+            syncStatus = SyncStatus.PENDING_UPDATE
+        )
+
+        val updated = sampleSubmission().copy(
+            location = sampleSubmission().location.copy(
+                district = "Besiktas",
+                neighborhood = "Akat",
+                extraAddress = "New emergency address"
+            )
+        ).withPreservedCoordinates(
+            existing = existing,
+            preserveExistingCoordinates = false
+        )
+
+        assertNull(updated.location.latitude)
+        assertNull(updated.location.longitude)
+        assertNull(updated.location.coordinateSource)
+        assertNull(updated.location.coordinateCapturedAt)
+        assertNull(updated.location.coordinateAccuracyMeters)
+    }
+
+    @Test
     fun remoteMappingPreservesLifecycleAndOperationalMetadata() {
         val entity = JSONObject().apply {
             put("id", "req_remote_1")
