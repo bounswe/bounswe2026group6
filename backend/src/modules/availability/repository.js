@@ -383,6 +383,19 @@ async function createVolunteer(userId) {
 }
 
 async function updateVolunteerAvailability(volunteerId, isAvailable, latitude, longitude, executor = null) {
+  const hasCoordinateUpdate = Number.isFinite(latitude) && Number.isFinite(longitude);
+
+  if (!hasCoordinateUpdate) {
+    const sql = `
+      UPDATE volunteers
+      SET is_available = $2
+      WHERE volunteer_id = $1
+      RETURNING *;
+    `;
+    const result = await runQuery(executor, sql, [volunteerId, isAvailable]);
+    return result.rows[0];
+  }
+
   const sql = `
     UPDATE volunteers
     SET is_available = $2,

@@ -203,6 +203,37 @@ describe('Availability integration', () => {
     expect(vResult.rows[0].is_available).toBe(true);
   });
 
+  test('POST /api/availability/toggle to false preserves existing volunteer coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_toggle_off_preserve';
+    await seedActiveUser(userId, 'av-toggle-off-preserve@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_toggle_off_preserve',
+      userId,
+      isAvailable: true,
+      latitude: 41.015,
+      longitude: 29.01,
+      locationUpdatedAt: '2026-05-04T10:00:00.000Z',
+    });
+    const before = await query('SELECT location_updated_at FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: false });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(after.rows[0].last_known_longitude)).toBeCloseTo(29.01);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+  });
+
   test.each([
     ['latitude > 90', { isAvailable: true, latitude: 91, longitude: 29.0 }],
     ['longitude > 180', { isAvailable: true, latitude: 41.0, longitude: 181 }],
@@ -887,12 +918,80 @@ describe('Availability integration', () => {
             timestamp: new Date().toISOString(),
             latitude: 41.015,
             longitude: 29.01,
+            accuracyMeters: 12.5,
+            source: 'DEVICE_GPS',
+            capturedAt: '2026-05-04T10:00:00.000Z',
           },
         ],
       });
 
     expect(response.status).toBe(200);
     expect(response.body.volunteer.is_available).toBe(true);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+  });
+
+  test('POST /api/availability/sync preserves existing coordinates when latest record lacks coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_sync_preserve_location';
+    await seedActiveUser(userId, 'av-sync-preserve-location@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_sync_preserve_location',
+      userId,
+      isAvailable: false,
+      latitude: 40.99,
+      longitude: 29.02,
+      locationUpdatedAt: '2026-05-04T10:00:00.000Z',
+    });
+    const before = await query('SELECT location_updated_at FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          { isAvailable: true, timestamp: new Date().toISOString() },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(true);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(40.99);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.02);
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(40.99);
+    expect(Number(after.rows[0].last_known_longitude)).toBeCloseTo(29.02);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+  });
+
+  test('POST /api/availability/sync keeps latest availability while storing latest available coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_sync_available_location_order';
+    await seedActiveUser(userId, 'av-sync-available-location-order@example.com');
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: false,
+            timestamp: '2026-05-04T10:05:00.000Z',
+          },
+          {
+            isAvailable: true,
+            timestamp: '2026-05-04T10:00:00.000Z',
+            latitude: 41.015,
+            longitude: 29.01,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
     expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
     expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
   });
