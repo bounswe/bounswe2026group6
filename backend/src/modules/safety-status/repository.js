@@ -183,6 +183,14 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false } = {})
       WHERE uss.user_id = $1
         OR $2 = TRUE
         OR COALESCE(ps.profile_visibility::text, 'PRIVATE') = 'PUBLIC'
+        OR EXISTS (
+          SELECT 1
+          FROM safety_circle_members viewer_member
+          JOIN safety_circle_members visible_member
+            ON visible_member.circle_id = viewer_member.circle_id
+          WHERE viewer_member.user_id = $1
+            AND visible_member.user_id = uss.user_id
+        )
       ORDER BY uss.updated_at DESC, uss.user_id ASC;
     `,
     [viewerUserId, isAdmin],

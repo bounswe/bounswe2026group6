@@ -12,6 +12,7 @@ const { notificationsRouter } = require('../modules/notifications/routes');
 const { announcementsRouter } = require('../modules/announcements/routes');
 const { safetyStatusRouter } = require('../modules/safety-status/routes');
 const { operationalLocationRouter } = require('../modules/operational-location/routes');
+const { safetyCirclesRouter } = require('../modules/safety-circles/routes');
 
 const apiRouter = express.Router();
 
@@ -20,7 +21,7 @@ apiRouter.get('/', (_request, response) => {
     service: 'api',
     status: 'ok',
     name: 'Neighborhood Emergency Preparedness Hub API',
-    modules: ['auth', 'admin', 'profiles', 'help-requests', 'availability', 'assignments', 'location', 'gathering-areas', 'notifications', 'announcements', 'safety-status', 'operational-location'],
+    modules: ['auth', 'admin', 'profiles', 'help-requests', 'availability', 'assignments', 'location', 'gathering-areas', 'notifications', 'announcements', 'safety-status', 'operational-location', 'safety-circles'],
   });
 });
 
@@ -36,6 +37,7 @@ apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/announcements', announcementsRouter);
 apiRouter.use('/safety-status', safetyStatusRouter);
 apiRouter.use('/operational-location', operationalLocationRouter);
+apiRouter.use('/safety-circles', safetyCirclesRouter);
 
 module.exports = {
   apiRouter,
