@@ -72,6 +72,7 @@ fun SafetyCirclesScreen(
     var infoMessage by remember { mutableStateOf("") }
     var pendingCheckIn by remember { mutableStateOf<Pair<String, String>?>(null) }
     var pendingDeleteCircleId by remember { mutableStateOf<String?>(null) }
+    var pendingTransferOwnership by remember { mutableStateOf<Pair<String, SafetyCircleMember>?>(null) }
 
     fun handleAuthError(error: ApiException): Boolean {
         if (error.status != 401) return false
@@ -126,7 +127,9 @@ fun SafetyCirclesScreen(
         scope.launch {
             try {
                 action(safeToken)
-                infoMessage = successMessage
+                if (infoMessage.isBlank()) {
+                    infoMessage = successMessage
+                }
                 refresh()
             } catch (error: ApiException) {
                 if (!handleAuthError(error)) {
@@ -231,6 +234,39 @@ fun SafetyCirclesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeleteCircleId = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    pendingTransferOwnership?.let { (circleId, member) ->
+        AlertDialog(
+            onDismissRequest = { pendingTransferOwnership = null },
+            title = {
+                Text(text = "Transfer ownership?")
+            },
+            text = {
+                Text(text = "This will make ${member.displayName ?: member.userId} the owner of this safety circle.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingTransferOwnership = null
+                        runAction("Ownership transferred.") { safeToken ->
+                            SafetyCirclesRepository.transferOwnership(
+                                token = safeToken,
+                                circleId = circleId,
+                                nextOwnerUserId = member.userId
+                            )
+                        }
+                    }
+                ) {
+                    Text("Transfer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingTransferOwnership = null }) {
                     Text("Cancel")
                 }
             }
@@ -410,13 +446,7 @@ fun SafetyCirclesScreen(
                                 actionLoading = actionLoading,
                                 showTransferAction = isOwner && member.role != "owner",
                                 onTransferOwnership = {
-                                    runAction("Ownership transferred.") { safeToken ->
-                                        SafetyCirclesRepository.transferOwnership(
-                                            token = safeToken,
-                                            circleId = circleDetail.circle.circleId,
-                                            nextOwnerUserId = member.userId
-                                        )
-                                    }
+                                    pendingTransferOwnership = circleDetail.circle.circleId to member
                                 }
                             )
                         }

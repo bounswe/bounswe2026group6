@@ -423,6 +423,53 @@ describe('safety-circles integration', () => {
       .expect(200);
   });
 
+  test('ownership transfer rejects non-owners, self-transfer, and non-members', async () => {
+    const app = createTestApp();
+    const ownerId = 'circle_owner_transfer_reject';
+    const memberId = 'circle_member_transfer_reject';
+    const strangerId = 'circle_stranger_transfer_reject';
+    await seedActiveUser(ownerId);
+    await seedActiveUser(memberId);
+    await seedActiveUser(strangerId);
+
+    const circleResponse = await request(app)
+      .post('/api/safety-circles')
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ name: 'Rejected Transfer Test' })
+      .expect(201);
+    const circleId = circleResponse.body.circle.circleId;
+
+    const inviteResponse = await request(app)
+      .post(`/api/safety-circles/${circleId}/invites`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ inviteeUserId: memberId })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/safety-circles/invites/${inviteResponse.body.invite.inviteId}/respond`)
+      .set('Authorization', `Bearer ${buildAuthToken(memberId)}`)
+      .send({ decision: 'accept' })
+      .expect(200);
+
+    await request(app)
+      .patch(`/api/safety-circles/${circleId}/owner`)
+      .set('Authorization', `Bearer ${buildAuthToken(memberId)}`)
+      .send({ nextOwnerUserId: ownerId })
+      .expect(403);
+
+    await request(app)
+      .patch(`/api/safety-circles/${circleId}/owner`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ nextOwnerUserId: ownerId })
+      .expect(409);
+
+    await request(app)
+      .patch(`/api/safety-circles/${circleId}/owner`)
+      .set('Authorization', `Bearer ${buildAuthToken(ownerId)}`)
+      .send({ nextOwnerUserId: strangerId })
+      .expect(409);
+  });
+
   test('only the owner can delete a circle', async () => {
     const app = createTestApp();
     const ownerId = 'circle_owner_delete';
