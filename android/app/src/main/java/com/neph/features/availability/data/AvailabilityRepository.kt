@@ -12,6 +12,7 @@ import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.core.sync.SyncEntityType
 import com.neph.core.sync.SyncOperationType
 import com.neph.core.sync.SyncStatus
+import com.neph.features.profile.data.CurrentDeviceLocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -140,7 +141,8 @@ object AvailabilityRepository {
 
     suspend fun setAvailability(
         isAvailable: Boolean,
-        token: String?
+        token: String?,
+        currentDeviceLocation: CurrentDeviceLocation? = null
     ): AvailabilityState {
         ensureInitialized()
         val now = System.currentTimeMillis()
@@ -158,10 +160,11 @@ object AvailabilityRepository {
                 entityType = SyncEntityType.AVAILABILITY,
                 entityId = AvailabilityEntity.CURRENT_KEY,
                 operationType = SyncOperationType.SET_AVAILABILITY,
-                payloadJson = JSONObject()
-                    .put("isAvailable", isAvailable)
-                    .put("timestamp", now)
-                    .toString(),
+                payloadJson = buildAvailabilityOperationPayload(
+                    isAvailable = isAvailable,
+                    timestamp = now,
+                    currentDeviceLocation = currentDeviceLocation.takeIf { isAvailable }
+                ).toString(),
                 createdAtEpochMillis = now
             )
         )
@@ -210,9 +213,7 @@ object AvailabilityRepository {
             operations.sortedBy { it.createdAtEpochMillis }.forEach { operation ->
                 val payload = JSONObject(operation.payloadJson)
                 put(
-                    JSONObject()
-                        .put("isAvailable", payload.optBoolean("isAvailable"))
-                        .put("timestamp", payload.optLong("timestamp").toIsoLikeString())
+                    buildAvailabilitySyncRecord(payload)
                 )
             }
         }
@@ -314,6 +315,46 @@ object AvailabilityRepository {
         val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
         formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
         return formatter.format(java.util.Date(this))
+    }
+
+    internal fun buildAvailabilityOperationPayload(
+        isAvailable: Boolean,
+        timestamp: Long,
+        currentDeviceLocation: CurrentDeviceLocation? = null
+    ): JSONObject {
+        return JSONObject()
+            .put("isAvailable", isAvailable)
+            .put("timestamp", timestamp)
+            .apply {
+                if (currentDeviceLocation != null) {
+                    put("latitude", currentDeviceLocation.latitude)
+                    put("longitude", currentDeviceLocation.longitude)
+                    put("accuracyMeters", currentDeviceLocation.accuracyMeters)
+                    put("locationSource", currentDeviceLocation.source)
+                    put("locationCapturedAt", currentDeviceLocation.capturedAt)
+                }
+            }
+    }
+
+    internal fun buildAvailabilitySyncRecord(payload: JSONObject): JSONObject {
+        return JSONObject()
+            .put("isAvailable", payload.optBoolean("isAvailable"))
+            .put("timestamp", payload.optLong("timestamp").toIsoLikeString())
+            .apply {
+                if (payload.has("latitude") && payload.has("longitude")) {
+                    put("latitude", payload.getDouble("latitude"))
+                    put("longitude", payload.getDouble("longitude"))
+                    if (payload.has("accuracyMeters") && !payload.isNull("accuracyMeters")) {
+                        put("accuracyMeters", payload.getDouble("accuracyMeters"))
+                    }
+                    if (payload.has("locationSource") && !payload.isNull("locationSource")) {
+                        put("locationSource", payload.getString("locationSource"))
+                    }
+                    if (payload.has("locationCapturedAt") && !payload.isNull("locationCapturedAt")) {
+                        put("locationCapturedAt", payload.getString("locationCapturedAt"))
+                    }
+                }
+            }
     }
 
     private fun ensureInitialized() {

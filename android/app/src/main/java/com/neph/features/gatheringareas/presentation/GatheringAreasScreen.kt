@@ -1,7 +1,5 @@
 package com.neph.features.gatheringareas.presentation
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +34,7 @@ import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.formatMapCoordinate
 import com.neph.ui.theme.LocalNephSpacing
@@ -158,10 +157,8 @@ fun GatheringAreasScreen(
         }
     }
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants.values.any { it }) {
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
             requestCurrentLocationAndRefresh()
         } else {
             errorMessage = ""
@@ -218,10 +215,10 @@ fun GatheringAreasScreen(
                     SecondaryButton(
                         text = "Use Current Location",
                         onClick = {
-                            if (DeviceLocationProvider.hasLocationPermission(context)) {
+                            if (locationPermissionRequester.refreshPermissionState()) {
                                 requestCurrentLocationAndRefresh()
                             } else {
-                                locationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
+                                locationPermissionRequester.requestPermission()
                             }
                         },
                         enabled = !loading

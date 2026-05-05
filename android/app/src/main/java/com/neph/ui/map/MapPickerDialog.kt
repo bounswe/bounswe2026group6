@@ -47,12 +47,20 @@ fun MapPickerDialog(
     title: String = "Select Location on Map",
     initialLatitude: Double? = null,
     initialLongitude: Double? = null,
+    centerLatitude: Double? = null,
+    centerLongitude: Double? = null,
+    showCenterOnCurrentLocation: Boolean = false,
+    centerActionLoading: Boolean = false,
+    centerActionMessage: String = "",
     loading: Boolean = false,
     onDismiss: () -> Unit,
-    onConfirm: (MapPickerSelection) -> Unit
+    onConfirm: (MapPickerSelection) -> Unit,
+    onCenterOnCurrentLocation: (() -> Unit)? = null
 ) {
     val spacing = LocalNephSpacing.current
-    var selection by remember(initialLatitude, initialLongitude) {
+    val effectiveInitialLatitude = centerLatitude ?: initialLatitude
+    val effectiveInitialLongitude = centerLongitude ?: initialLongitude
+    var selection by remember(initialLatitude, initialLongitude, centerLatitude, centerLongitude) {
         mutableStateOf<MapPickerSelection?>(null)
     }
     var mapReady by remember { mutableStateOf(false) }
@@ -79,8 +87,8 @@ fun MapPickerDialog(
                 HelperText(text = "Tap on the map to place a pin, then confirm the selection.")
 
                 MapPickerMap(
-                    initialLatitude = initialLatitude,
-                    initialLongitude = initialLongitude,
+                    initialLatitude = effectiveInitialLatitude,
+                    initialLongitude = effectiveInitialLongitude,
                     onLocationSelected = { lat, lon ->
                         selection = MapPickerSelection(lat, lon)
                     },
@@ -106,6 +114,22 @@ fun MapPickerDialog(
 
                 if (loading) {
                     HelperText(text = "Resolving selected coordinates...")
+                }
+
+                if (showCenterOnCurrentLocation && onCenterOnCurrentLocation != null) {
+                    SecondaryButton(
+                        text = "Center on my location",
+                        onClick = onCenterOnCurrentLocation,
+                        enabled = !loading && !centerActionLoading
+                    )
+                }
+
+                if (centerActionLoading) {
+                    HelperText(text = "Finding your current location...")
+                }
+
+                if (centerActionMessage.isNotBlank()) {
+                    HelperText(text = centerActionMessage)
                 }
 
                 PrimaryButton(
