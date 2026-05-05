@@ -104,7 +104,7 @@ describe('Availability Service', () => {
 
       await syncAvailability(userId, { records });
 
-      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, null, null);
+      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, undefined, undefined);
       expect(repository.createAvailabilityRecord).toHaveBeenCalledTimes(2);
     });
 
@@ -114,7 +114,7 @@ describe('Availability Service', () => {
       repository.getAssignmentByVolunteerId.mockResolvedValue(null);
       repository.findMatchingRequestForVolunteer.mockResolvedValue({ request_id: 'req_123' });
       
-      const records = [{ isAvailable: true, timestamp: '2023-01-01T10:00:00Z' }];
+      const records = [{ isAvailable: true, timestamp: '2023-01-01T10:00:00Z', latitude: 41, longitude: 29 }];
 
       await syncAvailability(userId, { records });
 
@@ -165,7 +165,7 @@ describe('Availability Service', () => {
 
       expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
       expect(repository.syncRequestStatusPreservingInProgress).toHaveBeenCalledWith('req_123');
-      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, undefined, undefined);
+      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false);
       expect(result.message).toContain('Assignment cancelled, you are now unavailable');
     });
 
@@ -216,7 +216,7 @@ describe('Availability Service', () => {
 
       expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
       expect(repository.syncRequestStatusPreservingInProgress).toHaveBeenCalledWith('req_123');
-      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, undefined, undefined);
+      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false);
       expect(result.message).toBe('Assignment resolved for this volunteer, you are now unavailable, and matching has been refreshed');
       expect(result.newAssignment).toBeNull();
     });
