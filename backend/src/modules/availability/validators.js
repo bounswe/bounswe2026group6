@@ -71,6 +71,9 @@ function validateCoordinatePair(data, errors, prefix = '') {
 function validateSetAvailabilityPayload(data) {
   const errors = validate(data, setAvailabilitySchema);
   validateCoordinatePair(data || {}, errors);
+  if (data && data.isAvailable === true && (!hasOwn(data, 'latitude') || !hasOwn(data, 'longitude'))) {
+    errors.push('latitude and longitude are required when isAvailable is true');
+  }
   return errors;
 }
 
@@ -107,6 +110,14 @@ function validateSyncAvailabilityPayload(data) {
 
     validateCoordinatePair(record, errors, prefix);
   });
+
+  if (errors.length === 0 && data.records.length > 0) {
+    const sortedRecords = [...data.records].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const latest = sortedRecords[sortedRecords.length - 1];
+    if (latest.isAvailable === true && (!hasOwn(latest, 'latitude') || !hasOwn(latest, 'longitude'))) {
+      errors.push('records latest available state requires latitude and longitude');
+    }
+  }
 
   return errors;
 }

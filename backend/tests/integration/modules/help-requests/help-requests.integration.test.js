@@ -29,6 +29,10 @@ function buildAuthToken(userId) {
 	);
 }
 
+function availabilityOnPayload(latitude = 41.0, longitude = 29.0) {
+	return { isAvailable: true, latitude, longitude };
+}
+
 function buildCreatePayload(overrides = {}) {
 	return {
 		helpTypes: ['first_aid', 'fire_brigade'],
@@ -207,7 +211,7 @@ describe('help-requests integration', () => {
 		const toggleRes = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(toggleRes.status).toBe(200);
 		expect(toggleRes.body.assignment).toBeNull();
@@ -1018,7 +1022,7 @@ describe('help-requests integration', () => {
 		const firstToggle = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperOneToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(firstToggle.status).toBe(200);
 		expect(firstToggle.body.assignment.request_id).toBe(firstRequestId);
@@ -1061,7 +1065,7 @@ describe('help-requests integration', () => {
 		const helperOneBackOn = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperOneToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(helperOneBackOn.status).toBe(200);
 		expect(helperOneBackOn.body.assignment).toBeTruthy();
@@ -1231,7 +1235,7 @@ describe('help-requests integration', () => {
 		const toggleRes = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(toggleRes.status).toBe(200);
 		expect(toggleRes.body.assignment).toBeTruthy();
@@ -1292,7 +1296,7 @@ describe('help-requests integration', () => {
 		const toggleRes = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(toggleRes.status).toBe(200);
 		expect(toggleRes.body.assignment).toBeTruthy();
@@ -1347,7 +1351,7 @@ describe('help-requests integration', () => {
 		const toggleRes = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(toggleRes.status).toBe(200);
 		expect(toggleRes.body.assignment).toBeTruthy();
@@ -1546,7 +1550,7 @@ describe('help-requests integration', () => {
 		const toggleRes = await request(app)
 			.post('/api/availability/toggle')
 			.set('Authorization', `Bearer ${helperToken}`)
-			.send({ isAvailable: true });
+			.send(availabilityOnPayload());
 
 		expect(toggleRes.status).toBe(200);
 		expect(toggleRes.body.assignment).toBeNull(); // No requests yet

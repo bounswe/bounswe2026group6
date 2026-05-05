@@ -29,6 +29,10 @@ function buildAuthToken(userId) {
   );
 }
 
+function availabilityOnPayload(latitude = 41.0, longitude = 29.0) {
+  return { isAvailable: true, latitude, longitude };
+}
+
 async function seedActiveUser(userId, email = 'user@example.com') {
   await query(
     `
@@ -203,7 +207,39 @@ describe('Availability integration', () => {
     expect(vResult.rows[0].is_available).toBe(true);
   });
 
+  test('POST /api/availability/toggle to false preserves existing volunteer coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_toggle_off_preserve';
+    await seedActiveUser(userId, 'av-toggle-off-preserve@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_toggle_off_preserve',
+      userId,
+      isAvailable: true,
+      latitude: 41.015,
+      longitude: 29.01,
+      locationUpdatedAt: '2026-05-04T10:00:00.000Z',
+    });
+    const before = await query('SELECT location_updated_at FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: false });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(after.rows[0].last_known_longitude)).toBeCloseTo(29.01);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+  });
+
   test.each([
+    ['missing coordinates', { isAvailable: true }],
     ['latitude > 90', { isAvailable: true, latitude: 91, longitude: 29.0 }],
     ['longitude > 180', { isAvailable: true, latitude: 41.0, longitude: 181 }],
     ['latitude without longitude', { isAvailable: true, latitude: 41.0 }],
@@ -235,7 +271,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment).toBeTruthy();
@@ -275,7 +311,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment).toBeTruthy();
@@ -297,7 +333,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment).toBeTruthy();
@@ -333,15 +369,15 @@ describe('Availability integration', () => {
     const sarResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken(sarVolunteerId)}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     const suppliesResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken(suppliesVolunteerId)}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     const shelterResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken(shelterVolunteerId)}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(sarResponse.body.assignment.request_id).toBe('req_sar_only');
     expect([
@@ -350,13 +386,13 @@ describe('Availability integration', () => {
     ].sort()).toEqual(['req_shelter_only', 'req_supplies_only']);
   });
 
-  test('POST /api/availability/toggle applies the 1 km cutoff and safely falls back when coordinates are missing', async () => {
+  test('POST /api/availability/toggle applies the 1 km cutoff and matches a nearby volunteer', async () => {
     const app = createTestApp();
 
     const nearVolunteerId = 'user_v_near';
-    const noCoordVolunteerId = 'user_v_nocoord';
+    const nearbyVolunteerId = 'user_v_nearby';
     await seedActiveUser(nearVolunteerId, 'near@example.com');
-    await seedActiveUser(noCoordVolunteerId, 'nocoord@example.com');
+    await seedActiveUser(nearbyVolunteerId, 'nearby@example.com');
     await seedActiveUser('user_r_far', 'far@example.com');
     await seedActiveUser('user_r_missing', 'missing@example.com');
 
@@ -381,14 +417,14 @@ describe('Availability integration', () => {
     expect(farResponse.body.assignment).toBeTruthy();
     expect(farResponse.body.assignment.request_id).toBe('req_missing_coords');
 
-    const noCoordResponse = await request(app)
+    const nearbyResponse = await request(app)
       .post('/api/availability/toggle')
-      .set('Authorization', `Bearer ${buildAuthToken(noCoordVolunteerId)}`)
-      .send({ isAvailable: true });
+      .set('Authorization', `Bearer ${buildAuthToken(nearbyVolunteerId)}`)
+      .send(availabilityOnPayload(41.03, 29.03));
 
-    expect(noCoordResponse.status).toBe(200);
-    expect(noCoordResponse.body.assignment).toBeTruthy();
-    expect(noCoordResponse.body.assignment.request_id).toBe('req_far_only');
+    expect(nearbyResponse.status).toBe(200);
+    expect(nearbyResponse.body.assignment).toBeTruthy();
+    expect(nearbyResponse.body.assignment.request_id).toBe('req_far_only');
 
     const farStatus = await query('SELECT status FROM help_requests WHERE request_id = $1', ['req_far_only']);
     expect(farStatus.rows[0].status).toBe('ASSIGNED');
@@ -538,7 +574,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_vol_fa_late')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment.request_id).toBe('req_fa_sar_late');
@@ -603,7 +639,7 @@ describe('Availability integration', () => {
     const secondGeneralResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_vol_general_fa_only_2')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(secondGeneralResponse.status).toBe(200);
     expect(secondGeneralResponse.body.assignment).toBeNull();
@@ -616,7 +652,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_vol_fa_only_late')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment.request_id).toBe('req_fa_only_late');
@@ -653,7 +689,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_vol_fa_priority')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment.request_id).toBe('req_fa_backfill');
@@ -692,7 +728,7 @@ describe('Availability integration', () => {
     const response = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_vol_fa_progress')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(response.status).toBe(200);
     expect(response.body.assignment.request_id).toBe('req_fa_sar_progress');
@@ -718,7 +754,7 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     await query(
       `
@@ -769,19 +805,19 @@ describe('Availability integration', () => {
     const firstResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_v_fair_1')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     expect(firstResponse.body.assignment.request_id).toBe('req_fair_sar');
 
     const secondResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_v_fair_2')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     expect(secondResponse.body.assignment.request_id).toBe('req_fair_supplies');
 
     const thirdResponse = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${buildAuthToken('user_v_fair_3')}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     expect(thirdResponse.body.assignment.request_id).toBe('req_fair_sar');
 
     expect(await listAssignedVolunteerIds('req_fair_sar')).toHaveLength(2);
@@ -859,13 +895,20 @@ describe('Availability integration', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         records: [
-          { isAvailable: true, timestamp: new Date(Date.now() - 10000).toISOString() },
+          {
+            isAvailable: true,
+            timestamp: new Date(Date.now() - 10000).toISOString(),
+            latitude: 41.015,
+            longitude: 29.01,
+          },
           { isAvailable: false, timestamp: new Date().toISOString() },
         ],
       });
 
     expect(response.status).toBe(200);
     expect(response.body.volunteer.is_available).toBe(false);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
 
     const arResult = await query('SELECT * FROM availability_records');
     expect(arResult.rows).toHaveLength(2);
@@ -887,6 +930,9 @@ describe('Availability integration', () => {
             timestamp: new Date().toISOString(),
             latitude: 41.015,
             longitude: 29.01,
+            accuracyMeters: 12.5,
+            source: 'DEVICE_GPS',
+            capturedAt: '2026-05-04T10:00:00.000Z',
           },
         ],
       });
@@ -897,7 +943,93 @@ describe('Availability integration', () => {
     expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
   });
 
+  test('POST /api/availability/sync preserves existing coordinates when latest unavailable record lacks coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_sync_preserve_location';
+    await seedActiveUser(userId, 'av-sync-preserve-location@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_sync_preserve_location',
+      userId,
+      isAvailable: false,
+      latitude: 40.99,
+      longitude: 29.02,
+      locationUpdatedAt: '2026-05-04T10:00:00.000Z',
+    });
+    const before = await query('SELECT location_updated_at FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          { isAvailable: false, timestamp: new Date().toISOString() },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(40.99);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.02);
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(40.99);
+    expect(Number(after.rows[0].last_known_longitude)).toBeCloseTo(29.02);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+  });
+
+  test('POST /api/availability/sync rejects final available state without coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_sync_final_available_missing_location';
+    await seedActiveUser(userId, 'av-sync-final-available-missing-location@example.com');
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          { isAvailable: false, timestamp: '2026-05-04T10:00:00.000Z' },
+          { isAvailable: true, timestamp: '2026-05-04T10:05:00.000Z' },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('POST /api/availability/sync keeps latest availability while storing latest available coordinates', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_sync_available_location_order';
+    await seedActiveUser(userId, 'av-sync-available-location-order@example.com');
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: false,
+            timestamp: '2026-05-04T10:05:00.000Z',
+          },
+          {
+            isAvailable: true,
+            timestamp: '2026-05-04T10:00:00.000Z',
+            latitude: 41.015,
+            longitude: 29.01,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.volunteer.is_available).toBe(false);
+    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
+    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+  });
+
   test.each([
+    ['missing coordinates', {}],
     ['latitude > 90', { latitude: 91, longitude: 29.0 }],
     ['longitude > 180', { latitude: 41.0, longitude: 181 }],
     ['latitude without longitude', { latitude: 41.0 }],
@@ -938,7 +1070,7 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     const response = await request(app)
       .get('/api/availability/my-assignment')
@@ -964,7 +1096,7 @@ describe('Availability integration', () => {
     const toggleRes = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     const assignmentId = toggleRes.body.assignment.assignment_id;
 
@@ -995,7 +1127,7 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     const response = await request(app)
       .post('/api/availability/assignments/resolve')
@@ -1038,21 +1170,21 @@ describe('Availability integration', () => {
     const firstToggle = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${firstToken}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     expect(firstToggle.status).toBe(200);
     expect(firstToggle.body.assignment.request_id).toBe('req_multi_cancel');
 
     const secondToggle = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${secondToken}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     expect(secondToggle.status).toBe(200);
     expect(secondToggle.body.assignment.request_id).toBe('req_multi_cancel');
 
     const thirdToggle = await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${thirdToken}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
     expect(thirdToggle.status).toBe(200);
     expect(thirdToggle.body.assignment).toBeNull();
 
@@ -1110,12 +1242,12 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${firstToken}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${secondToken}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     expect(await listAssignedVolunteerIds('req_multi_resolve')).toHaveLength(2);
 
@@ -1172,7 +1304,7 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     // Status should now be available and have an assignment
     response = await request(app)
@@ -1200,7 +1332,7 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     // Verify assignment exists
     const beforeResult = await query('SELECT * FROM assignments WHERE request_id = $1', ['req_6']);
@@ -1237,7 +1369,7 @@ describe('Availability integration', () => {
     await request(app)
       .post('/api/availability/toggle')
       .set('Authorization', `Bearer ${token}`)
-      .send({ isAvailable: true });
+      .send(availabilityOnPayload());
 
     // 2. Sync to unavailable
     const response = await request(app)

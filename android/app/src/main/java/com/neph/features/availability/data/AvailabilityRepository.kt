@@ -326,12 +326,12 @@ object AvailabilityRepository {
             .put("isAvailable", isAvailable)
             .put("timestamp", timestamp)
             .apply {
-                if (currentDeviceLocation != null) {
+                if (isAvailable && currentDeviceLocation != null) {
                     put("latitude", currentDeviceLocation.latitude)
                     put("longitude", currentDeviceLocation.longitude)
                     put("accuracyMeters", currentDeviceLocation.accuracyMeters)
-                    put("locationSource", currentDeviceLocation.source)
-                    put("locationCapturedAt", currentDeviceLocation.capturedAt)
+                    put("source", currentDeviceLocation.source)
+                    put("capturedAt", currentDeviceLocation.capturedAt)
                 }
             }
     }
@@ -347,11 +347,15 @@ object AvailabilityRepository {
                     if (payload.has("accuracyMeters") && !payload.isNull("accuracyMeters")) {
                         put("accuracyMeters", payload.getDouble("accuracyMeters"))
                     }
-                    if (payload.has("locationSource") && !payload.isNull("locationSource")) {
-                        put("locationSource", payload.getString("locationSource"))
+                    if (payload.has("source") && !payload.isNull("source")) {
+                        put("source", payload.getString("source"))
+                    } else if (payload.has("locationSource") && !payload.isNull("locationSource")) {
+                        put("source", payload.getString("locationSource"))
                     }
-                    if (payload.has("locationCapturedAt") && !payload.isNull("locationCapturedAt")) {
-                        put("locationCapturedAt", payload.getString("locationCapturedAt"))
+                    if (payload.has("capturedAt") && !payload.isNull("capturedAt")) {
+                        put("capturedAt", payload.getString("capturedAt"))
+                    } else if (payload.has("locationCapturedAt") && !payload.isNull("locationCapturedAt")) {
+                        put("capturedAt", payload.getString("locationCapturedAt"))
                     }
                 }
             }

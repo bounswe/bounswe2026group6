@@ -162,11 +162,12 @@ async function setAvailability(userId, { isAvailable, latitude, longitude }) {
     volunteer = await createVolunteer(userId);
   }
 
+  const hasCoordinates = isAvailable && Number.isFinite(latitude) && Number.isFinite(longitude);
   const updatedVolunteer = await updateVolunteerAvailability(
     volunteer.volunteer_id,
     isAvailable,
-    latitude,
-    longitude
+    hasCoordinates ? latitude : undefined,
+    hasCoordinates ? longitude : undefined
   );
 
   await createAvailabilityRecord(volunteer.volunteer_id, isAvailable, false);
@@ -203,18 +204,21 @@ async function syncAvailability(userId, { records }) {
   }
 
   if (records.length > 0) {
-    const sortedRecords = [...records].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const latest = sortedRecords[0];
-    const hasLatestCoordinates = Number.isFinite(latest.latitude) && Number.isFinite(latest.longitude);
+    const sortedRecords = [...records].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const latest = sortedRecords[sortedRecords.length - 1];
+    const latestAvailableRecord = [...sortedRecords].reverse().find((record) => record.isAvailable);
+    const hasLatestAvailableCoordinates = latestAvailableRecord
+      && Number.isFinite(latestAvailableRecord.latitude)
+      && Number.isFinite(latestAvailableRecord.longitude);
 
     await updateVolunteerAvailability(
       volunteer.volunteer_id,
       latest.isAvailable,
-      hasLatestCoordinates ? latest.latitude : null,
-      hasLatestCoordinates ? latest.longitude : null
+      hasLatestAvailableCoordinates ? latestAvailableRecord.latitude : undefined,
+      hasLatestAvailableCoordinates ? latestAvailableRecord.longitude : undefined
     );
 
-    for (const record of records) {
+    for (const record of sortedRecords) {
       await createAvailabilityRecord(volunteer.volunteer_id, record.isAvailable, true);
     }
   }
@@ -273,8 +277,6 @@ async function cancelMyAssignment(userId, { assignmentId }) {
   await updateVolunteerAvailability(
     volunteer.volunteer_id,
     false,
-    volunteer.last_known_latitude,
-    volunteer.last_known_longitude,
   );
   await createAvailabilityRecord(volunteer.volunteer_id, false, false);
 
@@ -360,8 +362,8 @@ async function cancelAssignmentsForBannedVolunteer(userId, options = {}) {
     await updateVolunteerAvailability(
       volunteer.volunteer_id,
       false,
-      volunteer.last_known_latitude,
-      volunteer.last_known_longitude,
+      undefined,
+      undefined,
       executor,
     );
     await createAvailabilityRecord(volunteer.volunteer_id, false, false, executor);
@@ -369,8 +371,6 @@ async function cancelAssignmentsForBannedVolunteer(userId, options = {}) {
     await updateVolunteerAvailability(
       volunteer.volunteer_id,
       false,
-      volunteer.last_known_latitude,
-      volunteer.last_known_longitude,
     );
     await createAvailabilityRecord(volunteer.volunteer_id, false, false);
   }
@@ -408,8 +408,6 @@ async function resolveMyAssignment(userId, { requestId }) {
   await updateVolunteerAvailability(
     volunteer.volunteer_id,
     false,
-    volunteer.last_known_latitude,
-    volunteer.last_known_longitude,
   );
   await createAvailabilityRecord(volunteer.volunteer_id, false, false);
 
