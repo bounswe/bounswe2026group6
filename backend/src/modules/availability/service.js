@@ -223,6 +223,12 @@ function buildAvailabilitySessionStatus(volunteer) {
     && Number.isFinite(availableUntil.getTime())
     && availableUntil.getTime() > now,
   );
+  const effectiveIsAvailable = Boolean(
+    volunteer
+    && volunteer.is_available
+    && isAvailabilitySessionActive
+    && isLocationFresh,
+  );
 
   return {
     availableUntil: volunteer ? volunteer.available_until || null : null,
@@ -230,6 +236,7 @@ function buildAvailabilitySessionStatus(volunteer) {
     locationUpdatedAt: volunteer ? volunteer.location_updated_at || null : null,
     locationMaxAgeMinutes,
     availabilityTtlMinutes: getConfiguredAvailabilityTtlMinutes(),
+    effectiveIsAvailable,
     isLocationFresh,
     isAvailabilitySessionActive,
     availabilitySessionExpired: Boolean(volunteer && volunteer.is_available && !isAvailabilitySessionActive),

@@ -1477,6 +1477,7 @@ describe('Availability integration', () => {
     expect(response.body.availableUntil).toBeNull();
     expect(response.body.availabilityConfirmedAt).toBeNull();
     expect(response.body.locationUpdatedAt).toBeNull();
+    expect(response.body.effectiveIsAvailable).toBe(false);
     expect(response.body.isLocationFresh).toBe(false);
     expect(response.body.isAvailabilitySessionActive).toBe(false);
 
@@ -1502,9 +1503,33 @@ describe('Availability integration', () => {
     expect(response.body.locationUpdatedAt).toBeTruthy();
     expect(response.body.locationMaxAgeMinutes).toBe(120);
     expect(response.body.availabilityTtlMinutes).toBe(360);
+    expect(response.body.effectiveIsAvailable).toBe(true);
     expect(response.body.isLocationFresh).toBe(true);
     expect(response.body.isAvailabilitySessionActive).toBe(true);
     expect(response.body.availabilitySessionExpired).toBe(false);
+  });
+
+  test('GET /api/availability/status reports expired availability as not effectively available', async () => {
+    const app = createTestApp();
+    const userId = 'user_v_status_expired';
+    await seedActiveUser(userId, 'status-expired@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_status_expired',
+      userId,
+      isAvailable: true,
+      locationUpdatedAt: minutesFromNow(-10),
+      availableUntil: minutesFromNow(-1),
+    });
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.effectiveIsAvailable).toBe(false);
+    expect(response.body.availabilitySessionExpired).toBe(true);
   });
 
   test('POST /api/availability/toggle to false cancels active assignment', async () => {
