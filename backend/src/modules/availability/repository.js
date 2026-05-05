@@ -436,24 +436,31 @@ async function updateVolunteerAvailability(
   const ttlMinutes = Number.isFinite(options.availabilityTtlMinutes) && options.availabilityTtlMinutes > 0
     ? Math.floor(options.availabilityTtlMinutes)
     : env.volunteerMatching.availabilityTtlMinutes;
+  const locationTimestamp = typeof options.locationTimestamp === 'string' && options.locationTimestamp.trim() !== ''
+    ? options.locationTimestamp
+    : null;
 
   const sql = `
+    WITH availability_event AS (
+      SELECT COALESCE($8::timestamp, CURRENT_TIMESTAMP) AS occurred_at
+    )
     UPDATE volunteers
     SET is_available = $2,
         last_known_latitude = $3,
         last_known_longitude = $4,
-        location_updated_at = CURRENT_TIMESTAMP,
-        availability_confirmed_at = CURRENT_TIMESTAMP,
-        available_until = CURRENT_TIMESTAMP + ($7::int * INTERVAL '1 minute'),
+        location_updated_at = availability_event.occurred_at,
+        availability_confirmed_at = availability_event.occurred_at,
+        available_until = availability_event.occurred_at + ($7::int * INTERVAL '1 minute'),
         last_location_accuracy_meters = $5,
         last_location_source = $6
+    FROM availability_event
     WHERE volunteer_id = $1
     RETURNING *;
   `;
   const result = await runQuery(
     resolvedExecutor,
     sql,
-    [volunteerId, isAvailable, latitude, longitude, accuracyMeters, locationSource, ttlMinutes],
+    [volunteerId, isAvailable, latitude, longitude, accuracyMeters, locationSource, ttlMinutes, locationTimestamp],
   );
   return result.rows[0];
 }

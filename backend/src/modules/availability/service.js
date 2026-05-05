@@ -180,6 +180,17 @@ function buildLocationSessionOptions(input) {
   };
 }
 
+function getSyncRecordEventTimestamp(record) {
+  const rawTimestamp = record.capturedAt || record.timestamp;
+  const parsed = rawTimestamp ? new Date(rawTimestamp) : null;
+
+  if (!parsed || !Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+}
+
 function parseDatabaseTimestamp(value) {
   if (!value) {
     return null;
@@ -211,6 +222,13 @@ function buildAvailabilitySessionStatus(volunteer) {
     ? parseDatabaseTimestamp(volunteer.available_until)
     : null;
   const locationMaxAgeMinutes = getConfiguredLocationMaxAgeMinutes();
+  const hasUsableLocation = Boolean(
+    volunteer
+    && volunteer.last_known_latitude !== null
+    && volunteer.last_known_latitude !== undefined
+    && volunteer.last_known_longitude !== null
+    && volunteer.last_known_longitude !== undefined,
+  );
   const isLocationFresh = Boolean(
     locationUpdatedAt
     && Number.isFinite(locationUpdatedAt.getTime())
@@ -227,7 +245,8 @@ function buildAvailabilitySessionStatus(volunteer) {
     volunteer
     && volunteer.is_available
     && isAvailabilitySessionActive
-    && isLocationFresh,
+    && isLocationFresh
+    && hasUsableLocation,
   );
 
   return {
@@ -237,6 +256,7 @@ function buildAvailabilitySessionStatus(volunteer) {
     locationMaxAgeMinutes,
     availabilityTtlMinutes: getConfiguredAvailabilityTtlMinutes(),
     effectiveIsAvailable,
+    hasUsableLocation,
     isLocationFresh,
     isAvailabilitySessionActive,
     availabilitySessionExpired: Boolean(volunteer && volunteer.is_available && !isAvailabilitySessionActive),
@@ -312,7 +332,12 @@ async function syncAvailability(userId, { records }) {
       latest.isAvailable,
       latestHasAvailableCoordinates ? latest.latitude : undefined,
       latestHasAvailableCoordinates ? latest.longitude : undefined,
-      latestHasAvailableCoordinates ? buildLocationSessionOptions(latest) : {},
+      latestHasAvailableCoordinates
+        ? {
+            ...buildLocationSessionOptions(latest),
+            locationTimestamp: getSyncRecordEventTimestamp(latest),
+          }
+        : {},
     );
 
     for (const record of sortedRecords) {

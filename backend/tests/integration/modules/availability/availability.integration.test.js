@@ -1103,7 +1103,7 @@ describe('Availability integration', () => {
             longitude: 29.01,
             accuracyMeters: 12.5,
             source: 'DEVICE_GPS',
-            capturedAt: '2026-05-04T10:00:00.000Z',
+            capturedAt: minutesFromNow(-10),
           },
         ],
       });
@@ -1116,6 +1116,53 @@ describe('Availability integration', () => {
     expect(response.body.volunteer.availability_confirmed_at).toBeTruthy();
     expect(Number(response.body.volunteer.last_location_accuracy_meters)).toBeCloseTo(12.5);
     expect(response.body.volunteer.last_location_source).toBe('DEVICE_GPS');
+  });
+
+  test.each([
+    ['capturedAt', { capturedAt: minutesFromNow(-2 * 24 * 60) }],
+    ['timestamp', { timestamp: minutesFromNow(-2 * 24 * 60) }],
+  ])('POST /api/availability/sync rejects stale final available location based on %s', async (_caseName, timeFields) => {
+    const app = createTestApp();
+    const userId = `user_av_sync_stale_${_caseName}`;
+    await seedActiveUser(userId, `${userId}@example.com`);
+    await seedVolunteer({
+      volunteerId: `vol_sync_stale_${_caseName}`,
+      userId,
+      isAvailable: false,
+      latitude: 40.99,
+      longitude: 29.02,
+      locationUpdatedAt: minutesFromNow(-15),
+    });
+    const before = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+    const timestamp = timeFields.timestamp || new Date().toISOString();
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: true,
+            timestamp,
+            latitude: 41.015,
+            longitude: 29.01,
+            ...timeFields,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(after.rows[0].is_available).toBe(false);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(40.99);
+
+    await seedActiveUser(`user_req_sync_stale_${_caseName}`, `req-sync-stale-${_caseName}@example.com`);
+    await seedHelpRequest(`req_sync_stale_${_caseName}`, `user_req_sync_stale_${_caseName}`);
+    expect(await tryToAssignRequest(`req_sync_stale_${_caseName}`)).toBe(false);
   });
 
   test('POST /api/availability/sync preserves existing coordinates when latest unavailable record lacks coordinates', async () => {
@@ -1530,6 +1577,33 @@ describe('Availability integration', () => {
     expect(response.body.isAvailable).toBe(true);
     expect(response.body.effectiveIsAvailable).toBe(false);
     expect(response.body.availabilitySessionExpired).toBe(true);
+  });
+
+  test('GET /api/availability/status reports fresh active availability without coordinates as not effectively available', async () => {
+    const app = createTestApp();
+    const userId = 'user_v_status_null_coords';
+    await seedActiveUser(userId, 'status-null-coords@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_status_null_coords',
+      userId,
+      isAvailable: true,
+      latitude: null,
+      longitude: null,
+      locationUpdatedAt: minutesFromNow(-10),
+      availableUntil: minutesFromNow(60),
+    });
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.isAvailabilitySessionActive).toBe(true);
+    expect(response.body.isLocationFresh).toBe(true);
+    expect(response.body.hasUsableLocation).toBe(false);
+    expect(response.body.effectiveIsAvailable).toBe(false);
   });
 
   test('POST /api/availability/toggle to false cancels active assignment', async () => {
