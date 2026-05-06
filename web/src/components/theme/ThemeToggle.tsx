@@ -1,32 +1,53 @@
 "use client";
 
-import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { cn } from "@/lib/cn";
 
 type ThemeToggleProps = {
     className?: string;
-    compact?: boolean;
 };
 
-export function ThemeToggle({ className, compact = false }: ThemeToggleProps) {
+export function ThemeToggle({ className }: ThemeToggleProps) {
     const { isDarkTheme, setTheme } = useTheme();
+    const nextTheme = isDarkTheme ? "light" : "dark";
 
     return (
-        <div className={cn("theme-toggle-row", compact && "is-compact", className)}>
-            <div className="theme-toggle-copy">
-                <span className="theme-toggle-label">Dark theme</span>
-                {compact ? null : (
-                    <span className="theme-toggle-description">
-                        Use darker colors throughout NEPH.
-                    </span>
-                )}
-            </div>
-            <ToggleSwitch
-                aria-label="Use dark theme"
-                checked={isDarkTheme}
-                onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+        <button
+            type="button"
+            className={cn("theme-toggle-corner", className)}
+            aria-label={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
+            title={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
+            onClick={() => setTheme(nextTheme)}
+        >
+            {isDarkTheme ? <MoonIcon /> : <SunIcon />}
+        </button>
+    );
+}
+
+function SunIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+            <path
+                d="M12 2.75V5M12 19v2.25M4.75 4.75l1.6 1.6M17.65 17.65l1.6 1.6M2.75 12H5M19 12h2.25M4.75 19.25l1.6-1.6M17.65 6.35l1.6-1.6"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
             />
-        </div>
+        </svg>
+    );
+}
+
+function MoonIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+                d="M20.2 14.25A7.8 7.8 0 0 1 9.75 3.8 8.6 8.6 0 1 0 20.2 14.25Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
     );
 }

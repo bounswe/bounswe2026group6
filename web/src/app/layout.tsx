@@ -2,6 +2,7 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { getThemeInitScript } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -21,6 +22,7 @@ export default function RootLayout({
             </head>
             <body className="root-layout-body">
                 <ThemeProvider>
+                    <ThemeToggle />
                     <main className="root-layout-content">{children}</main>
                     <SiteFooter />
                 </ThemeProvider>

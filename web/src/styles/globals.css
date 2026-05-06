@@ -165,42 +165,31 @@ textarea::placeholder {
 
 /* Utility-like shared base classes */
 
-.theme-toggle-row {
-    display: flex;
-    width: 100%;
+.theme-toggle-corner {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 80;
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    justify-content: center;
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--surface-soft);
-    padding: 12px;
-}
-
-.theme-toggle-row.is-compact {
-    border: 0;
-    background: transparent;
-    padding: 10px 12px;
-}
-
-.theme-toggle-copy {
-    display: grid;
-    min-width: 0;
-    gap: 2px;
-}
-
-.theme-toggle-label {
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
     color: var(--text-primary);
-    font-size: 0.875rem;
-    font-weight: 600;
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(8px);
+    transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
 
-.theme-toggle-description {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    line-height: 1.4;
+.theme-toggle-corner:hover {
+    border-color: var(--primary-soft-200);
+    background: var(--primary-soft-100);
+    color: var(--primary-600);
+    transform: translateY(-1px);
 }
-
 
 .page-bg {
     background: var(--background-page);

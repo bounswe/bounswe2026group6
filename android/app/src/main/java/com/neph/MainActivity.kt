@@ -108,9 +108,7 @@ fun NephApp() {
                 }
                 AuthSessionStore.isGuestMode() -> Routes.Home.route
                 else -> Routes.Welcome.route
-            },
-            darkThemeEnabled = darkThemeEnabled,
-            onDarkThemeChange = ThemePreferenceStore::setDarkThemeEnabled
+            }
         )
     }
 }

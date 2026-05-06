@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
-import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
@@ -23,8 +22,6 @@ fun SettingsScreen(
     onProfileClick: () -> Unit,
     profileBadgeText: String,
     onNavigateToPrivacySecurity: () -> Unit,
-    darkThemeEnabled: Boolean,
-    onDarkThemeChange: (Boolean) -> Unit,
     onLogout: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -42,20 +39,6 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(spacing.lg)
         ) {
-            SectionCard {
-                SectionHeader(
-                    title = "Appearance",
-                    subtitle = "Choose how NEPH looks on this device."
-                )
-
-                AppToggleSwitch(
-                    checked = darkThemeEnabled,
-                    onCheckedChange = onDarkThemeChange,
-                    label = "Dark theme",
-                    description = "Use darker colors throughout NEPH."
-                )
-            }
-
             SectionCard {
                 SectionHeader(
                     title = "Account",
@@ -93,8 +76,6 @@ private fun SettingsScreenPreview() {
             onProfileClick = {},
             profileBadgeText = "PP",
             onNavigateToPrivacySecurity = {},
-            darkThemeEnabled = false,
-            onDarkThemeChange = {},
             onLogout = {}
         )
     }

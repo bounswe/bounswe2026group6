@@ -12,7 +12,6 @@ import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { fetchMyProfile, patchMyPrivacy } from "@/lib/profile";
 import { LocationPreviewMap } from "@/components/feature/location/LocationPreviewMap";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const DEFAULT_MAP_CENTER = {
     latitude: 41.0082,
@@ -237,14 +236,6 @@ export default function PrivacySecurityView() {
                         </HelperText>
                     ) : null}
                 </div>
-            </SectionCard>
-
-            <SectionCard>
-                <SectionHeader
-                    title="Appearance"
-                    subtitle="Choose how NEPH looks on this device."
-                />
-                <ThemeToggle />
             </SectionCard>
 
             <SectionCard>

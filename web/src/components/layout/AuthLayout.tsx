@@ -2,7 +2,6 @@ import * as React from "react";
 import { AuthCard } from "@/components/ui/display/AuthCard";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AuthShowcase } from "@/components/feature/auth/AuthShowcase";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 type AuthLayoutProps = {
     title?: string;
@@ -37,10 +36,6 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
                                         {subtitle}
                                     </p>
                                 ) : null}
-                            </div>
-
-                            <div className="mb-6">
-                                <ThemeToggle />
                             </div>
 
                             {children}
