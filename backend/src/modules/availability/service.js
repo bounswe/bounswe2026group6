@@ -241,7 +241,18 @@ function buildAvailabilitySessionStatus(volunteer) {
     && Number.isFinite(availableUntil.getTime())
     && availableUntil.getTime() > now,
   );
-  const effectiveIsAvailable = Boolean(
+  let pauseReason = 'NONE';
+  if (volunteer && volunteer.is_available) {
+    if (!hasUsableLocation) {
+      pauseReason = 'LOCATION_MISSING';
+    } else if (!isLocationFresh) {
+      pauseReason = 'LOCATION_STALE';
+    } else if (!isAvailabilitySessionActive) {
+      pauseReason = 'AVAILABILITY_EXPIRED';
+    }
+  }
+
+  const isAssignable = Boolean(
     volunteer
     && volunteer.is_available
     && isAvailabilitySessionActive
@@ -255,7 +266,9 @@ function buildAvailabilitySessionStatus(volunteer) {
     locationUpdatedAt: volunteer ? volunteer.location_updated_at || null : null,
     locationMaxAgeMinutes,
     availabilityTtlMinutes: getConfiguredAvailabilityTtlMinutes(),
-    effectiveIsAvailable,
+    isAssignable,
+    pauseReason,
+    effectiveIsAvailable: isAssignable,
     hasUsableLocation,
     isLocationFresh,
     isAvailabilitySessionActive,

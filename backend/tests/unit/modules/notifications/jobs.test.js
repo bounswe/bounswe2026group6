@@ -6,12 +6,14 @@ jest.mock('../../../../src/modules/notifications/service', () => ({
 
 jest.mock('../../../../src/modules/notifications/repository', () => ({
   listAvailabilityReminderCandidates: jest.fn(),
+  listAvailabilityPausedNotificationCandidates: jest.fn(),
   expireStalePendingHelpRequests: jest.fn(),
 }));
 
 const { createNotification } = require('../../../../src/modules/notifications/service');
 const {
   listAvailabilityReminderCandidates,
+  listAvailabilityPausedNotificationCandidates,
   expireStalePendingHelpRequests,
 } = require('../../../../src/modules/notifications/repository');
 const { runNotificationJobsOnce } = require('../../../../src/modules/notifications/jobs');
@@ -20,23 +22,39 @@ describe('notification jobs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     listAvailabilityReminderCandidates.mockResolvedValue([]);
+    listAvailabilityPausedNotificationCandidates.mockResolvedValue([]);
     expireStalePendingHelpRequests.mockResolvedValue([]);
   });
 
-  test('creates availability reminder notifications for candidates', async () => {
+  test('does not create hourly availability reminder notifications', async () => {
     listAvailabilityReminderCandidates.mockResolvedValue(['user_a', 'user_b']);
+
+    await runNotificationJobsOnce();
+
+    expect(listAvailabilityReminderCandidates).not.toHaveBeenCalled();
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  test('creates one paused availability notification for pause candidates', async () => {
+    listAvailabilityPausedNotificationCandidates.mockResolvedValue([
+      {
+        userId: 'user_a',
+        pauseReason: 'LOCATION_STALE',
+        pauseEventKey: 'LOCATION_STALE:2026-05-06T10:00:00.000Z',
+      },
+    ]);
 
     await runNotificationJobsOnce();
 
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
       recipientUserId: 'user_a',
-      type: 'TASK_UPDATED',
-      data: expect.objectContaining({ kind: 'availability_reminder' }),
-    }));
-    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
-      recipientUserId: 'user_b',
-      type: 'TASK_UPDATED',
-      data: expect.objectContaining({ kind: 'availability_reminder' }),
+      type: 'VOLUNTEER_AVAILABILITY_PAUSED',
+      title: 'Volunteer availability paused',
+      data: expect.objectContaining({
+        kind: 'availability_paused',
+        pauseReason: 'LOCATION_STALE',
+        pauseEventKey: 'LOCATION_STALE:2026-05-06T10:00:00.000Z',
+      }),
     }));
   });
 

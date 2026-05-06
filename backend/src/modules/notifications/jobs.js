@@ -2,7 +2,7 @@ const {
   createNotification,
 } = require('./service');
 const {
-  listAvailabilityReminderCandidates,
+  listAvailabilityPausedNotificationCandidates,
   expireStalePendingHelpRequests,
 } = require('./repository');
 const { env } = require('../../config/env');
@@ -10,24 +10,25 @@ const { env } = require('../../config/env');
 let intervalHandle = null;
 let running = false;
 
-async function runAvailabilityReminderCycle() {
-  const userIds = await listAvailabilityReminderCandidates({
-    minMinutesSinceLocationUpdate: env.notifications.availabilityReminderMinutes,
-    reminderCooldownMinutes: env.notifications.availabilityReminderCooldownMinutes,
+async function runAvailabilityPausedNotificationCycle() {
+  const candidates = await listAvailabilityPausedNotificationCandidates({
+    locationMaxAgeMinutes: env.volunteerMatching.locationMaxAgeMinutes,
     limit: env.notifications.jobBatchSize,
   });
 
-  for (const userId of userIds) {
+  for (const candidate of candidates) {
     await createNotification({
-      recipientUserId: userId,
+      recipientUserId: candidate.userId,
       actorUserId: null,
-      type: 'TASK_UPDATED',
-      title: 'Availability reminder',
-      body: 'You are marked as available. Please confirm if you can still take requests.',
+      type: 'VOLUNTEER_AVAILABILITY_PAUSED',
+      title: 'Volunteer availability paused',
+      body: 'Your availability was paused because your location is no longer fresh. Open NEPH to refresh your location and become available again.',
       entity: null,
       data: {
         screen: 'availability',
-        kind: 'availability_reminder',
+        kind: 'availability_paused',
+        pauseReason: candidate.pauseReason,
+        pauseEventKey: candidate.pauseEventKey,
       },
     });
   }
@@ -71,7 +72,7 @@ async function runNotificationJobsOnce() {
 
   running = true;
   try {
-    await runAvailabilityReminderCycle();
+    await runAvailabilityPausedNotificationCycle();
     await runHelpRequestExpirationCycle();
   } catch (error) {
     console.error('notifications.jobs.runNotificationJobsOnce failed', error);
