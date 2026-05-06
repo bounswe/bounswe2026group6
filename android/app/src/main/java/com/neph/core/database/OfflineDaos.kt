@@ -94,6 +94,9 @@ interface SafetyStatusDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SafetyStatusEntity)
+
+    @Query("DELETE FROM safety_status")
+    suspend fun clear()
 }
 
 @Dao

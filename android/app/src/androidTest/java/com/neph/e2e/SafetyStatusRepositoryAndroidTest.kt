@@ -3,11 +3,18 @@ package com.neph.e2e
 import android.content.Context
 import com.neph.core.NephAppContext
 import com.neph.core.database.NephDatabaseProvider
+import com.neph.core.database.SafetyStatusEntity
+import com.neph.core.database.SyncOperationEntity
 import com.neph.core.sync.SyncEntityType
+import com.neph.core.sync.SyncOperationStatus
 import com.neph.core.sync.SyncOperationType
 import com.neph.core.sync.SyncStatus
+import com.neph.features.auth.data.AuthRepository
+import com.neph.features.auth.data.LoginDestination
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.CurrentDeviceLocation
+import com.neph.features.profile.data.ProfileData
+import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -87,11 +94,86 @@ class SafetyStatusRepositoryAndroidTest {
         assertEquals(0, fakeBackend.profileLocationPatchCount())
     }
 
+    @Test
+    fun clearLocalCacheRemovesSafetyStatusAndPendingSyncOperation() = runBlocking {
+        SafetyStatusRepository.markSafe(
+            token = "expired-token",
+            location = sampleLocation(),
+            shareLocationConsent = true
+        )
+
+        assertEquals(SyncStatus.PENDING_UPDATE, SafetyStatusRepository.getSafetyStatusState().syncStatus)
+        assertEquals(1, pendingSafetyStatusOperationCount())
+        NephDatabaseProvider.requireInstance().syncOperationDao().upsert(
+            SyncOperationEntity(
+                entityType = SyncEntityType.SAFETY_STATUS,
+                entityId = SafetyStatusEntity.CURRENT_KEY,
+                operationType = SyncOperationType.SET_SAFETY_STATUS,
+                payloadJson = """{"status":"safe"}""",
+                createdAtEpochMillis = 1234L,
+                status = SyncOperationStatus.IN_PROGRESS
+            )
+        )
+
+        SafetyStatusRepository.clearLocalCache()
+
+        assertEquals("unknown", SafetyStatusRepository.getSafetyStatusState().status)
+        assertEquals(0, pendingSafetyStatusOperationCount())
+        assertNull(latestSafetyStatusOperation())
+    }
+
+    @Test
+    fun accountSwitchClearsQueuedSafetyStatusBeforeItCanSyncForNextUser() = runBlocking {
+        ProfileRepository.saveProfile(ProfileData(email = "user-a@example.com"))
+        SafetyStatusRepository.markSafe(
+            token = "expired-token",
+            location = sampleLocation(),
+            shareLocationConsent = true
+        )
+        assertEquals(1, pendingSafetyStatusOperationCount())
+
+        val destination = AuthRepository.login(
+            email = "safe.android@example.com",
+            password = "Passw0rd!",
+            rememberMe = true
+        )
+        SafetyStatusRepository.syncPendingSafetyStatusNow("access-token-1")
+
+        assertEquals(0, pendingSafetyStatusOperationCount())
+        assertEquals("unknown", SafetyStatusRepository.getSafetyStatusState().status)
+        assertEquals("unknown", fakeBackend.currentSafetyStatus().status)
+        assertNull(fakeBackend.currentSafetyStatus().location)
+        assertEquals(0, fakeBackend.profileLocationPatchCount())
+        assertEquals(LoginDestination.PROFILE, destination)
+    }
+
     private fun initializeSafetyStatusTestDependencies(context: Context) {
         NephAppContext.initialize(context)
         NephDatabaseProvider.initialize(context)
         AuthSessionStore.initialize(context)
+        ProfileRepository.initialize(context)
         SafetyStatusRepository.initialize(context)
+    }
+
+    private suspend fun pendingSafetyStatusOperationCount(): Int {
+        return NephDatabaseProvider.requireInstance()
+            .syncOperationDao()
+            .getPendingOperations()
+            .count {
+                it.entityType == SyncEntityType.SAFETY_STATUS &&
+                    it.entityId == SafetyStatusEntity.CURRENT_KEY &&
+                    it.operationType == SyncOperationType.SET_SAFETY_STATUS
+            }
+    }
+
+    private suspend fun latestSafetyStatusOperation(): SyncOperationEntity? {
+        return NephDatabaseProvider.requireInstance()
+            .syncOperationDao()
+            .getLatestPendingOperation(
+                entityType = SyncEntityType.SAFETY_STATUS,
+                entityId = SafetyStatusEntity.CURRENT_KEY,
+                operationType = SyncOperationType.SET_SAFETY_STATUS
+            )
     }
 
     private fun sampleLocation(): CurrentDeviceLocation {

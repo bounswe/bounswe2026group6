@@ -62,6 +62,15 @@ object SafetyStatusRepository {
         return database.safetyStatusDao().get()?.toState() ?: SafetyStatusState()
     }
 
+    suspend fun clearLocalCache() {
+        database.safetyStatusDao().clear()
+        database.syncOperationDao().deleteOperations(
+            entityType = SyncEntityType.SAFETY_STATUS,
+            entityId = SafetyStatusEntity.CURRENT_KEY,
+            operationType = SyncOperationType.SET_SAFETY_STATUS
+        )
+    }
+
     suspend fun markSafe(
         token: String,
         note: String? = null,
