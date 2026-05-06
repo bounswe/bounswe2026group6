@@ -8,6 +8,7 @@ import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.core.network.JsonHttpClient
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsRepository
+import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
@@ -79,6 +80,7 @@ object AuthRepository {
         }
 
         val user = response.optJSONObject("user")
+        val userId = user?.optString("userId")?.trim().orEmpty()
         val userEmail = user?.optString("email")?.ifBlank { normalizedEmail } ?: normalizedEmail
         val canReuseLocalProfileFields = previousProfile.email
             ?.trim()
@@ -90,7 +92,7 @@ object AuthRepository {
             SafetyStatusRepository.clearLocalCache()
         }
 
-        AuthSessionStore.saveAccessToken(accessToken, rememberMe)
+        AuthSessionStore.saveAccessToken(accessToken, rememberMe, userId = userId)
         PushTokenSync.syncCurrentToken()
         ProfileRepository.clearProfile()
         ProfileRepository.saveProfile(
@@ -139,7 +141,8 @@ object AuthRepository {
 
         val accessToken = response.optString("accessToken")
         if (accessToken.isNotBlank()) {
-            AuthSessionStore.saveAccessToken(accessToken, rememberMe = true)
+            val userId = response.optJSONObject("user")?.optString("userId")?.trim().orEmpty()
+            AuthSessionStore.saveAccessToken(accessToken, rememberMe = true, userId = userId)
             PushTokenSync.syncCurrentToken()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
@@ -212,6 +215,11 @@ object AuthRepository {
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
         ioScope.launch {
+            try {
+                NearbyVisibleUsersRepository.clearLocalCache()
+            } catch (error: Exception) {
+                Log.w("AuthRepository", "Failed to clear nearby visible users on logout", error)
+            }
             try {
                 OperationalLocationRepository.clearLocalCache()
             } catch (error: Exception) {

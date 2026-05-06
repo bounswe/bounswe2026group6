@@ -155,6 +155,29 @@ data class AssignedRequestEntity(
 )
 
 @Entity(
+    tableName = "nearby_visible_users",
+    primaryKeys = ["cacheOwnerUserId", "userId"],
+    indices = [
+        Index(value = ["cacheOwnerUserId"]),
+        Index(value = ["safetyStatus"]),
+        Index(value = ["fetchedAtEpochMillis"])
+    ]
+)
+data class NearbyVisibleUserEntity(
+    val cacheOwnerUserId: String,
+    val userId: String,
+    val displayName: String?,
+    val safetyStatus: String,
+    val statusUpdatedAt: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val locationCapturedAt: String?,
+    val visibilityScope: String?,
+    val fetchedAtEpochMillis: Long,
+    val expiresAtEpochMillis: Long
+)
+
+@Entity(
     tableName = "sync_operations",
     indices = [
         Index(value = ["status", "createdAtEpochMillis"]),

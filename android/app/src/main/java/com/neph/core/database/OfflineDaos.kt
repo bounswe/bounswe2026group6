@@ -121,6 +121,48 @@ interface AssignedRequestDao {
 }
 
 @Dao
+interface NearbyVisibleUserDao {
+    @Query(
+        """
+        SELECT * FROM nearby_visible_users
+        WHERE cacheOwnerUserId = :cacheOwnerUserId
+        ORDER BY fetchedAtEpochMillis DESC, displayName ASC, userId ASC
+        """
+    )
+    fun observeByCacheOwner(cacheOwnerUserId: String): Flow<List<NearbyVisibleUserEntity>>
+
+    @Query(
+        """
+        SELECT * FROM nearby_visible_users
+        WHERE cacheOwnerUserId = :cacheOwnerUserId
+        ORDER BY fetchedAtEpochMillis DESC, displayName ASC, userId ASC
+        """
+    )
+    suspend fun getByCacheOwner(cacheOwnerUserId: String): List<NearbyVisibleUserEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(users: List<NearbyVisibleUserEntity>)
+
+    @Query(
+        """
+        DELETE FROM nearby_visible_users
+        WHERE cacheOwnerUserId = :cacheOwnerUserId
+          AND userId NOT IN (:visibleUserIds)
+        """
+    )
+    suspend fun deleteUsersNotIn(cacheOwnerUserId: String, visibleUserIds: List<String>)
+
+    @Query("DELETE FROM nearby_visible_users WHERE cacheOwnerUserId = :cacheOwnerUserId")
+    suspend fun clearByCacheOwner(cacheOwnerUserId: String)
+
+    @Query("DELETE FROM nearby_visible_users WHERE expiresAtEpochMillis <= :nowEpochMillis")
+    suspend fun deleteExpired(nowEpochMillis: Long)
+
+    @Query("DELETE FROM nearby_visible_users")
+    suspend fun clearAll()
+}
+
+@Dao
 interface SyncOperationDao {
     @Query(
         """

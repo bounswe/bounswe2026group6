@@ -15,10 +15,11 @@ import com.neph.BuildConfig
         OperationalLocationEntity::class,
         SafetyStatusEntity::class,
         AssignedRequestEntity::class,
+        NearbyVisibleUserEntity::class,
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class NephDatabase : RoomDatabase() {
     abstract fun operationalLocationDao(): OperationalLocationDao
     abstract fun safetyStatusDao(): SafetyStatusDao
     abstract fun assignedRequestDao(): AssignedRequestDao
+    abstract fun nearbyVisibleUserDao(): NearbyVisibleUserDao
     abstract fun syncOperationDao(): SyncOperationDao
     abstract fun syncMetadataDao(): SyncMetadataDao
 }
@@ -119,6 +121,31 @@ object NephDatabaseProvider {
             database.execSQL("ALTER TABLE availability_state ADD COLUMN pauseReason TEXT NOT NULL DEFAULT 'NONE'")
         }
     }
+    private val Migration8To9 = object : Migration(8, 9) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS nearby_visible_users (
+                    cacheOwnerUserId TEXT NOT NULL,
+                    userId TEXT NOT NULL,
+                    displayName TEXT,
+                    safetyStatus TEXT NOT NULL,
+                    statusUpdatedAt TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    locationCapturedAt TEXT,
+                    visibilityScope TEXT,
+                    fetchedAtEpochMillis INTEGER NOT NULL,
+                    expiresAtEpochMillis INTEGER NOT NULL,
+                    PRIMARY KEY(cacheOwnerUserId, userId)
+                )
+                """.trimIndent()
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_cacheOwnerUserId ON nearby_visible_users (cacheOwnerUserId)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_safetyStatus ON nearby_visible_users (safetyStatus)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_fetchedAtEpochMillis ON nearby_visible_users (fetchedAtEpochMillis)")
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -137,7 +164,8 @@ object NephDatabaseProvider {
                 Migration4To5,
                 Migration5To6,
                 Migration6To7,
-                Migration7To8
+                Migration7To8,
+                Migration8To9
             )
                 .build()
                 .also { instance = it }

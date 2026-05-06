@@ -41,7 +41,12 @@ function mapVisibleSafetyStatus(row, { isAdmin = false } = {}) {
   const canSeeLocation = Boolean(
     row.share_location_consent
     && row.location_sharing_enabled
-    && row.location_visibility !== 'PRIVATE'
+    && (
+      isAdmin
+      || row.is_self
+      || row.location_visibility === 'PUBLIC'
+      || (row.location_visibility === 'EMERGENCY_ONLY' && row.shares_safety_circle)
+    )
   );
 
   return {
@@ -158,9 +163,10 @@ async function upsertSafetyStatus(userId, input) {
   return mapSafetyStatus(result.rows[0]);
 }
 
-async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false } = {}) {
+async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false, nearbyOnly = false } = {}) {
   const result = await query(
     `
+      WITH visible_statuses AS (
       SELECT
         uss.user_id,
         uss.status,
@@ -176,10 +182,30 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false } = {})
         up.last_name,
         ps.profile_visibility,
         ps.location_visibility,
-        ps.location_sharing_enabled
+        ps.location_sharing_enabled,
+        target_lp.country,
+        target_lp.city,
+        target_lp.district,
+        target_lp.neighborhood,
+        viewer_lp.country AS viewer_country,
+        viewer_lp.city AS viewer_city,
+        viewer_lp.district AS viewer_district,
+        viewer_lp.neighborhood AS viewer_neighborhood,
+        uss.user_id = $1 AS is_self,
+        EXISTS (
+          SELECT 1
+          FROM safety_circle_members viewer_location_member
+          JOIN safety_circle_members target_location_member
+            ON target_location_member.circle_id = viewer_location_member.circle_id
+          WHERE viewer_location_member.user_id = $1
+            AND target_location_member.user_id = uss.user_id
+        ) AS shares_safety_circle
       FROM user_safety_statuses uss
       LEFT JOIN user_profiles up ON up.user_id = uss.user_id
       LEFT JOIN privacy_settings ps ON ps.profile_id = up.profile_id
+      LEFT JOIN location_profiles target_lp ON target_lp.profile_id = up.profile_id
+      LEFT JOIN user_profiles viewer_up ON viewer_up.user_id = $1
+      LEFT JOIN location_profiles viewer_lp ON viewer_lp.profile_id = viewer_up.profile_id
       WHERE uss.user_id = $1
         OR $2 = TRUE
         OR COALESCE(ps.profile_visibility::text, 'PRIVATE') = 'PUBLIC'
@@ -191,9 +217,22 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false } = {})
           WHERE viewer_member.user_id = $1
             AND visible_member.user_id = uss.user_id
         )
-      ORDER BY uss.updated_at DESC, uss.user_id ASC;
+      )
+      SELECT *
+      FROM visible_statuses
+      WHERE $3 = FALSE
+        OR (
+          user_id <> $1
+          AND NULLIF(TRIM(COALESCE(viewer_neighborhood, '')), '') IS NOT NULL
+          AND NULLIF(TRIM(COALESCE(neighborhood, '')), '') IS NOT NULL
+          AND LOWER(TRIM(COALESCE(viewer_country, ''))) = LOWER(TRIM(COALESCE(country, '')))
+          AND LOWER(TRIM(COALESCE(viewer_city, ''))) = LOWER(TRIM(COALESCE(city, '')))
+          AND LOWER(TRIM(COALESCE(viewer_district, ''))) = LOWER(TRIM(COALESCE(district, '')))
+          AND LOWER(TRIM(COALESCE(viewer_neighborhood, ''))) = LOWER(TRIM(COALESCE(neighborhood, '')))
+        )
+      ORDER BY updated_at DESC, user_id ASC;
     `,
-    [viewerUserId, isAdmin],
+    [viewerUserId, isAdmin, Boolean(nearbyOnly)],
   );
 
   return result.rows.map((row) => mapVisibleSafetyStatus(row, { isAdmin }));
