@@ -9,49 +9,11 @@ import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import {
     FALLBACK_ANNOUNCEMENTS,
     announcementToNewsItem,
+    cacheAnnouncements,
     fetchAnnouncements,
-    type Announcement,
+    readCachedAnnouncements,
     type NewsItem,
 } from "@/lib/news";
-
-const ANNOUNCEMENTS_CACHE_KEY = "neph.publicAnnouncements.cache.v1";
-
-type AnnouncementCache = {
-    announcements: Announcement[];
-    savedAt: string;
-};
-
-function readCachedAnnouncements(): AnnouncementCache | null {
-    try {
-        const raw = window.localStorage.getItem(ANNOUNCEMENTS_CACHE_KEY);
-        if (!raw) {
-            return null;
-        }
-
-        const parsed = JSON.parse(raw) as Partial<AnnouncementCache>;
-        if (!Array.isArray(parsed.announcements) || typeof parsed.savedAt !== "string") {
-            return null;
-        }
-
-        return {
-            announcements: parsed.announcements,
-            savedAt: parsed.savedAt,
-        };
-    } catch {
-        return null;
-    }
-}
-
-function cacheAnnouncements(announcements: Announcement[], savedAt: string) {
-    try {
-        window.localStorage.setItem(
-            ANNOUNCEMENTS_CACHE_KEY,
-            JSON.stringify({ announcements, savedAt })
-        );
-    } catch {
-        // Cache is best-effort only.
-    }
-}
 
 function formatLastUpdated(value: string) {
     const date = new Date(value);

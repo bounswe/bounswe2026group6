@@ -8,13 +8,12 @@ import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import {
+    ANNOUNCEMENTS_CACHE_KEY,
     FALLBACK_ANNOUNCEMENTS,
     fetchAnnouncement,
     formatAnnouncementDate,
     type Announcement,
 } from "@/lib/news";
-
-const ANNOUNCEMENTS_CACHE_KEY = "neph.publicAnnouncements.cache.v1";
 
 function readAnnouncementId(param: string | string[] | undefined) {
     if (Array.isArray(param)) {

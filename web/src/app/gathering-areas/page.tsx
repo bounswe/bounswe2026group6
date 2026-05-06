@@ -388,16 +388,25 @@ export default function GatheringAreasPage() {
                         `The live provider failed${response.meta.providerErrorCode ? ` (${response.meta.providerErrorCode})` : ""}. Showing the backend's cached result.`
                     );
                     setLastUpdated("");
-                } else if (response.source === "fallback" && mapped.length === 0) {
-                    const fallbackAreas = getFallbackMapFeatures();
+                } else if (response.source === "fallback") {
+                    const fallbackAreas = mapped.length ? mapped : getFallbackMapFeatures();
                     const savedAt = new Date().toISOString();
+                    const fallbackReason =
+                        response.meta.fallbackReason || "The live gathering-area provider is unavailable.";
 
-                    setCenter(DEFAULT_CENTER);
-                    setLocationNote("Live provider unavailable. Showing demo gathering areas around Istanbul.");
+                    if (!mapped.length) {
+                        setCenter(DEFAULT_CENTER);
+                        setLocationNote("Live provider unavailable. Showing demo gathering areas around Istanbul.");
+                    } else {
+                        setLocationNote("Live provider unavailable. Showing backend fallback gathering areas.");
+                    }
                     setAreas(fallbackAreas);
-                    setDataNoticeTitle("Using demo gathering areas");
+                    void hydrateMissingAddresses(fallbackAreas, currentRequestId);
+                    setDataNoticeTitle(mapped.length ? "Using backend fallback gathering areas" : "Using demo gathering areas");
                     setDataNotice(
-                        `${response.meta.fallbackReason || "The live gathering-area provider is unavailable."} Showing demo Istanbul areas and guidance so the page remains usable.`
+                        mapped.length
+                            ? `${fallbackReason} Showing fallback gathering areas so the page remains usable. Retry to refresh live results.`
+                            : `${fallbackReason} Showing demo Istanbul areas and guidance so the page remains usable.`
                     );
                     setLastUpdated(savedAt);
                     setFetchState("fallback");

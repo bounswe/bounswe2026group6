@@ -15,6 +15,7 @@ import {
     FALLBACK_ANNOUNCEMENTS,
     announcementToNewsItem,
     fetchAnnouncements,
+    readCachedAnnouncements,
     type NewsItem,
 } from "@/lib/news";
 
@@ -112,11 +113,21 @@ export default function HomePage() {
             setPreviewNews(announcements.map(announcementToNewsItem));
             setNewsUpdatedAt(new Date().toISOString());
         } catch (err) {
-            setPreviewNews(FALLBACK_ANNOUNCEMENTS.slice(0, 3).map(announcementToNewsItem));
-            setNewsUpdatedAt(FALLBACK_ANNOUNCEMENTS[0]?.createdAt || "");
+            const cached = readCachedAnnouncements();
+            const cachedAnnouncements = cached?.announcements.slice(0, 3) || [];
+            const hasCachedAnnouncements = cachedAnnouncements.length > 0;
+            const fallbackAnnouncements = hasCachedAnnouncements
+                ? cachedAnnouncements
+                : FALLBACK_ANNOUNCEMENTS.slice(0, 3);
+            const sourceLabel = hasCachedAnnouncements
+                ? "cached announcements"
+                : "demo announcements";
+
+            setPreviewNews(fallbackAnnouncements.map(announcementToNewsItem));
+            setNewsUpdatedAt(hasCachedAnnouncements && cached ? cached.savedAt : FALLBACK_ANNOUNCEMENTS[0]?.createdAt || "");
             setUsingFallbackNews(true);
             setNewsError(
-                `Latest announcements could not be refreshed (${describeNewsPreviewFailure(err)}). Showing demo announcements.`
+                `Latest announcements could not be refreshed (${describeNewsPreviewFailure(err)}). Showing ${sourceLabel}.`
             );
         } finally {
             setNewsLoading(false);

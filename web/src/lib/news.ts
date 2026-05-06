@@ -26,6 +26,13 @@ type AnnouncementResponse = {
     announcement: Announcement;
 };
 
+export const ANNOUNCEMENTS_CACHE_KEY = "neph.publicAnnouncements.cache.v1";
+
+export type AnnouncementCache = {
+    announcements: Announcement[];
+    savedAt: string;
+};
+
 export const FALLBACK_ANNOUNCEMENTS: Announcement[] = [
     {
         id: "seed_announcement_gathering_area",
@@ -97,6 +104,46 @@ export function announcementToNewsItem(announcement: Announcement): NewsItem {
         publishedAt: formatAnnouncementDate(announcement.createdAt),
         category: "Announcement",
     };
+}
+
+export function readCachedAnnouncements(): AnnouncementCache | null {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    try {
+        const raw = window.localStorage.getItem(ANNOUNCEMENTS_CACHE_KEY);
+        if (!raw) {
+            return null;
+        }
+
+        const parsed = JSON.parse(raw) as Partial<AnnouncementCache>;
+        if (!Array.isArray(parsed.announcements) || typeof parsed.savedAt !== "string") {
+            return null;
+        }
+
+        return {
+            announcements: parsed.announcements,
+            savedAt: parsed.savedAt,
+        };
+    } catch {
+        return null;
+    }
+}
+
+export function cacheAnnouncements(announcements: Announcement[], savedAt: string) {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            ANNOUNCEMENTS_CACHE_KEY,
+            JSON.stringify({ announcements, savedAt })
+        );
+    } catch {
+        // Cache is best-effort only.
+    }
 }
 
 export async function fetchAnnouncements(options: { limit?: number } = {}) {

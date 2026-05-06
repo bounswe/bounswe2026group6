@@ -165,6 +165,58 @@ test('shows empty and fallback states for gathering areas retrieval', async ({ p
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
 
+test('shows backend fallback warning while rendering non-empty fallback gathering areas', async ({ page }) => {
+  await mockGeolocation(page);
+
+  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        center: { lat: 41.009, lon: 28.97 },
+        radius: 2000,
+        source: 'fallback',
+        meta: {
+          requestedLimit: 20,
+          returnedCount: 1,
+          fallbackReason: 'Overpass provider timed out.',
+        },
+        collection: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [28.976, 41.011],
+              },
+              properties: {
+                id: 'backend-fallback-assembly',
+                osmType: 'fallback',
+                name: 'Backend fallback assembly point',
+                category: 'assembly_point',
+                distanceMeters: 180,
+                rawTags: {
+                  address: 'Backend fallback address',
+                },
+              },
+            },
+          ],
+        },
+      }),
+    });
+  });
+
+  await page.goto('/gathering-areas');
+
+  await expect(page.getByText('Using backend fallback gathering areas')).toBeVisible();
+  await expect(page.getByText(/Overpass provider timed out/)).toBeVisible();
+  await expect(page.getByText(/Retry to refresh live results/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Backend fallback assembly point/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry gathering areas' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
+});
+
 test('does not show false empty state while geolocation is still pending', async ({ page }) => {
   await mockGeolocationPending(page);
 
