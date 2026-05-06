@@ -1,11 +1,10 @@
 package com.neph.e2e
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -98,7 +97,7 @@ class AndroidE2ETest {
         composeRule.onNodeWithText("Exit").assertIsDisplayed()
 
         clickableNode("Cancel").performClick()
-        composeRule.onNodeWithText("Exit NEPH?").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Exit NEPH?").assertCountEquals(0)
         composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
     }
 
@@ -111,7 +110,7 @@ class AndroidE2ETest {
         pressSystemBack()
 
         composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
-        composeRule.onNodeWithText("Exit NEPH?").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Exit NEPH?").assertCountEquals(0)
     }
 
     private fun openEmailFormIfNeeded(fieldTag: String) {
