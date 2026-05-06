@@ -7,6 +7,7 @@ const {
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 } = require('./service');
 const {
   validateSignupInput,
@@ -244,6 +245,26 @@ async function logout(req, res) {
   }
 }
 
+async function deleteMe(req, res) {
+  try {
+    const result = await deleteCurrentUser(req.user.userId);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error.code === 'USER_NOT_FOUND') {
+      return res.status(404).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
 module.exports = {
   getAuthInfo,
   signup,
@@ -254,4 +275,5 @@ module.exports = {
   forgotPassword,
   resetPasswordHandler,
   logout,
+  deleteMe,
 };

@@ -208,6 +208,28 @@ object AuthRepository {
                 }
         }
 
+        clearLocalAuthState()
+    }
+
+    suspend fun deleteAccount(): String {
+        val accessToken = AuthSessionStore.getAccessToken()
+            ?: throw ApiException(
+                message = "Please log in again before deleting your account.",
+                status = 401,
+                code = "UNAUTHORIZED"
+            )
+
+        val response = JsonHttpClient.request(
+            path = "/auth/me",
+            method = "DELETE",
+            token = accessToken
+        )
+
+        clearLocalAuthState()
+        return response.optString("message").ifBlank { "Account deleted successfully." }
+    }
+
+    private fun clearLocalAuthState() {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
