@@ -115,7 +115,7 @@ test('keeps map/list selection stable when features share same id but different 
   await expect(page.locator('.gathering-areas-selected-meta').first()).toContainText('Shelter');
 });
 
-test('shows empty and error states for gathering areas retrieval', async ({ page }) => {
+test('shows empty and fallback states for gathering areas retrieval', async ({ page }) => {
   await mockGeolocation(page);
 
   let requestCount = 0;
@@ -157,8 +157,10 @@ test('shows empty and error states for gathering areas retrieval', async ({ page
 
   await page.getByRole('button', { name: 'Retry Results' }).click();
 
-  await expect(page.getByText('Gathering areas provider is unavailable')).toBeVisible();
-  await expect(page.getByText('Could not load nearby results.')).toBeVisible();
+  await expect(page.getByText(/Live gathering areas could not be refreshed/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Demo central assembly area/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry gathering areas' })).toBeVisible();
+  await expect(page.getByText('Could not load nearby results.')).toHaveCount(0);
   await expect(page.getByText('No nearby areas in the current result.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
