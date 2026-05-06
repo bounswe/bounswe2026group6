@@ -115,7 +115,7 @@ test('keeps map/list selection stable when features share same id but different 
   await expect(page.locator('.gathering-areas-selected-meta').first()).toContainText('Shelter');
 });
 
-test('shows empty and error states for gathering areas retrieval', async ({ page }) => {
+test('shows empty and fallback states for gathering areas retrieval', async ({ page }) => {
   await mockGeolocation(page);
 
   let requestCount = 0;
@@ -157,9 +157,63 @@ test('shows empty and error states for gathering areas retrieval', async ({ page
 
   await page.getByRole('button', { name: 'Retry Results' }).click();
 
-  await expect(page.getByText('Gathering areas provider is unavailable')).toBeVisible();
-  await expect(page.getByText('Could not load nearby results.')).toBeVisible();
+  await expect(page.getByText(/Live gathering areas could not be refreshed/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Demo central assembly area/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry gathering areas' })).toBeVisible();
+  await expect(page.getByText('Could not load nearby results.')).toHaveCount(0);
   await expect(page.getByText('No nearby areas in the current result.')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
+});
+
+test('shows backend fallback warning while rendering non-empty fallback gathering areas', async ({ page }) => {
+  await mockGeolocation(page);
+
+  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        center: { lat: 41.009, lon: 28.97 },
+        radius: 2000,
+        source: 'fallback',
+        meta: {
+          requestedLimit: 20,
+          returnedCount: 1,
+          fallbackReason: 'Overpass provider timed out.',
+        },
+        collection: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [28.976, 41.011],
+              },
+              properties: {
+                id: 'backend-fallback-assembly',
+                osmType: 'fallback',
+                name: 'Backend fallback assembly point',
+                category: 'assembly_point',
+                distanceMeters: 180,
+                rawTags: {
+                  address: 'Backend fallback address',
+                },
+              },
+            },
+          ],
+        },
+      }),
+    });
+  });
+
+  await page.goto('/gathering-areas');
+
+  await expect(page.getByText('Using backend fallback gathering areas')).toBeVisible();
+  await expect(page.getByText(/Overpass provider timed out/)).toBeVisible();
+  await expect(page.getByText(/Retry to refresh live results/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Backend fallback assembly point/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry gathering areas' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
 

@@ -95,10 +95,13 @@ export type NearbyGatheringAreasResponse = {
         lon: number;
     };
     radius: number;
-    source: "overpass";
+    source: "overpass" | "stale_cache" | "fallback";
     meta: {
         requestedLimit: number;
         returnedCount: number;
+        stale?: boolean;
+        providerErrorCode?: string;
+        fallbackReason?: string;
     };
     collection: GatheringAreaFeatureCollection;
 };
