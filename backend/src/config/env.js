@@ -58,6 +58,10 @@ const env = {
     guestMatchingEnabled: (process.env.HELP_REQUEST_GUEST_MATCHING_ENABLED || 'false').toLowerCase() === 'true',
     guestTokenTtl: process.env.HELP_REQUEST_GUEST_TOKEN_TTL || '2h',
   },
+  volunteerMatching: {
+    locationMaxAgeMinutes: readNumber(process.env.VOLUNTEER_LOCATION_MAX_AGE_MINUTES, 120),
+    availabilityTtlMinutes: readNumber(process.env.VOLUNTEER_AVAILABILITY_TTL_MINUTES, 360),
+  },
 };
 
 module.exports = {

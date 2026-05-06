@@ -67,6 +67,16 @@ function getConfiguredMatchRadiusMeters() {
   return DEFAULT_MAX_MATCH_DISTANCE_METERS;
 }
 
+function getConfiguredVolunteerLocationMaxAgeMinutes() {
+  const configuredValue = Number(process.env.VOLUNTEER_LOCATION_MAX_AGE_MINUTES);
+
+  if (Number.isFinite(configuredValue) && configuredValue > 0) {
+    return Math.floor(configuredValue);
+  }
+
+  return env.volunteerMatching.locationMaxAgeMinutes;
+}
+
 function toCoordinateValue(value) {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -382,30 +392,76 @@ async function createVolunteer(userId) {
   return result.rows[0];
 }
 
-async function updateVolunteerAvailability(volunteerId, isAvailable, latitude, longitude, executor = null) {
-  const hasCoordinateUpdate = Number.isFinite(latitude) && Number.isFinite(longitude);
+function resolveAvailabilityUpdateOptions(optionsOrExecutor, executor) {
+  if (optionsOrExecutor && typeof optionsOrExecutor.query === 'function') {
+    return {
+      options: {},
+      executor: optionsOrExecutor,
+    };
+  }
+
+  return {
+    options: optionsOrExecutor || {},
+    executor,
+  };
+}
+
+async function updateVolunteerAvailability(
+  volunteerId,
+  isAvailable,
+  latitude,
+  longitude,
+  optionsOrExecutor = null,
+  executor = null,
+) {
+  const { options, executor: resolvedExecutor } = resolveAvailabilityUpdateOptions(optionsOrExecutor, executor);
+  const hasCoordinateUpdate = isAvailable && Number.isFinite(latitude) && Number.isFinite(longitude);
 
   if (!hasCoordinateUpdate) {
     const sql = `
       UPDATE volunteers
-      SET is_available = $2
+      SET is_available = $2,
+          available_until = CASE WHEN $2 THEN available_until ELSE NULL END
       WHERE volunteer_id = $1
       RETURNING *;
     `;
-    const result = await runQuery(executor, sql, [volunteerId, isAvailable]);
+    const result = await runQuery(resolvedExecutor, sql, [volunteerId, isAvailable]);
     return result.rows[0];
   }
 
+  const accuracyMeters = Number.isFinite(options.accuracyMeters) ? options.accuracyMeters : null;
+  const locationSource = typeof options.source === 'string' && options.source.trim() !== ''
+    ? options.source.trim()
+    : null;
+  const ttlMinutes = Number.isFinite(options.availabilityTtlMinutes) && options.availabilityTtlMinutes > 0
+    ? Math.floor(options.availabilityTtlMinutes)
+    : env.volunteerMatching.availabilityTtlMinutes;
+  const locationTimestamp = typeof options.locationTimestamp === 'string' && options.locationTimestamp.trim() !== ''
+    ? options.locationTimestamp
+    : null;
+
   const sql = `
+    WITH availability_event AS (
+      SELECT COALESCE($8::timestamp, CURRENT_TIMESTAMP) AS occurred_at
+    )
     UPDATE volunteers
     SET is_available = $2,
         last_known_latitude = $3,
         last_known_longitude = $4,
-        location_updated_at = CURRENT_TIMESTAMP
+        location_updated_at = availability_event.occurred_at,
+        availability_confirmed_at = availability_event.occurred_at,
+        available_until = availability_event.occurred_at + ($7::int * INTERVAL '1 minute'),
+        last_location_accuracy_meters = $5,
+        last_location_source = $6
+    FROM availability_event
     WHERE volunteer_id = $1
     RETURNING *;
   `;
-  const result = await runQuery(executor, sql, [volunteerId, isAvailable, latitude, longitude]);
+  const result = await runQuery(
+    resolvedExecutor,
+    sql,
+    [volunteerId, isAvailable, latitude, longitude, accuracyMeters, locationSource, ttlMinutes, locationTimestamp],
+  );
   return result.rows[0];
 }
 
@@ -433,6 +489,7 @@ async function findPendingRequests() {
 }
 
 async function findAvailableVolunteersForMatching() {
+  const locationMaxAgeMinutes = getConfiguredVolunteerLocationMaxAgeMinutes();
   const sql = `
     SELECT
       v.*,
@@ -445,6 +502,12 @@ async function findAvailableVolunteersForMatching() {
       WHERE e.profile_id = up.profile_id
     ) expertise_context ON TRUE
     WHERE v.is_available = TRUE
+      AND v.last_known_latitude IS NOT NULL
+      AND v.last_known_longitude IS NOT NULL
+      AND v.location_updated_at IS NOT NULL
+      AND v.location_updated_at >= CURRENT_TIMESTAMP - ($1::int * INTERVAL '1 minute')
+      AND v.available_until IS NOT NULL
+      AND v.available_until > CURRENT_TIMESTAMP
       AND NOT EXISTS (
         SELECT 1 FROM assignments a
         JOIN help_requests hr ON a.request_id = hr.request_id
@@ -454,7 +517,7 @@ async function findAvailableVolunteersForMatching() {
       )
     ORDER BY v.location_updated_at DESC NULLS LAST, v.volunteer_id ASC;
   `;
-  const result = await query(sql);
+  const result = await query(sql, [locationMaxAgeMinutes]);
   return result.rows.map(buildVolunteerMatchContext);
 }
 
@@ -561,6 +624,7 @@ function selectBestVolunteerForRequest(requestRow, volunteerRows) {
 }
 
 async function findMatchingRequestForVolunteer(volunteerId) {
+  const locationMaxAgeMinutes = getConfiguredVolunteerLocationMaxAgeMinutes();
   const volunteerSql = `
     SELECT
       v.*,
@@ -573,9 +637,16 @@ async function findMatchingRequestForVolunteer(volunteerId) {
       WHERE e.profile_id = up.profile_id
     ) expertise_context ON TRUE
     WHERE v.volunteer_id = $1
+      AND v.is_available = TRUE
+      AND v.last_known_latitude IS NOT NULL
+      AND v.last_known_longitude IS NOT NULL
+      AND v.location_updated_at IS NOT NULL
+      AND v.location_updated_at >= CURRENT_TIMESTAMP - ($2::int * INTERVAL '1 minute')
+      AND v.available_until IS NOT NULL
+      AND v.available_until > CURRENT_TIMESTAMP
     LIMIT 1;
   `;
-  const vResult = await query(volunteerSql, [volunteerId]);
+  const vResult = await query(volunteerSql, [volunteerId, locationMaxAgeMinutes]);
   const volunteer = vResult.rows[0] ? buildVolunteerMatchContext(vResult.rows[0]) : null;
 
   if (!volunteer) return null;
@@ -621,6 +692,7 @@ async function findMatchingVolunteerForRequest(requestId) {
 }
 
 async function createAssignment(volunteerId, requestId) {
+  const locationMaxAgeMinutes = getConfiguredVolunteerLocationMaxAgeMinutes();
   const assignmentId = makeId('asg');
   const sql = `
     INSERT INTO assignments (assignment_id, volunteer_id, request_id, assigned_at, is_cancelled)
@@ -629,6 +701,12 @@ async function createAssignment(volunteerId, requestId) {
     JOIN help_requests hr ON hr.request_id = $3::VARCHAR(64)
     WHERE v.volunteer_id = $2::VARCHAR(64)
       AND v.is_available = TRUE
+      AND v.last_known_latitude IS NOT NULL
+      AND v.last_known_longitude IS NOT NULL
+      AND v.location_updated_at IS NOT NULL
+      AND v.location_updated_at >= CURRENT_TIMESTAMP - ($4::int * INTERVAL '1 minute')
+      AND v.available_until IS NOT NULL
+      AND v.available_until > CURRENT_TIMESTAMP
       AND hr.status IN ('PENDING', 'ASSIGNED', 'IN_PROGRESS')
       AND NOT EXISTS (
         SELECT 1
@@ -641,7 +719,7 @@ async function createAssignment(volunteerId, requestId) {
     ON CONFLICT (volunteer_id) WHERE is_cancelled = FALSE DO NOTHING
     RETURNING *;
   `;
-  const result = await query(sql, [assignmentId, volunteerId, requestId]);
+  const result = await query(sql, [assignmentId, volunteerId, requestId, locationMaxAgeMinutes]);
   return result.rows[0] || null;
 }
 

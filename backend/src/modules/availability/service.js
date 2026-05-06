@@ -17,6 +17,7 @@ const {
   findRequestOwnerByRequestId,
 } = require('./repository');
 const { createNotification } = require('../notifications/service');
+const { env } = require('../../config/env');
 
 async function notifyVolunteerTaskAssigned(volunteerUserId, requestId, actorUserId) {
   if (!volunteerUserId || !requestId) {
@@ -151,23 +152,139 @@ async function runAssignmentCycle() {
   return createdAssignments;
 }
 
+function getConfiguredAvailabilityTtlMinutes() {
+  const configuredValue = Number(process.env.VOLUNTEER_AVAILABILITY_TTL_MINUTES);
+
+  if (Number.isFinite(configuredValue) && configuredValue > 0) {
+    return Math.floor(configuredValue);
+  }
+
+  return env.volunteerMatching.availabilityTtlMinutes;
+}
+
+function getConfiguredLocationMaxAgeMinutes() {
+  const configuredValue = Number(process.env.VOLUNTEER_LOCATION_MAX_AGE_MINUTES);
+
+  if (Number.isFinite(configuredValue) && configuredValue > 0) {
+    return Math.floor(configuredValue);
+  }
+
+  return env.volunteerMatching.locationMaxAgeMinutes;
+}
+
+function buildLocationSessionOptions(input) {
+  return {
+    accuracyMeters: Number.isFinite(input.accuracyMeters) ? input.accuracyMeters : null,
+    source: typeof input.source === 'string' ? input.source : null,
+    availabilityTtlMinutes: getConfiguredAvailabilityTtlMinutes(),
+  };
+}
+
+function getSyncRecordEventTimestamp(record) {
+  const rawTimestamp = record.capturedAt || record.timestamp;
+  const parsed = rawTimestamp ? new Date(rawTimestamp) : null;
+
+  if (!parsed || !Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+}
+
+function parseDatabaseTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return new Date(Date.UTC(
+      value.getFullYear(),
+      value.getMonth(),
+      value.getDate(),
+      value.getHours(),
+      value.getMinutes(),
+      value.getSeconds(),
+      value.getMilliseconds(),
+    ));
+  }
+
+  const rawValue = String(value);
+  const parsed = new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(rawValue) ? rawValue : `${rawValue}Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function buildAvailabilitySessionStatus(volunteer) {
+  const now = Date.now();
+  const locationUpdatedAt = volunteer && volunteer.location_updated_at
+    ? parseDatabaseTimestamp(volunteer.location_updated_at)
+    : null;
+  const availableUntil = volunteer && volunteer.available_until
+    ? parseDatabaseTimestamp(volunteer.available_until)
+    : null;
+  const locationMaxAgeMinutes = getConfiguredLocationMaxAgeMinutes();
+  const hasUsableLocation = Boolean(
+    volunteer
+    && volunteer.last_known_latitude !== null
+    && volunteer.last_known_latitude !== undefined
+    && volunteer.last_known_longitude !== null
+    && volunteer.last_known_longitude !== undefined,
+  );
+  const isLocationFresh = Boolean(
+    locationUpdatedAt
+    && Number.isFinite(locationUpdatedAt.getTime())
+    && now - locationUpdatedAt.getTime() <= locationMaxAgeMinutes * 60 * 1000,
+  );
+  const isAvailabilitySessionActive = Boolean(
+    volunteer
+    && volunteer.is_available
+    && availableUntil
+    && Number.isFinite(availableUntil.getTime())
+    && availableUntil.getTime() > now,
+  );
+  const effectiveIsAvailable = Boolean(
+    volunteer
+    && volunteer.is_available
+    && isAvailabilitySessionActive
+    && isLocationFresh
+    && hasUsableLocation,
+  );
+
+  return {
+    availableUntil: volunteer ? volunteer.available_until || null : null,
+    availabilityConfirmedAt: volunteer ? volunteer.availability_confirmed_at || null : null,
+    locationUpdatedAt: volunteer ? volunteer.location_updated_at || null : null,
+    locationMaxAgeMinutes,
+    availabilityTtlMinutes: getConfiguredAvailabilityTtlMinutes(),
+    effectiveIsAvailable,
+    hasUsableLocation,
+    isLocationFresh,
+    isAvailabilitySessionActive,
+    availabilitySessionExpired: Boolean(volunteer && volunteer.is_available && !isAvailabilitySessionActive),
+  };
+}
+
 async function syncRequestStatusFromAssignments(requestId) {
   await syncRequestStatusPreservingInProgress(requestId);
   return findActiveAssignmentsByRequestId(requestId);
 }
 
-async function setAvailability(userId, { isAvailable, latitude, longitude }) {
+async function setAvailability(userId, input) {
+  const { isAvailable, latitude, longitude } = input;
   let volunteer = await findVolunteerByUserId(userId);
   if (!volunteer) {
     volunteer = await createVolunteer(userId);
   }
 
   const hasCoordinates = isAvailable && Number.isFinite(latitude) && Number.isFinite(longitude);
+  const locationOptions = hasCoordinates
+    ? buildLocationSessionOptions(input)
+    : {};
   const updatedVolunteer = await updateVolunteerAvailability(
     volunteer.volunteer_id,
     isAvailable,
     hasCoordinates ? latitude : undefined,
-    hasCoordinates ? longitude : undefined
+    hasCoordinates ? longitude : undefined,
+    locationOptions,
   );
 
   await createAvailabilityRecord(volunteer.volunteer_id, isAvailable, false);
@@ -206,16 +323,21 @@ async function syncAvailability(userId, { records }) {
   if (records.length > 0) {
     const sortedRecords = [...records].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     const latest = sortedRecords[sortedRecords.length - 1];
-    const latestAvailableRecord = [...sortedRecords].reverse().find((record) => record.isAvailable);
-    const hasLatestAvailableCoordinates = latestAvailableRecord
-      && Number.isFinite(latestAvailableRecord.latitude)
-      && Number.isFinite(latestAvailableRecord.longitude);
+    const latestHasAvailableCoordinates = latest.isAvailable
+      && Number.isFinite(latest.latitude)
+      && Number.isFinite(latest.longitude);
 
     await updateVolunteerAvailability(
       volunteer.volunteer_id,
       latest.isAvailable,
-      hasLatestAvailableCoordinates ? latestAvailableRecord.latitude : undefined,
-      hasLatestAvailableCoordinates ? latestAvailableRecord.longitude : undefined
+      latestHasAvailableCoordinates ? latest.latitude : undefined,
+      latestHasAvailableCoordinates ? latest.longitude : undefined,
+      latestHasAvailableCoordinates
+        ? {
+            ...buildLocationSessionOptions(latest),
+            locationTimestamp: getSyncRecordEventTimestamp(latest),
+          }
+        : {},
     );
 
     for (const record of sortedRecords) {
@@ -425,7 +547,8 @@ async function getAvailabilityStatus(userId) {
     return {
       isAvailable: false,
       volunteer: null,
-      assignment: null
+      assignment: null,
+      ...buildAvailabilitySessionStatus(null),
     };
   }
 
@@ -434,7 +557,8 @@ async function getAvailabilityStatus(userId) {
   return {
     isAvailable: volunteer.is_available,
     volunteer,
-    assignment
+    assignment,
+    ...buildAvailabilitySessionStatus(volunteer),
   };
 }
 

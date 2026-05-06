@@ -33,6 +33,10 @@ function availabilityOnPayload(latitude = 41.0, longitude = 29.0) {
   return { isAvailable: true, latitude, longitude };
 }
 
+function minutesFromNow(minutes) {
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString();
+}
+
 async function seedActiveUser(userId, email = 'user@example.com') {
   await query(
     `
@@ -54,9 +58,10 @@ async function seedVolunteer({
   volunteerId,
   userId,
   isAvailable = true,
-  latitude = null,
-  longitude = null,
-  locationUpdatedAt = '2026-04-23T08:00:00.000Z',
+  latitude = 41.0,
+  longitude = 29.0,
+  locationUpdatedAt = new Date().toISOString(),
+  availableUntil = isAvailable ? minutesFromNow(360) : null,
 }) {
   await query(
     `
@@ -66,11 +71,22 @@ async function seedVolunteer({
         is_available,
         last_known_latitude,
         last_known_longitude,
-        location_updated_at
+        location_updated_at,
+        available_until,
+        availability_confirmed_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6);
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6::timestamp,
+        $7::timestamp,
+        CASE WHEN $3 THEN $6::timestamp ELSE NULL END
+      );
     `,
-    [volunteerId, userId, isAvailable, latitude, longitude, locationUpdatedAt],
+    [volunteerId, userId, isAvailable, latitude, longitude, locationUpdatedAt, availableUntil],
   );
 }
 
@@ -201,10 +217,15 @@ describe('Availability integration', () => {
     expect(response.status).toBe(200);
     expect(response.body.volunteer.is_available).toBe(true);
     expect(response.body.volunteer.user_id).toBe(userId);
+    expect(response.body.volunteer.available_until).toBeTruthy();
+    expect(response.body.volunteer.availability_confirmed_at).toBeTruthy();
+    expect(response.body.volunteer.location_updated_at).toBeTruthy();
 
     const vResult = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
     expect(vResult.rows).toHaveLength(1);
     expect(vResult.rows[0].is_available).toBe(true);
+    expect(vResult.rows[0].available_until).toBeTruthy();
+    expect(vResult.rows[0].availability_confirmed_at).toBeTruthy();
   });
 
   test('POST /api/availability/toggle to false preserves existing volunteer coordinates', async () => {
@@ -217,7 +238,7 @@ describe('Availability integration', () => {
       isAvailable: true,
       latitude: 41.015,
       longitude: 29.01,
-      locationUpdatedAt: '2026-05-04T10:00:00.000Z',
+      locationUpdatedAt: minutesFromNow(-10),
     });
     const before = await query('SELECT location_updated_at FROM volunteers WHERE user_id = $1', [userId]);
     const token = buildAuthToken(userId);
@@ -236,6 +257,12 @@ describe('Availability integration', () => {
     expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(41.015);
     expect(Number(after.rows[0].last_known_longitude)).toBeCloseTo(29.01);
     expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+    expect(after.rows[0].available_until).toBeNull();
+
+    await seedActiveUser('user_req_toggle_off_preserve', 'req-toggle-off-preserve@example.com');
+    await seedHelpRequest('req_toggle_off_preserve', 'user_req_toggle_off_preserve');
+    expect(await tryToAssignRequest('req_toggle_off_preserve')).toBe(false);
+    expect(await listAssignedVolunteerIds('req_toggle_off_preserve')).toEqual([]);
   });
 
   test.each([
@@ -257,6 +284,56 @@ describe('Availability integration', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('POST /api/availability/toggle refresh while available extends session expiry', async () => {
+    const app = createTestApp();
+    const userId = 'user_av_refresh_extends';
+    await seedActiveUser(userId, 'av-refresh-extends@example.com');
+    const token = buildAuthToken(userId);
+
+    await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ isAvailable: true, latitude: 41.0, longitude: 29.0 });
+
+    await query(
+      `
+        UPDATE volunteers
+        SET available_until = CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+        WHERE user_id = $1;
+      `,
+      [userId],
+    );
+    const before = await query('SELECT available_until FROM volunteers WHERE user_id = $1', [userId]);
+
+    const response = await request(app)
+      .post('/api/availability/toggle')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        isAvailable: true,
+        latitude: 41.001,
+        longitude: 29.001,
+        accuracyMeters: 8,
+        source: 'DEVICE_GPS',
+      });
+
+    expect(response.status).toBe(200);
+
+    const after = await query(
+      `
+        SELECT
+          available_until,
+          last_location_accuracy_meters,
+          last_location_source
+        FROM volunteers
+        WHERE user_id = $1;
+      `,
+      [userId],
+    );
+    expect(after.rows[0].available_until.getTime()).toBeGreaterThan(before.rows[0].available_until.getTime());
+    expect(Number(after.rows[0].last_location_accuracy_meters)).toBeCloseTo(8);
+    expect(after.rows[0].last_location_source).toBe('DEVICE_GPS');
   });
 
   test('POST /api/availability/toggle matches a request if available', async () => {
@@ -430,6 +507,100 @@ describe('Availability integration', () => {
     expect(farStatus.rows[0].status).toBe('ASSIGNED');
   });
 
+  test('tryToAssignRequest assigns a fresh nearby volunteer', async () => {
+    await seedActiveUser('user_r_fresh_nearby', 'fresh-nearby-requester@example.com');
+    await seedActiveUser('user_vol_fresh_nearby', 'fresh-nearby-volunteer@example.com');
+    await seedHelpRequest('req_fresh_nearby', 'user_r_fresh_nearby', {
+      needType: 'food',
+      helpTypes: ['food'],
+      latitude: 41.0,
+      longitude: 29.0,
+    });
+    await seedVolunteer({
+      volunteerId: 'vol_fresh_nearby',
+      userId: 'user_vol_fresh_nearby',
+      isAvailable: true,
+      latitude: 41.0005,
+      longitude: 29.0005,
+      locationUpdatedAt: minutesFromNow(-5),
+    });
+
+    const assigned = await tryToAssignRequest('req_fresh_nearby');
+
+    expect(assigned).toBe(true);
+    expect(await listAssignedVolunteerIds('req_fresh_nearby')).toEqual(['vol_fresh_nearby']);
+  });
+
+  test('tryToAssignRequest skips a volunteer with a 2-day-old location', async () => {
+    await seedActiveUser('user_r_stale_location', 'stale-location-requester@example.com');
+    await seedActiveUser('user_vol_stale_location', 'stale-location-volunteer@example.com');
+    await seedHelpRequest('req_stale_location', 'user_r_stale_location');
+    await seedVolunteer({
+      volunteerId: 'vol_stale_location',
+      userId: 'user_vol_stale_location',
+      isAvailable: true,
+      locationUpdatedAt: minutesFromNow(-2 * 24 * 60),
+    });
+
+    const assigned = await tryToAssignRequest('req_stale_location');
+
+    expect(assigned).toBe(false);
+    expect(await listAssignedVolunteerIds('req_stale_location')).toEqual([]);
+  });
+
+  test('tryToAssignRequest skips a volunteer with null coordinates', async () => {
+    await seedActiveUser('user_r_null_coords', 'null-coords-requester@example.com');
+    await seedActiveUser('user_vol_null_coords', 'null-coords-volunteer@example.com');
+    await seedHelpRequest('req_null_coords', 'user_r_null_coords');
+    await seedVolunteer({
+      volunteerId: 'vol_null_coords',
+      userId: 'user_vol_null_coords',
+      isAvailable: true,
+      latitude: null,
+      longitude: null,
+    });
+
+    const assigned = await tryToAssignRequest('req_null_coords');
+
+    expect(assigned).toBe(false);
+    expect(await listAssignedVolunteerIds('req_null_coords')).toEqual([]);
+  });
+
+  test('tryToAssignRequest skips a volunteer with null location_updated_at', async () => {
+    await seedActiveUser('user_r_null_location_updated', 'null-location-updated-requester@example.com');
+    await seedActiveUser('user_vol_null_location_updated', 'null-location-updated-volunteer@example.com');
+    await seedHelpRequest('req_null_location_updated', 'user_r_null_location_updated');
+    await seedVolunteer({
+      volunteerId: 'vol_null_location_updated',
+      userId: 'user_vol_null_location_updated',
+      isAvailable: true,
+      locationUpdatedAt: null,
+    });
+
+    const assigned = await tryToAssignRequest('req_null_location_updated');
+
+    expect(assigned).toBe(false);
+    expect(await listAssignedVolunteerIds('req_null_location_updated')).toEqual([]);
+  });
+
+  test('tryToAssignRequest skips an expired available volunteer', async () => {
+    await seedActiveUser('user_r_expired_session', 'expired-session-requester@example.com');
+    await seedActiveUser('user_vol_expired_session', 'expired-session-volunteer@example.com');
+    await seedHelpRequest('req_expired_session', 'user_r_expired_session');
+    await seedVolunteer({
+      volunteerId: 'vol_expired_session',
+      userId: 'user_vol_expired_session',
+      isAvailable: true,
+      locationUpdatedAt: minutesFromNow(-5),
+      availableUntil: minutesFromNow(-1),
+    });
+
+    const assigned = await tryToAssignRequest('req_expired_session');
+
+    expect(assigned).toBe(false);
+    expect(await listAssignedVolunteerIds('req_expired_session')).toEqual([]);
+  });
+
   test('tryToAssignRequest expands SAR requests up to affectedPeopleCount + 1 after initial coverage', async () => {
     await seedActiveUser('user_r_sar_growth', 'sar-growth@example.com');
     await seedHelpRequest('req_sar_growth', 'user_r_sar_growth', {
@@ -445,7 +616,7 @@ describe('Availability integration', () => {
         volunteerId,
         userId,
         isAvailable: true,
-        locationUpdatedAt: `2026-04-23T08:0${index}:00.000Z`,
+        locationUpdatedAt: minutesFromNow(-10 + index),
       });
     }
 
@@ -504,7 +675,7 @@ describe('Availability integration', () => {
         volunteerId,
         userId,
         isAvailable: true,
-        locationUpdatedAt: `2026-04-23T08:1${index}:00.000Z`,
+        locationUpdatedAt: minutesFromNow(-10 + index),
       });
     }
 
@@ -539,7 +710,7 @@ describe('Availability integration', () => {
         volunteerId,
         userId,
         isAvailable: true,
-        locationUpdatedAt: `2026-04-23T08:2${index}:00.000Z`,
+        locationUpdatedAt: minutesFromNow(-10 + index),
       });
     }
 
@@ -907,8 +1078,8 @@ describe('Availability integration', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.volunteer.is_available).toBe(false);
-    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
-    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+    expect(response.body.volunteer.last_known_latitude).toBeNull();
+    expect(response.body.volunteer.last_known_longitude).toBeNull();
 
     const arResult = await query('SELECT * FROM availability_records');
     expect(arResult.rows).toHaveLength(2);
@@ -932,7 +1103,7 @@ describe('Availability integration', () => {
             longitude: 29.01,
             accuracyMeters: 12.5,
             source: 'DEVICE_GPS',
-            capturedAt: '2026-05-04T10:00:00.000Z',
+            capturedAt: minutesFromNow(-10),
           },
         ],
       });
@@ -941,6 +1112,102 @@ describe('Availability integration', () => {
     expect(response.body.volunteer.is_available).toBe(true);
     expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
     expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+    expect(response.body.volunteer.available_until).toBeTruthy();
+    expect(response.body.volunteer.availability_confirmed_at).toBeTruthy();
+    expect(Number(response.body.volunteer.last_location_accuracy_meters)).toBeCloseTo(12.5);
+    expect(response.body.volunteer.last_location_source).toBe('DEVICE_GPS');
+  });
+
+  test.each([
+    ['capturedAt', { capturedAt: minutesFromNow(-2 * 24 * 60) }],
+    ['timestamp', { timestamp: minutesFromNow(-2 * 24 * 60) }],
+  ])('POST /api/availability/sync rejects stale final available location based on %s', async (_caseName, timeFields) => {
+    const app = createTestApp();
+    const userId = `user_av_sync_stale_${_caseName}`;
+    await seedActiveUser(userId, `${userId}@example.com`);
+    await seedVolunteer({
+      volunteerId: `vol_sync_stale_${_caseName}`,
+      userId,
+      isAvailable: false,
+      latitude: 40.99,
+      longitude: 29.02,
+      locationUpdatedAt: minutesFromNow(-15),
+    });
+    const before = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+    const timestamp = timeFields.timestamp || new Date().toISOString();
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: true,
+            timestamp,
+            latitude: 41.015,
+            longitude: 29.01,
+            ...timeFields,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(after.rows[0].is_available).toBe(false);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(40.99);
+
+    await seedActiveUser(`user_req_sync_stale_${_caseName}`, `req-sync-stale-${_caseName}@example.com`);
+    await seedHelpRequest(`req_sync_stale_${_caseName}`, `user_req_sync_stale_${_caseName}`);
+    expect(await tryToAssignRequest(`req_sync_stale_${_caseName}`)).toBe(false);
+  });
+
+  test.each([
+    ['capturedAt', { capturedAt: minutesFromNow(10) }],
+    ['timestamp', { timestamp: minutesFromNow(10) }],
+  ])('POST /api/availability/sync rejects future final available location based on %s', async (_caseName, timeFields) => {
+    const app = createTestApp();
+    const userId = `user_av_sync_future_${_caseName}`;
+    await seedActiveUser(userId, `${userId}@example.com`);
+    await seedVolunteer({
+      volunteerId: `vol_sync_future_${_caseName}`,
+      userId,
+      isAvailable: false,
+      latitude: 40.99,
+      longitude: 29.02,
+      locationUpdatedAt: minutesFromNow(-15),
+    });
+    const before = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+    const timestamp = timeFields.timestamp || new Date().toISOString();
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: true,
+            timestamp,
+            latitude: 41.015,
+            longitude: 29.01,
+            ...timeFields,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(after.rows[0].is_available).toBe(false);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+    expect(after.rows[0].availability_confirmed_at).toBeNull();
+    expect(after.rows[0].available_until).toBeNull();
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(40.99);
   });
 
   test('POST /api/availability/sync preserves existing coordinates when latest unavailable record lacks coordinates', async () => {
@@ -953,7 +1220,7 @@ describe('Availability integration', () => {
       isAvailable: false,
       latitude: 40.99,
       longitude: 29.02,
-      locationUpdatedAt: '2026-05-04T10:00:00.000Z',
+      locationUpdatedAt: minutesFromNow(-10),
     });
     const before = await query('SELECT location_updated_at FROM volunteers WHERE user_id = $1', [userId]);
     const token = buildAuthToken(userId);
@@ -998,7 +1265,7 @@ describe('Availability integration', () => {
     expect(response.body.code).toBe('VALIDATION_ERROR');
   });
 
-  test('POST /api/availability/sync keeps latest availability while storing latest available coordinates', async () => {
+  test('POST /api/availability/sync keeps latest unavailable state without refreshing old available coordinates', async () => {
     const app = createTestApp();
     const userId = 'user_av_sync_available_location_order';
     await seedActiveUser(userId, 'av-sync-available-location-order@example.com');
@@ -1024,8 +1291,8 @@ describe('Availability integration', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.volunteer.is_available).toBe(false);
-    expect(Number(response.body.volunteer.last_known_latitude)).toBeCloseTo(41.015);
-    expect(Number(response.body.volunteer.last_known_longitude)).toBeCloseTo(29.01);
+    expect(response.body.volunteer.last_known_latitude).toBeNull();
+    expect(response.body.volunteer.last_known_longitude).toBeNull();
   });
 
   test.each([
@@ -1299,6 +1566,12 @@ describe('Availability integration', () => {
     expect(response.status).toBe(200);
     expect(response.body.isAvailable).toBe(false);
     expect(response.body.volunteer).toBeNull();
+    expect(response.body.availableUntil).toBeNull();
+    expect(response.body.availabilityConfirmedAt).toBeNull();
+    expect(response.body.locationUpdatedAt).toBeNull();
+    expect(response.body.effectiveIsAvailable).toBe(false);
+    expect(response.body.isLocationFresh).toBe(false);
+    expect(response.body.isAvailabilitySessionActive).toBe(false);
 
     // Toggle to available
     await request(app)
@@ -1317,6 +1590,65 @@ describe('Availability integration', () => {
     expect(response.body.volunteer.user_id).toBe(volunteerUserId);
     expect(response.body.assignment).toBeTruthy();
     expect(response.body.assignment.request_id).toBe('req_5');
+    expect(response.body.availableUntil).toBeTruthy();
+    expect(response.body.availabilityConfirmedAt).toBeTruthy();
+    expect(response.body.locationUpdatedAt).toBeTruthy();
+    expect(response.body.locationMaxAgeMinutes).toBe(120);
+    expect(response.body.availabilityTtlMinutes).toBe(360);
+    expect(response.body.effectiveIsAvailable).toBe(true);
+    expect(response.body.isLocationFresh).toBe(true);
+    expect(response.body.isAvailabilitySessionActive).toBe(true);
+    expect(response.body.availabilitySessionExpired).toBe(false);
+  });
+
+  test('GET /api/availability/status reports expired availability as not effectively available', async () => {
+    const app = createTestApp();
+    const userId = 'user_v_status_expired';
+    await seedActiveUser(userId, 'status-expired@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_status_expired',
+      userId,
+      isAvailable: true,
+      locationUpdatedAt: minutesFromNow(-10),
+      availableUntil: minutesFromNow(-1),
+    });
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.effectiveIsAvailable).toBe(false);
+    expect(response.body.availabilitySessionExpired).toBe(true);
+  });
+
+  test('GET /api/availability/status reports fresh active availability without coordinates as not effectively available', async () => {
+    const app = createTestApp();
+    const userId = 'user_v_status_null_coords';
+    await seedActiveUser(userId, 'status-null-coords@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_status_null_coords',
+      userId,
+      isAvailable: true,
+      latitude: null,
+      longitude: null,
+      locationUpdatedAt: minutesFromNow(-10),
+      availableUntil: minutesFromNow(60),
+    });
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.isAvailabilitySessionActive).toBe(true);
+    expect(response.body.isLocationFresh).toBe(true);
+    expect(response.body.hasUsableLocation).toBe(false);
+    expect(response.body.effectiveIsAvailable).toBe(false);
   });
 
   test('POST /api/availability/toggle to false cancels active assignment', async () => {

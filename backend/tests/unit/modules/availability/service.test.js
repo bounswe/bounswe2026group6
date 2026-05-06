@@ -41,7 +41,13 @@ describe('Availability Service', () => {
       const result = await setAvailability(userId, { isAvailable: true, latitude: 41, longitude: 29 });
 
       expect(repository.createVolunteer).toHaveBeenCalledWith(userId);
-      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', true, 41, 29);
+      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith(
+        'vol_123',
+        true,
+        41,
+        29,
+        expect.objectContaining({ availabilityTtlMinutes: expect.any(Number) }),
+      );
       expect(repository.createAvailabilityRecord).toHaveBeenCalled();
       expect(result.volunteer.is_available).toBe(true);
     });
@@ -55,7 +61,7 @@ describe('Availability Service', () => {
       repository.createAssignment.mockResolvedValue(assignment);
       repository.getAssignmentByVolunteerId.mockResolvedValueOnce(null).mockResolvedValueOnce(assignment);
 
-      const result = await setAvailability(userId, { isAvailable: true });
+      const result = await setAvailability(userId, { isAvailable: true, latitude: 41, longitude: 29 });
 
       expect(repository.findMatchingRequestForVolunteer).toHaveBeenCalledWith('vol_123');
       expect(repository.createAssignment).toHaveBeenCalledWith('vol_123', 'req_123');
@@ -71,7 +77,7 @@ describe('Availability Service', () => {
       repository.findMatchingRequestForVolunteer.mockResolvedValue({ request_id: 'req_123' });
       repository.createAssignment.mockResolvedValue(null);
 
-      const result = await setAvailability(userId, { isAvailable: true });
+      const result = await setAvailability(userId, { isAvailable: true, latitude: 41, longitude: 29 });
 
       expect(repository.createAssignment).toHaveBeenCalledWith('vol_123', 'req_123');
       expect(repository.markRequestAssignedIfPending).not.toHaveBeenCalled();
@@ -104,7 +110,7 @@ describe('Availability Service', () => {
 
       await syncAvailability(userId, { records });
 
-      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, undefined, undefined);
+      expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false, undefined, undefined, {});
       expect(repository.createAvailabilityRecord).toHaveBeenCalledTimes(2);
     });
 
