@@ -36,6 +36,7 @@ internal data class AssignedResponderSnapshot(
 
 private const val PendingHelpRequestStatus = "PENDING_SYNC"
 private const val ReverseGeocodeTimeoutMillis = 7000L
+private const val RequestHelpGpsCoordinateSource = "gps"
 
 data class RequestHelpLocationSubmission(
     val country: String,
@@ -46,7 +47,8 @@ data class RequestHelpLocationSubmission(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val coordinateSource: String? = null,
-    val coordinateCapturedAt: String? = null
+    val coordinateCapturedAt: String? = null,
+    val coordinateAccuracyMeters: Double? = null
 )
 
 data class RequestHelpReverseLocation(
@@ -77,6 +79,14 @@ data class RequestHelpSubmission(
     val consentGiven: Boolean
 )
 
+data class RequestHelpCoordinateSnapshot(
+    val latitude: Double,
+    val longitude: Double,
+    val coordinateSource: String,
+    val coordinateCapturedAt: String,
+    val coordinateAccuracyMeters: Double?
+)
+
 data class CreateHelpRequestResult(
     val requestId: String,
     val guestAccessToken: String? = null,
@@ -100,6 +110,7 @@ object RequestHelpRepository {
         "Waiting for the help request creation to sync before sending the status update."
 
     private lateinit var prefs: SharedPreferences
+    private var pendingCoordinateSnapshot: RequestHelpCoordinateSnapshot? = null
 
     private val database get() = NephDatabaseProvider.requireInstance()
 
@@ -173,6 +184,16 @@ object RequestHelpRepository {
         return createHelpRequest(token = token, submission = submission)
     }
 
+    fun storePendingCoordinateSnapshot(currentLocation: CurrentDeviceLocation) {
+        pendingCoordinateSnapshot = currentLocation.toRequestHelpCoordinateSnapshot()
+    }
+
+    fun consumePendingCoordinateSnapshot(): RequestHelpCoordinateSnapshot? {
+        return pendingCoordinateSnapshot.also {
+            pendingCoordinateSnapshot = null
+        }
+    }
+
     suspend fun getLocalHelpRequest(localId: String): HelpRequestEntity? {
         ensureInitialized()
         return database.helpRequestDao().getByLocalId(localId)
@@ -186,7 +207,8 @@ object RequestHelpRepository {
     suspend fun updateHelpRequest(
         token: String?,
         localId: String,
-        submission: RequestHelpSubmission
+        submission: RequestHelpSubmission,
+        preserveExistingCoordinates: Boolean = true
     ): CreateHelpRequestResult {
         ensureInitialized()
 
@@ -194,7 +216,10 @@ object RequestHelpRepository {
         val existing = database.helpRequestDao().getByLocalId(localId)
             ?: return createHelpRequest(token = token, submission = submission)
         val ownerType = ownerTypeForToken(token)
-        val submissionWithPreservedLocation = submission.withPreservedCoordinates(existing)
+        val submissionWithPreservedLocation = submission.withPreservedCoordinates(
+            existing = existing,
+            preserveExistingCoordinates = preserveExistingCoordinates
+        )
         val updatedEntity = submissionWithPreservedLocation.toEntity(
             localId = existing.localId,
             ownerType = existing.ownerType,
@@ -281,6 +306,7 @@ object RequestHelpRepository {
     fun resetForTesting() {
         requireDebugBuildForTestingReset()
 
+        pendingCoordinateSnapshot = null
         if (::prefs.isInitialized) {
             prefs.edit().clear().commit()
         }
@@ -594,6 +620,7 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
                         JSONObject().apply {
                             put("latitude", location.latitude)
                             put("longitude", location.longitude)
+                            location.coordinateAccuracyMeters?.let { put("accuracyMeters", it) }
                             location.coordinateSource?.let { put("source", it) }
                             location.coordinateCapturedAt?.let { put("capturedAt", it) }
                         }
@@ -634,21 +661,14 @@ internal fun buildEmergencyDraftSubmission(
         ?: throw EmergencyDraftRequirementsException(
             "A real contact name is required before creating a quick emergency draft."
         )
-    val profileCoordinatesAllowed = profile.shareLocation == true
-        && profile.sharedLatitude != null
-        && profile.sharedLongitude != null
-    val latitude = currentLocation?.latitude ?: profile.sharedLatitude.takeIf { profileCoordinatesAllowed }
-    val longitude = currentLocation?.longitude ?: profile.sharedLongitude.takeIf { profileCoordinatesAllowed }
-    val coordinateSource = currentLocation?.source ?: latitude.takeIf { profileCoordinatesAllowed }?.let { "PROFILE_LAST_SHARED" }
+    val latitude = currentLocation?.latitude
+    val longitude = currentLocation?.longitude
+    val coordinateSource = currentLocation?.let { RequestHelpGpsCoordinateSource }
     val coordinateCapturedAt = currentLocation?.capturedAt
     val country = reverseLocation?.country?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.country?.trim()?.takeIf { it.isNotBlank() }
     val city = reverseLocation?.city?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.city?.trim()?.takeIf { it.isNotBlank() }
     val district = reverseLocation?.district?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.district?.trim()?.takeIf { it.isNotBlank() }
     val neighborhood = reverseLocation?.neighborhood?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.neighborhood?.trim()?.takeIf { it.isNotBlank() }
 
     if (
         latitude == null ||
@@ -663,9 +683,7 @@ internal fun buildEmergencyDraftSubmission(
         )
     }
 
-    val extraAddress = reverseLocation?.extraAddress?.trim()?.takeIf { it.isNotBlank() }
-        ?: profile.extraAddress?.trim()?.takeIf { it.isNotBlank() }
-        ?: ""
+    val extraAddress = reverseLocation.extraAddress?.trim()?.takeIf { it.isNotBlank() } ?: ""
 
     return RequestHelpSubmission(
         helpTypes = listOf("other"),
@@ -684,7 +702,8 @@ internal fun buildEmergencyDraftSubmission(
             latitude = latitude,
             longitude = longitude,
             coordinateSource = coordinateSource,
-            coordinateCapturedAt = coordinateCapturedAt
+            coordinateCapturedAt = coordinateCapturedAt,
+            coordinateAccuracyMeters = currentLocation.accuracyMeters
         ),
         contact = RequestHelpContactSubmission(
             fullName = contactName,
@@ -722,6 +741,7 @@ internal fun RequestHelpSubmission.toEntity(
         longitude = location.longitude,
         coordinateSource = location.coordinateSource,
         coordinateCapturedAt = location.coordinateCapturedAt,
+        coordinateAccuracyMeters = location.coordinateAccuracyMeters,
         contactFullName = contact.fullName,
         contactPhone = contact.phone.toString(),
         contactAlternativePhone = contact.alternativePhone?.toString(),
@@ -785,6 +805,7 @@ internal fun JSONObject.toHelpRequestEntity(
         longitude = readLocationLongitude(location, existing),
         coordinateSource = readLocationCoordinateSource(location, existing),
         coordinateCapturedAt = readLocationCoordinateCapturedAt(location, existing),
+        coordinateAccuracyMeters = readLocationCoordinateAccuracyMeters(location, existing),
         contactFullName = contact.optString("fullName"),
         contactPhone = contact.opt("phone")?.toString().orEmpty(),
         contactAlternativePhone = contact.opt("alternativePhone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
@@ -809,7 +830,14 @@ internal fun JSONObject.toHelpRequestEntity(
     )
 }
 
-private fun RequestHelpSubmission.withPreservedCoordinates(existing: HelpRequestEntity): RequestHelpSubmission {
+internal fun RequestHelpSubmission.withPreservedCoordinates(
+    existing: HelpRequestEntity,
+    preserveExistingCoordinates: Boolean = true
+): RequestHelpSubmission {
+    if (!preserveExistingCoordinates) {
+        return this
+    }
+
     if (location.latitude != null && location.longitude != null) {
         return this
     }
@@ -823,7 +851,8 @@ private fun RequestHelpSubmission.withPreservedCoordinates(existing: HelpRequest
             latitude = existing.latitude,
             longitude = existing.longitude,
             coordinateSource = existing.coordinateSource,
-            coordinateCapturedAt = existing.coordinateCapturedAt
+            coordinateCapturedAt = existing.coordinateCapturedAt,
+            coordinateAccuracyMeters = existing.coordinateAccuracyMeters
         )
     )
 }
@@ -848,6 +877,21 @@ private fun readLocationCoordinateSource(location: JSONObject, existing: HelpReq
 private fun readLocationCoordinateCapturedAt(location: JSONObject, existing: HelpRequestEntity?): String? {
     return location.optJSONObject("coordinate")?.optString("capturedAt")?.takeIf { it.isNotBlank() }
         ?: existing?.coordinateCapturedAt
+}
+
+private fun readLocationCoordinateAccuracyMeters(location: JSONObject, existing: HelpRequestEntity?): Double? {
+    return location.optJSONObject("coordinate")?.optNullableDouble("accuracyMeters")
+        ?: existing?.coordinateAccuracyMeters
+}
+
+private fun CurrentDeviceLocation.toRequestHelpCoordinateSnapshot(): RequestHelpCoordinateSnapshot {
+    return RequestHelpCoordinateSnapshot(
+        latitude = latitude,
+        longitude = longitude,
+        coordinateSource = RequestHelpGpsCoordinateSource,
+        coordinateCapturedAt = capturedAt,
+        coordinateAccuracyMeters = accuracyMeters
+    )
 }
 
 private fun JSONObject.optNullableDouble(key: String): Double? {

@@ -36,6 +36,7 @@ data class HelpRequestEntity(
     val longitude: Double? = null,
     val coordinateSource: String? = null,
     val coordinateCapturedAt: String? = null,
+    val coordinateAccuracyMeters: Double? = null,
     val contactFullName: String,
     val contactPhone: String,
     val contactAlternativePhone: String?,

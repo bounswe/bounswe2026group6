@@ -33,11 +33,13 @@ import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
+import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
+import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.Routes
@@ -241,6 +243,14 @@ fun HomeScreen(
         }
     }
 
+    fun RequestHelpReverseLocation?.hasCompleteEmergencyAdministrativeLocation(): Boolean {
+        return this != null &&
+            !country.isNullOrBlank() &&
+            !city.isNullOrBlank() &&
+            !district.isNullOrBlank() &&
+            !neighborhood.isNullOrBlank()
+    }
+
     fun handleRequestHelp() {
         availabilityError = ""
         availabilityInfo = ""
@@ -267,11 +277,28 @@ fun HomeScreen(
                 } else if (!isAuthenticated || sessionToken.isNullOrBlank()) {
                     onRequestHelp(null)
                 } else {
+                    if (!DeviceLocationProvider.hasLocationPermission(context)) {
+                        requestHelpLoading = false
+                        pendingLocationPermissionAction = { granted ->
+                            if (granted) {
+                                handleRequestHelp()
+                            } else {
+                                onRequestHelp(null)
+                            }
+                        }
+                        locationPermissionRequester.requestPermission()
+                        return@launch
+                    }
                     val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
                         context = context,
                         sharingEnabled = true
                     )
                     val currentLocation = locationAttempt.location
+                    if (currentLocation != null) {
+                        runCatching {
+                            OperationalLocationRepository.saveAndSyncIfAuthenticated(currentLocation)
+                        }
+                    }
                     val reverseLocation = if (currentLocation != null) {
                         RequestHelpRepository.reverseGeocodeCurrentLocation(
                             latitude = currentLocation.latitude,
@@ -279,6 +306,11 @@ fun HomeScreen(
                         )
                     } else {
                         null
+                    }
+                    if (currentLocation != null && !reverseLocation.hasCompleteEmergencyAdministrativeLocation()) {
+                        RequestHelpRepository.storePendingCoordinateSnapshot(currentLocation)
+                        onRequestHelp(null)
+                        return@launch
                     }
                     val draft = RequestHelpRepository.createEmergencyDraft(
                         token = sessionToken,
