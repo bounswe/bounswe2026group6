@@ -145,6 +145,9 @@ fun HomeScreen(
                     currentDeviceLocation = currentDeviceLocation
                 )
                 AvailabilityRepository.syncPendingAvailabilityNow(sessionToken)
+                if (!sessionToken.isNullOrBlank()) {
+                    AvailabilityRepository.refreshAssignmentState(sessionToken)
+                }
                 availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCED
                 delay(1400)
                 availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
@@ -195,6 +198,7 @@ fun HomeScreen(
                     return@launch
                 }
 
+                OperationalLocationRepository.saveAndSyncIfAuthenticated(locationAttempt.location)
                 availabilityLoading = false
                 syncAvailabilityChange(
                     nextValue = true,
@@ -522,7 +526,7 @@ fun HomeScreen(
 
             if (isAuthenticated) {
                 AvailableToHelpCard(
-                    isAvailable = availabilityState.isAvailable,
+                    availabilityState = availabilityState,
                     loading = availabilityLoading,
                     errorMessage = availabilityError.ifBlank { availabilityState.pendingError.orEmpty() },
                     infoMessage = availabilityInfo,
@@ -532,6 +536,7 @@ fun HomeScreen(
                         else -> ""
                     },
                     syncIndicator = availabilitySyncIndicator,
+                    onRefreshLocationAndBecomeAvailable = { handleAvailabilityChange(true) },
                     onAvailabilityChange = ::handleAvailabilityChange
                 )
             }

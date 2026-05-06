@@ -18,7 +18,7 @@ import com.neph.BuildConfig
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -111,6 +111,14 @@ object NephDatabaseProvider {
             )
         }
     }
+    private val Migration7To8 = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE availability_state ADD COLUMN isAssignable INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE availability_state ADD COLUMN availableUntil TEXT")
+            database.execSQL("ALTER TABLE availability_state ADD COLUMN locationUpdatedAt TEXT")
+            database.execSQL("ALTER TABLE availability_state ADD COLUMN pauseReason TEXT NOT NULL DEFAULT 'NONE'")
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -128,7 +136,8 @@ object NephDatabaseProvider {
                 Migration3To4,
                 Migration4To5,
                 Migration5To6,
-                Migration6To7
+                Migration6To7,
+                Migration7To8
             )
                 .build()
                 .also { instance = it }

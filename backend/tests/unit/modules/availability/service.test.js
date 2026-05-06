@@ -246,19 +246,48 @@ describe('Availability Service', () => {
       const result = await getAvailabilityStatus(userId);
 
       expect(result.isAvailable).toBe(false);
+      expect(result.isAssignable).toBe(false);
+      expect(result.pauseReason).toBe('NONE');
       expect(result.volunteer).toBeNull();
       expect(result.assignment).toBeNull();
     });
 
     it('should return the current status and assignment if volunteer exists', async () => {
-      repository.findVolunteerByUserId.mockResolvedValue({ ...volunteer, is_available: true });
+      repository.findVolunteerByUserId.mockResolvedValue({
+        ...volunteer,
+        is_available: true,
+        last_known_latitude: 41,
+        last_known_longitude: 29,
+        location_updated_at: new Date(),
+        available_until: new Date(Date.now() + 60 * 60 * 1000),
+      });
       repository.getAssignmentByVolunteerId.mockResolvedValue(assignment);
 
       const result = await getAvailabilityStatus(userId);
 
       expect(result.isAvailable).toBe(true);
+      expect(result.isAssignable).toBe(true);
+      expect(result.pauseReason).toBe('NONE');
       expect(result.volunteer.is_available).toBe(true);
       expect(result.assignment).toEqual(assignment);
+    });
+
+    it('should expose pause reason when available volunteer location is missing', async () => {
+      repository.findVolunteerByUserId.mockResolvedValue({
+        ...volunteer,
+        is_available: true,
+        last_known_latitude: null,
+        last_known_longitude: null,
+        location_updated_at: new Date(),
+        available_until: new Date(Date.now() + 60 * 60 * 1000),
+      });
+      repository.getAssignmentByVolunteerId.mockResolvedValue(null);
+
+      const result = await getAvailabilityStatus(userId);
+
+      expect(result.isAvailable).toBe(true);
+      expect(result.isAssignable).toBe(false);
+      expect(result.pauseReason).toBe('LOCATION_MISSING');
     });
   });
 

@@ -542,6 +542,68 @@ async function listAvailabilityReminderCandidates({
   return result.rows.map((row) => row.user_id);
 }
 
+async function listAvailabilityPausedNotificationCandidates({
+  locationMaxAgeMinutes,
+  limit = 100,
+}) {
+  const result = await query(
+    `
+      WITH paused AS (
+        SELECT
+          v.user_id,
+          CASE
+            WHEN v.last_known_latitude IS NULL
+              OR v.last_known_longitude IS NULL
+              OR v.location_updated_at IS NULL
+              THEN 'LOCATION_MISSING'
+            WHEN v.available_until IS NOT NULL
+              AND v.available_until <= CURRENT_TIMESTAMP
+              THEN 'AVAILABILITY_EXPIRED'
+            WHEN v.location_updated_at < CURRENT_TIMESTAMP - ($1::int * INTERVAL '1 minute')
+              THEN 'LOCATION_STALE'
+            ELSE 'NONE'
+          END AS pause_reason,
+          CASE
+            WHEN v.last_known_latitude IS NULL
+              OR v.last_known_longitude IS NULL
+              OR v.location_updated_at IS NULL
+              THEN CONCAT(
+                'LOCATION_MISSING:',
+                COALESCE(v.availability_confirmed_at::text, v.available_until::text, v.volunteer_id)
+              )
+            WHEN v.available_until IS NOT NULL
+              AND v.available_until <= CURRENT_TIMESTAMP
+              THEN CONCAT('AVAILABILITY_EXPIRED:', COALESCE(v.available_until::text, v.volunteer_id))
+            WHEN v.location_updated_at < CURRENT_TIMESTAMP - ($1::int * INTERVAL '1 minute')
+              THEN CONCAT('LOCATION_STALE:', COALESCE(v.location_updated_at::text, v.volunteer_id))
+            ELSE 'NONE'
+          END AS pause_event_key
+        FROM volunteers v
+        WHERE v.is_available = TRUE
+      )
+      SELECT user_id, pause_reason, pause_event_key
+      FROM paused p
+      WHERE p.pause_reason <> 'NONE'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM notifications n
+          WHERE n.recipient_user_id = p.user_id
+            AND n.type = 'VOLUNTEER_AVAILABILITY_PAUSED'
+            AND COALESCE(n.payload->>'kind', '') = 'availability_paused'
+            AND COALESCE(n.payload->>'pauseEventKey', '') = p.pause_event_key
+        )
+      LIMIT $2
+    `,
+    [locationMaxAgeMinutes, limit],
+  );
+
+  return result.rows.map((row) => ({
+    userId: row.user_id,
+    pauseReason: row.pause_reason,
+    pauseEventKey: row.pause_event_key,
+  }));
+}
+
 async function expireStalePendingHelpRequests({ ttlHours, limit = 100 }) {
   const result = await query(
     `
@@ -584,5 +646,6 @@ module.exports = {
   upsertNotificationTypePreference,
   listUserIdsWithinRadius,
   listAvailabilityReminderCandidates,
+  listAvailabilityPausedNotificationCandidates,
   expireStalePendingHelpRequests,
 };
