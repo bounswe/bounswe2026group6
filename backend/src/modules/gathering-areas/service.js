@@ -1,9 +1,11 @@
 const DEFAULT_OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const DEFAULT_TIMEOUT_MS = 6000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_STALE_CACHE_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_CACHE_MAX_ENTRIES = 500;
 const DEFAULT_OVERPASS_USER_AGENT = 'NEPH-Backend/1.0 (+https://github.com/bounswe/bounswe2026group6)';
 const CACHE_COORDINATE_DECIMALS = 4;
+const FALLBACK_REASON = 'No verified backend fallback gathering-area data is available';
 
 const nearbyCache = new Map();
 
@@ -16,8 +18,15 @@ function readPositiveNumberEnv(value, fallback, { integer = false } = {}) {
   return integer ? Math.floor(parsed) : parsed;
 }
 
-function getOverpassUrl() {
-  return process.env.GATHERING_AREAS_OVERPASS_URL || DEFAULT_OVERPASS_URL;
+function getOverpassUrls() {
+  const configuredPrimaryUrl = (process.env.GATHERING_AREAS_OVERPASS_URL || '').trim();
+  const primaryUrl = configuredPrimaryUrl || DEFAULT_OVERPASS_URL;
+  const fallbackUrls = (process.env.GATHERING_AREAS_OVERPASS_FALLBACK_URLS || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  return [...new Set([primaryUrl, ...fallbackUrls])];
 }
 
 function getOverpassUserAgent() {
@@ -33,6 +42,10 @@ function getCacheTtlMs() {
   return readPositiveNumberEnv(process.env.GATHERING_AREAS_CACHE_TTL_MS, DEFAULT_CACHE_TTL_MS);
 }
 
+function getStaleCacheTtlMs() {
+  return readPositiveNumberEnv(process.env.GATHERING_AREAS_STALE_CACHE_TTL_MS, DEFAULT_STALE_CACHE_TTL_MS);
+}
+
 function getCacheMaxEntries() {
   return readPositiveNumberEnv(process.env.GATHERING_AREAS_CACHE_MAX_ENTRIES, DEFAULT_CACHE_MAX_ENTRIES, { integer: true });
 }
@@ -41,13 +54,26 @@ function buildCacheKey({ lat, lon, radius, limit }) {
   return `${lat.toFixed(CACHE_COORDINATE_DECIMALS)}:${lon.toFixed(CACHE_COORDINATE_DECIMALS)}:${radius}:${limit}`;
 }
 
-function readFromCache(cacheKey) {
+function readFreshCache(cacheKey) {
   const entry = nearbyCache.get(cacheKey);
   if (!entry) {
     return null;
   }
 
   if (entry.expiresAt <= Date.now()) {
+    return null;
+  }
+
+  return entry.value;
+}
+
+function readStaleCache(cacheKey) {
+  const entry = nearbyCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+
+  if (entry.staleExpiresAt <= Date.now()) {
     nearbyCache.delete(cacheKey);
     return null;
   }
@@ -58,7 +84,7 @@ function readFromCache(cacheKey) {
 function pruneCache() {
   const now = Date.now();
   for (const [key, entry] of nearbyCache.entries()) {
-    if (entry.expiresAt <= now) {
+    if (entry.staleExpiresAt <= now) {
       nearbyCache.delete(key);
     }
   }
@@ -74,9 +100,14 @@ function pruneCache() {
 }
 
 function writeToCache(cacheKey, value) {
+  const now = Date.now();
+  const cacheTtlMs = getCacheTtlMs();
+  const staleCacheTtlMs = Math.max(cacheTtlMs, getStaleCacheTtlMs());
+
   nearbyCache.set(cacheKey, {
     value,
-    expiresAt: Date.now() + getCacheTtlMs(),
+    expiresAt: now + cacheTtlMs,
+    staleExpiresAt: now + staleCacheTtlMs,
   });
   pruneCache();
 }
@@ -114,6 +145,14 @@ function safeNumber(value) {
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isProviderFailure(error) {
+  return Boolean(error && [
+    'OVERPASS_TIMEOUT',
+    'OVERPASS_UNAVAILABLE',
+    'OVERPASS_INVALID_PAYLOAD',
+  ].includes(error.code));
 }
 
 function toRadians(value) {
@@ -199,12 +238,30 @@ function toFeatureCollection(elements, limit, center) {
   };
 }
 
-async function fetchNearbyFromOverpassWithQuery(params, queryText) {
+function toFallbackFeatureCollection() {
+  return {
+    type: 'FeatureCollection',
+    features: [],
+  };
+}
+
+function withSource(result, source, extraMeta = {}) {
+  return {
+    ...result,
+    source,
+    meta: {
+      ...result.meta,
+      ...extraMeta,
+    },
+  };
+}
+
+async function fetchNearbyFromOverpassUrl(queryText, url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
 
   try {
-    const response = await fetch(getOverpassUrl(), {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
@@ -249,9 +306,23 @@ async function fetchNearbyFromOverpassWithQuery(params, queryText) {
   }
 }
 
+async function fetchNearbyFromOverpassWithQuery(queryText) {
+  let lastError = null;
+
+  for (const url of getOverpassUrls()) {
+    try {
+      return await fetchNearbyFromOverpassUrl(queryText, url);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
+
 async function fetchNearbyFromOverpass(params) {
   try {
-    return await fetchNearbyFromOverpassWithQuery(params, buildOverpassQuery(params));
+    return await fetchNearbyFromOverpassWithQuery(buildOverpassQuery(params));
   } catch (error) {
     const shouldRetryWithLightweightQuery =
       error &&
@@ -261,39 +332,70 @@ async function fetchNearbyFromOverpass(params) {
       throw error;
     }
 
-    return fetchNearbyFromOverpassWithQuery(params, buildOverpassLightweightQuery(params));
+    return fetchNearbyFromOverpassWithQuery(buildOverpassLightweightQuery(params));
   }
 }
 
 async function getNearbyGatheringAreas(params) {
   const cacheKey = buildCacheKey(params);
-  const cached = readFromCache(cacheKey);
+  const cached = readFreshCache(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const payload = await fetchNearbyFromOverpass(params);
-  const collection = toFeatureCollection(payload.elements, params.limit, {
-    lat: params.lat,
-    lon: params.lon,
-  });
-
-  const result = {
-    center: {
+  try {
+    const payload = await fetchNearbyFromOverpass(params);
+    const collection = toFeatureCollection(payload.elements, params.limit, {
       lat: params.lat,
       lon: params.lon,
-    },
-    radius: params.radius,
-    source: 'overpass',
-    meta: {
-      requestedLimit: params.limit,
-      returnedCount: collection.features.length,
-    },
-    collection,
-  };
+    });
 
-  writeToCache(cacheKey, result);
-  return result;
+    const result = {
+      center: {
+        lat: params.lat,
+        lon: params.lon,
+      },
+      radius: params.radius,
+      source: 'overpass',
+      meta: {
+        requestedLimit: params.limit,
+        returnedCount: collection.features.length,
+      },
+      collection,
+    };
+
+    writeToCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (!isProviderFailure(error)) {
+      throw error;
+    }
+
+    const staleCached = readStaleCache(cacheKey);
+    if (staleCached) {
+      return withSource(staleCached, 'stale_cache', {
+        stale: true,
+        providerErrorCode: error.code,
+      });
+    }
+
+    const collection = toFallbackFeatureCollection();
+    return {
+      center: {
+        lat: params.lat,
+        lon: params.lon,
+      },
+      radius: params.radius,
+      source: 'fallback',
+      meta: {
+        requestedLimit: params.limit,
+        returnedCount: collection.features.length,
+        providerErrorCode: error.code,
+        fallbackReason: FALLBACK_REASON,
+      },
+      collection,
+    };
+  }
 }
 
 function __resetNearbyCache() {

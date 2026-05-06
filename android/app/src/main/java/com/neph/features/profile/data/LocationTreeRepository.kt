@@ -40,7 +40,10 @@ object LocationTreeRepository {
             path = "/location/tree?countryCode=$normalizedCountryCode"
         )
 
-        val parsed = parseLocationTreeResponse(response)
+        val parsed = parseLocationTreeResponse(
+            response = response,
+            requestedCountryCode = normalizedCountryCode
+        )
         if (parsed.isEmpty()) {
             throw ApiException(
                 message = "Location options are unavailable right now.",
@@ -55,10 +58,21 @@ object LocationTreeRepository {
         return parsed
     }
 
-    internal fun parseLocationTreeResponse(response: JSONObject): LocationData {
+    internal fun parseLocationTreeResponse(
+        response: JSONObject,
+        requestedCountryCode: String = DefaultCountryCode
+    ): LocationData {
         val tree = response.optJSONObject("tree") ?: JSONObject()
         if (tree.length() == 0) {
             return emptyMap()
+        }
+
+        if (tree.optJSONObject("cities") != null || tree.has("label")) {
+            val normalizedCountryKey = requestedCountryCode.trim()
+                .lowercase()
+                .ifBlank { DefaultCountryCode.lowercase() }
+
+            return mapOf(normalizedCountryKey to parseCountry(requestedCountryCode, tree))
         }
 
         val countries = linkedMapOf<String, Country>()
@@ -70,49 +84,57 @@ object LocationTreeRepository {
                 continue
             }
 
-            val citiesJson = countryJson.optJSONObject("cities") ?: JSONObject()
-            val cities = linkedMapOf<String, City>()
-
-            for (cityKey in jsonKeys(citiesJson)) {
-                val cityJson = citiesJson.optJSONObject(cityKey) ?: continue
-                val normalizedCityKey = cityKey.trim().lowercase()
-                if (normalizedCityKey.isBlank()) {
-                    continue
-                }
-
-                val districtsJson = cityJson.optJSONObject("districts") ?: JSONObject()
-                val districts = linkedMapOf<String, District>()
-
-                for (districtKey in jsonKeys(districtsJson)) {
-                    val districtJson = districtsJson.optJSONObject(districtKey) ?: continue
-                    val normalizedDistrictKey = districtKey.trim().lowercase()
-                    if (normalizedDistrictKey.isBlank()) {
-                        continue
-                    }
-
-                    val neighborhoods = parseNeighborhoods(
-                        districtJson.optJSONArray("neighborhoods") ?: JSONArray()
-                    )
-
-                    districts[normalizedDistrictKey] = District(
-                        label = districtJson.optString("label").trim().ifBlank { districtKey },
-                        neighborhoods = neighborhoods
-                    )
-                }
-
-                cities[normalizedCityKey] = City(
-                    label = cityJson.optString("label").trim().ifBlank { cityKey },
-                    districts = districts
-                )
-            }
-
-            countries[normalizedCountryKey] = Country(
-                label = countryJson.optString("label").trim().ifBlank { countryKey },
-                cities = cities
-            )
+            countries[normalizedCountryKey] = parseCountry(countryKey, countryJson)
         }
 
         return countries
+    }
+
+    private fun parseCountry(countryKey: String, countryJson: JSONObject): Country {
+        return Country(
+            label = countryJson.optString("label").trim().ifBlank { countryKey },
+            cities = parseCities(countryJson.optJSONObject("cities") ?: JSONObject())
+        )
+    }
+
+    private fun parseCities(citiesJson: JSONObject): Map<String, City> {
+        val cities = linkedMapOf<String, City>()
+
+        for (cityKey in jsonKeys(citiesJson)) {
+            val cityJson = citiesJson.optJSONObject(cityKey) ?: continue
+            val normalizedCityKey = cityKey.trim().lowercase()
+            if (normalizedCityKey.isBlank()) {
+                continue
+            }
+
+            cities[normalizedCityKey] = City(
+                label = cityJson.optString("label").trim().ifBlank { cityKey },
+                districts = parseDistricts(cityJson.optJSONObject("districts") ?: JSONObject())
+            )
+        }
+
+        return cities
+    }
+
+    private fun parseDistricts(districtsJson: JSONObject): Map<String, District> {
+        val districts = linkedMapOf<String, District>()
+
+        for (districtKey in jsonKeys(districtsJson)) {
+            val districtJson = districtsJson.optJSONObject(districtKey) ?: continue
+            val normalizedDistrictKey = districtKey.trim().lowercase()
+            if (normalizedDistrictKey.isBlank()) {
+                continue
+            }
+
+            districts[normalizedDistrictKey] = District(
+                label = districtJson.optString("label").trim().ifBlank { districtKey },
+                neighborhoods = parseNeighborhoods(
+                    districtJson.optJSONArray("neighborhoods") ?: JSONArray()
+                )
+            )
+        }
+
+        return districts
     }
 
     private fun parseNeighborhoods(array: JSONArray): List<Neighborhood> {

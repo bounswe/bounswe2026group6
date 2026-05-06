@@ -188,6 +188,8 @@ describe('gathering-areas integration', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('VALIDATION_ERROR');
+    expect(response.body.source).toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('GET /api/gathering-areas/nearby validates radius and limit as positive integers', async () => {
@@ -237,6 +239,8 @@ describe('gathering-areas integration', () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
+    expect(first.body.source).toBe('overpass');
+    expect(second.body.source).toBe('overpass');
     expect(second.body.collection.features).toHaveLength(1);
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
