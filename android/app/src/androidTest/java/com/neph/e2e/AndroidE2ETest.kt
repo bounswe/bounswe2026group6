@@ -19,6 +19,7 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 import org.junit.rules.TestRule
 
+
 class AndroidE2ETest {
     private val fakeBackend = FakeNephBackend()
     private val environmentRule = NephE2ETestEnvironmentRule(fakeBackend)
