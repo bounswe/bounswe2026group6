@@ -1,19 +1,29 @@
 package com.neph
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.neph.core.NephAppContext
 import com.neph.core.database.NephDatabaseProvider
@@ -98,7 +108,46 @@ fun NephApp() {
     )
 
     NephTheme(darkTheme = darkThemeEnabled) {
+        val activity = LocalContext.current as? Activity
         val navController = rememberNavController()
+        val currentBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = currentBackStackEntry?.destination?.route
+        var showExitDialog by remember { mutableStateOf(false) }
+        val canPopBackStack = navController.previousBackStackEntry != null
+        val shouldConfirmExit = !canPopBackStack && (
+            currentRoute == Routes.Home.route || currentRoute == Routes.Welcome.route
+        )
+
+        BackHandler(enabled = canPopBackStack || shouldConfirmExit) {
+            if (canPopBackStack) {
+                navController.popBackStack()
+            } else if (shouldConfirmExit) {
+                showExitDialog = true
+            }
+        }
+
+        if (showExitDialog) {
+            AlertDialog(
+                onDismissRequest = { showExitDialog = false },
+                title = { Text("Exit NEPH?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showExitDialog = false
+                            activity?.finish()
+                        }
+                    ) {
+                        Text("Exit")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showExitDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
         AppNavGraph(
             navController = navController,
             startDestination = when {

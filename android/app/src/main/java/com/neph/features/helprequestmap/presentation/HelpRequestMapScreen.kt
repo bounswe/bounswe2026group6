@@ -402,9 +402,9 @@ private fun CrisisRequestMapPanel(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            Color(0xFFE2ECE8),
-                            Color(0xFFDDE7EF),
-                            Color(0xFFECE6D8)
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            MaterialTheme.colorScheme.background,
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                         )
                     )
                 )

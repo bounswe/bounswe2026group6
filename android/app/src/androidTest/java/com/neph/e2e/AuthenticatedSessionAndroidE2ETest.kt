@@ -71,7 +71,7 @@ class AuthenticatedSessionAndroidE2ETest {
     }
 
     @Test
-    fun authenticatedUser_can_openPrivacySecurity_and_logout() {
+    fun authenticatedUser_can_openPrivacySecurityFromSettings_and_logout() {
         waitForText("I need help")
         composeRule.onNodeWithText("I need help").assertIsDisplayed()
 
@@ -79,8 +79,9 @@ class AuthenticatedSessionAndroidE2ETest {
         waitForClickable("Privacy & Security")
         clickableNode("Privacy & Security").performClick()
 
-        waitForText("Configure privacy safely from your profile flow.")
-        composeRule.onNodeWithText("Configure privacy safely from your profile flow.").assertIsDisplayed()
+        waitForText("Profile visibility")
+        composeRule.onNodeWithText("Profile visibility").assertIsDisplayed()
+        composeRule.onNodeWithText("Save Privacy Settings").assertIsDisplayed()
 
         composeRule.activity.runOnUiThread {
             composeRule.activity.onBackPressedDispatcher.onBackPressed()

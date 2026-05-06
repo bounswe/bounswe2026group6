@@ -7,7 +7,7 @@ export function AuthCard({ className, children, ...props }: AuthCardProps) {
     return (
         <div
             className={cn(
-                "w-full max-w-md rounded-[16px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)] p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)]",
+                "w-full max-w-md rounded-[16px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)] p-8 shadow-card",
                 className
             )}
             {...props}

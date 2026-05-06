@@ -1569,6 +1569,8 @@ describe('Availability integration', () => {
     expect(response.body.availableUntil).toBeNull();
     expect(response.body.availabilityConfirmedAt).toBeNull();
     expect(response.body.locationUpdatedAt).toBeNull();
+    expect(response.body.isAssignable).toBe(false);
+    expect(response.body.pauseReason).toBe('NONE');
     expect(response.body.effectiveIsAvailable).toBe(false);
     expect(response.body.isLocationFresh).toBe(false);
     expect(response.body.isAvailabilitySessionActive).toBe(false);
@@ -1595,6 +1597,8 @@ describe('Availability integration', () => {
     expect(response.body.locationUpdatedAt).toBeTruthy();
     expect(response.body.locationMaxAgeMinutes).toBe(120);
     expect(response.body.availabilityTtlMinutes).toBe(360);
+    expect(response.body.isAssignable).toBe(true);
+    expect(response.body.pauseReason).toBe('NONE');
     expect(response.body.effectiveIsAvailable).toBe(true);
     expect(response.body.isLocationFresh).toBe(true);
     expect(response.body.isAvailabilitySessionActive).toBe(true);
@@ -1620,8 +1624,59 @@ describe('Availability integration', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.isAvailable).toBe(true);
+    expect(response.body.isAssignable).toBe(false);
+    expect(response.body.pauseReason).toBe('AVAILABILITY_EXPIRED');
     expect(response.body.effectiveIsAvailable).toBe(false);
     expect(response.body.availabilitySessionExpired).toBe(true);
+  });
+
+  test('GET /api/availability/status prioritizes expired availability over stale location', async () => {
+    const app = createTestApp();
+    const userId = 'user_v_status_expired_and_stale';
+    await seedActiveUser(userId, 'status-expired-and-stale@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_status_expired_and_stale',
+      userId,
+      isAvailable: true,
+      locationUpdatedAt: minutesFromNow(-6 * 60),
+      availableUntil: minutesFromNow(-1),
+    });
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.isAssignable).toBe(false);
+    expect(response.body.isLocationFresh).toBe(false);
+    expect(response.body.availabilitySessionExpired).toBe(true);
+    expect(response.body.pauseReason).toBe('AVAILABILITY_EXPIRED');
+  });
+
+  test('GET /api/availability/status reports stale available location as paused', async () => {
+    const app = createTestApp();
+    const userId = 'user_v_status_stale_location';
+    await seedActiveUser(userId, 'status-stale-location@example.com');
+    await seedVolunteer({
+      volunteerId: 'vol_status_stale_location',
+      userId,
+      isAvailable: true,
+      locationUpdatedAt: minutesFromNow(-3 * 60),
+      availableUntil: minutesFromNow(60),
+    });
+    const token = buildAuthToken(userId);
+
+    const response = await request(app)
+      .get('/api/availability/status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isAvailable).toBe(true);
+    expect(response.body.isAssignable).toBe(false);
+    expect(response.body.pauseReason).toBe('LOCATION_STALE');
+    expect(response.body.isLocationFresh).toBe(false);
   });
 
   test('GET /api/availability/status reports fresh active availability without coordinates as not effectively available', async () => {
@@ -1648,6 +1703,8 @@ describe('Availability integration', () => {
     expect(response.body.isAvailabilitySessionActive).toBe(true);
     expect(response.body.isLocationFresh).toBe(true);
     expect(response.body.hasUsableLocation).toBe(false);
+    expect(response.body.isAssignable).toBe(false);
+    expect(response.body.pauseReason).toBe('LOCATION_MISSING');
     expect(response.body.effectiveIsAvailable).toBe(false);
   });
 

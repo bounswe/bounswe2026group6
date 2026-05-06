@@ -64,7 +64,11 @@ data class HelpRequestEntity(
 data class AvailabilityEntity(
     @PrimaryKey val key: String = CURRENT_KEY,
     val isAvailable: Boolean,
+    val isAssignable: Boolean = false,
     val assignmentId: String?,
+    val availableUntil: String? = null,
+    val locationUpdatedAt: String? = null,
+    val pauseReason: String = "NONE",
     val syncStatus: String = SyncStatus.SYNCED,
     val pendingError: String? = null,
     val updatedAtEpochMillis: Long,

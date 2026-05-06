@@ -24,7 +24,11 @@ import org.json.JSONObject
 
 data class AvailabilityState(
     val isAvailable: Boolean = false,
+    val isAssignable: Boolean = false,
     val assignmentId: String? = null,
+    val availableUntil: String? = null,
+    val locationUpdatedAt: String? = null,
+    val pauseReason: String = AvailabilityPauseReason.NONE.name,
     val syncStatus: String = SyncStatus.SYNCED,
     val pendingError: String? = null,
     val lastSyncedAtEpochMillis: Long? = null
@@ -34,6 +38,19 @@ data class AvailabilityState(
 
     val isFailedSync: Boolean
         get() = syncStatus == SyncStatus.FAILED || syncStatus == SyncStatus.CONFLICTED
+}
+
+enum class AvailabilityPauseReason {
+    LOCATION_STALE,
+    AVAILABILITY_EXPIRED,
+    LOCATION_MISSING,
+    NONE;
+
+    companion object {
+        fun fromBackend(value: String?): AvailabilityPauseReason {
+            return values().firstOrNull { it.name == value } ?: NONE
+        }
+    }
 }
 
 object AvailabilityAccessPolicy {
@@ -127,9 +144,17 @@ object AvailabilityRepository {
         )
 
         val assignment = response.optJSONObject("assignment")
+        val pauseReason = AvailabilityPauseReason.fromBackend(response.optString("pauseReason"))
         val nextState = AvailabilityState(
             isAvailable = response.optBoolean("isAvailable", false),
+            isAssignable = response.optBoolean(
+                "isAssignable",
+                response.optBoolean("effectiveIsAvailable", false)
+            ),
             assignmentId = assignment?.optString("assignment_id")?.takeIf { it.isNotBlank() },
+            availableUntil = response.optString("availableUntil").takeIf { it.isNotBlank() },
+            locationUpdatedAt = response.optString("locationUpdatedAt").takeIf { it.isNotBlank() },
+            pauseReason = pauseReason.name,
             syncStatus = SyncStatus.SYNCED,
             pendingError = null,
             lastSyncedAtEpochMillis = System.currentTimeMillis()
@@ -148,7 +173,11 @@ object AvailabilityRepository {
         val now = System.currentTimeMillis()
         val nextState = AvailabilityState(
             isAvailable = isAvailable,
+            isAssignable = false,
             assignmentId = cachedState.assignmentId,
+            availableUntil = cachedState.availableUntil,
+            locationUpdatedAt = cachedState.locationUpdatedAt,
+            pauseReason = if (isAvailable) cachedState.pauseReason else AvailabilityPauseReason.NONE.name,
             syncStatus = SyncStatus.PENDING_UPDATE,
             pendingError = null,
             lastSyncedAtEpochMillis = cachedState.lastSyncedAtEpochMillis
@@ -231,7 +260,11 @@ object AvailabilityRepository {
         saveAvailabilityState(
             AvailabilityEntity(
                 isAvailable = volunteer?.optBoolean("is_available") ?: cachedState.isAvailable,
+                isAssignable = cachedState.isAssignable,
                 assignmentId = assignment?.optString("assignment_id")?.takeIf { it.isNotBlank() },
+                availableUntil = cachedState.availableUntil,
+                locationUpdatedAt = cachedState.locationUpdatedAt,
+                pauseReason = cachedState.pauseReason,
                 syncStatus = SyncStatus.SYNCED,
                 pendingError = null,
                 updatedAtEpochMillis = now,
@@ -248,7 +281,11 @@ object AvailabilityRepository {
         saveAvailabilityState(
             (database.availabilityDao().get() ?: AvailabilityEntity(
                 isAvailable = cachedState.isAvailable,
+                isAssignable = cachedState.isAssignable,
                 assignmentId = cachedState.assignmentId,
+                availableUntil = cachedState.availableUntil,
+                locationUpdatedAt = cachedState.locationUpdatedAt,
+                pauseReason = cachedState.pauseReason,
                 updatedAtEpochMillis = now
             )).copy(
                 syncStatus = SyncStatus.PENDING_UPDATE,
@@ -263,7 +300,11 @@ object AvailabilityRepository {
         saveAvailabilityState(
             (database.availabilityDao().get() ?: AvailabilityEntity(
                 isAvailable = false,
+                isAssignable = false,
                 assignmentId = null,
+                availableUntil = null,
+                locationUpdatedAt = null,
+                pauseReason = AvailabilityPauseReason.NONE.name,
                 updatedAtEpochMillis = now
             )).copy(
                 syncStatus = SyncStatus.FAILED,
@@ -292,7 +333,11 @@ object AvailabilityRepository {
     ): AvailabilityEntity {
         return AvailabilityEntity(
             isAvailable = isAvailable,
+            isAssignable = isAssignable,
             assignmentId = assignmentId,
+            availableUntil = availableUntil,
+            locationUpdatedAt = locationUpdatedAt,
+            pauseReason = pauseReason,
             syncStatus = syncStatus,
             pendingError = pendingError,
             updatedAtEpochMillis = now,
@@ -303,7 +348,11 @@ object AvailabilityRepository {
     private fun AvailabilityEntity.toState(): AvailabilityState {
         return AvailabilityState(
             isAvailable = isAvailable,
+            isAssignable = isAssignable,
             assignmentId = assignmentId,
+            availableUntil = availableUntil,
+            locationUpdatedAt = locationUpdatedAt,
+            pauseReason = pauseReason,
             syncStatus = syncStatus,
             pendingError = pendingError,
             lastSyncedAtEpochMillis = lastSyncedAtEpochMillis
