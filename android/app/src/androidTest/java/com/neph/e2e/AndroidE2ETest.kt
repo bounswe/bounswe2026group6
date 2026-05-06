@@ -1,6 +1,7 @@
 package com.neph.e2e
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -17,6 +18,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
 import org.junit.rules.TestRule
+
 
 class AndroidE2ETest {
     private val fakeBackend = FakeNephBackend()
@@ -86,6 +88,32 @@ class AndroidE2ETest {
         composeRule.onNodeWithTag("reset_password_token").assertIsDisplayed()
     }
 
+    @Test
+    fun systemBack_onRootRoute_showsExitConfirmationDialog() {
+        waitForClickable("Continue as Guest")
+        pressSystemBack()
+
+        composeRule.onNodeWithText("Exit NEPH?").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancel").assertIsDisplayed()
+        composeRule.onNodeWithText("Exit").assertIsDisplayed()
+
+        clickableNode("Cancel").performClick()
+        composeRule.onAllNodesWithText("Exit NEPH?").assertCountEquals(0)
+        composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
+    }
+
+    @Test
+    fun systemBack_whenStackCanPop_navigatesBackWithoutExitDialog() {
+        waitForClickable("Log In")
+        clickableNode("Log In").performClick()
+        waitForTag("login_email")
+
+        pressSystemBack()
+
+        composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Exit NEPH?").assertCountEquals(0)
+    }
+
     private fun openEmailFormIfNeeded(fieldTag: String) {
         composeRule.waitUntil(5_000) {
             hasTag(fieldTag) || hasClickableText("Continue with Email")
@@ -97,6 +125,12 @@ class AndroidE2ETest {
 
         clickableNode("Continue with Email").performClick()
         waitForTag(fieldTag)
+    }
+
+    private fun pressSystemBack() {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.onBackPressedDispatcher.onBackPressed()
+        }
     }
 
     private fun selectDropdown(fieldTag: String, optionTag: String) {
