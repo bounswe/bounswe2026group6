@@ -303,8 +303,10 @@ describe('DELETE /api/auth/me', () => {
     const userRow = await query(`SELECT user_id FROM users WHERE email = $1`, [validUser.email]);
     const userId = userRow.rows[0].user_id;
     const otherUserId = 'other-delete-test-user';
+    const otherVolunteerUserId = 'other-delete-test-volunteer-user';
     const profileId = 'profile-delete-test';
     const volunteerId = 'volunteer-delete-test';
+    const otherVolunteerId = 'other-volunteer-delete-test';
     const ownedRequestId = 'owned-delete-test-request';
     const assignedRequestId = 'assigned-delete-test-request';
 
@@ -312,6 +314,11 @@ describe('DELETE /api/auth/me', () => {
       `INSERT INTO users (user_id, email, password_hash, is_email_verified, accepted_terms)
        VALUES ($1, $2, $3, TRUE, TRUE)`,
       [otherUserId, 'other-delete-test@example.com', 'hashed-password'],
+    );
+    await query(
+      `INSERT INTO users (user_id, email, password_hash, is_email_verified, accepted_terms)
+       VALUES ($1, $2, $3, TRUE, TRUE)`,
+      [otherVolunteerUserId, 'other-volunteer-delete-test@example.com', 'hashed-password'],
     );
 
     await query(
@@ -363,6 +370,16 @@ describe('DELETE /api/auth/me', () => {
       [volunteerId, userId],
     );
     await query(
+      `INSERT INTO volunteers (
+         volunteer_id, user_id, is_available, skills, need_types, last_known_latitude,
+         last_known_longitude, location_updated_at, available_until, availability_confirmed_at,
+         last_location_accuracy_meters, last_location_source
+       )
+       VALUES ($1, $2, TRUE, ARRAY['shelter'], ARRAY['shelter'], 41.025, 29.025,
+         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', CURRENT_TIMESTAMP, 8, 'device')`,
+      [otherVolunteerId, otherVolunteerUserId],
+    );
+    await query(
       `INSERT INTO help_requests (
          request_id, user_id, help_types, other_help_text, affected_people_count, risk_flags,
          vulnerable_groups, need_type, description, blood_type, contact_full_name,
@@ -399,6 +416,11 @@ describe('DELETE /api/auth/me', () => {
       `INSERT INTO assignments (assignment_id, volunteer_id, request_id)
        VALUES ('assignment-delete-test', $1, $2)`,
       [volunteerId, assignedRequestId],
+    );
+    await query(
+      `INSERT INTO assignments (assignment_id, volunteer_id, request_id)
+       VALUES ('assignment-other-volunteer-delete-test', $1, $2)`,
+      [otherVolunteerId, assignedRequestId],
     );
     await query(
       `INSERT INTO user_safety_statuses (
@@ -506,17 +528,33 @@ describe('DELETE /api/auth/me', () => {
       available_until: null,
     }));
 
+    const deletedVolunteerAssignment = await query(
+      `SELECT is_cancelled FROM assignments WHERE assignment_id = 'assignment-delete-test'`,
+    );
+    expect(deletedVolunteerAssignment.rows[0].is_cancelled).toBe(true);
+
     const activeAssignments = await query(
       `SELECT COUNT(*)::int AS count FROM assignments WHERE volunteer_id = $1 AND is_cancelled = FALSE`,
       [volunteerId],
     );
     expect(activeAssignments.rows[0].count).toBe(0);
 
+    const remainingVolunteerAssignment = await query(
+      `SELECT is_cancelled FROM assignments WHERE assignment_id = 'assignment-other-volunteer-delete-test'`,
+    );
+    expect(remainingVolunteerAssignment.rows[0].is_cancelled).toBe(false);
+
+    const activeAssignmentsForRequest = await query(
+      `SELECT COUNT(*)::int AS count FROM assignments WHERE request_id = $1 AND is_cancelled = FALSE`,
+      [assignedRequestId],
+    );
+    expect(activeAssignmentsForRequest.rows[0].count).toBe(1);
+
     const assignedRequest = await query(
       `SELECT status FROM help_requests WHERE request_id = $1`,
       [assignedRequestId],
     );
-    expect(assignedRequest.rows[0].status).toBe('PENDING');
+    expect(assignedRequest.rows[0].status).toBe('ASSIGNED');
 
     const availabilityRecord = await query(
       `SELECT COUNT(*)::int AS count FROM availability_records

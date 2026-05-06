@@ -163,7 +163,7 @@ async function softDeleteUserAccount(userId) {
 
     const assignedActiveRequestsResult = await client.query(
       `
-        SELECT DISTINCT a.request_id, hr.status
+        SELECT DISTINCT a.assignment_id, a.request_id, hr.status
         FROM assignments a
         JOIN volunteers v ON v.volunteer_id = a.volunteer_id
         JOIN help_requests hr ON hr.request_id = a.request_id
@@ -172,27 +172,26 @@ async function softDeleteUserAccount(userId) {
       `,
       [userId],
     );
-    const assignedActiveRequestIds = assignedActiveRequestsResult.rows.map((row) => row.request_id);
+    const assignedActiveRequestIds = [
+      ...new Set(assignedActiveRequestsResult.rows.map((row) => row.request_id)),
+    ];
+    const volunteerAssignmentIds = assignedActiveRequestsResult.rows.map((row) => row.assignment_id);
     const assignedOpenRequestIds = assignedActiveRequestsResult.rows
       .filter((row) => ['PENDING', 'ASSIGNED', 'IN_PROGRESS'].includes(row.status))
       .map((row) => row.request_id);
-    const affectedRequestIds = [...new Set([...ownedOpenRequestIds, ...assignedActiveRequestIds])];
 
-    if (affectedRequestIds.length > 0) {
+    if (ownedOpenRequestIds.length > 0 || volunteerAssignmentIds.length > 0) {
       await client.query(
         `
-          DELETE FROM assignments
+          UPDATE assignments
+          SET is_cancelled = TRUE
           WHERE is_cancelled = FALSE
             AND (
               request_id = ANY($1::varchar[])
-              OR volunteer_id IN (
-                SELECT volunteer_id
-                FROM volunteers
-                WHERE user_id = $2
-              )
+              OR assignment_id = ANY($2::varchar[])
             )
         `,
-        [affectedRequestIds, userId],
+        [ownedOpenRequestIds, volunteerAssignmentIds],
       );
     }
 
