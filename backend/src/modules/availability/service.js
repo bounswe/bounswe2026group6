@@ -197,15 +197,7 @@ function parseDatabaseTimestamp(value) {
   }
 
   if (value instanceof Date) {
-    return new Date(Date.UTC(
-      value.getFullYear(),
-      value.getMonth(),
-      value.getDate(),
-      value.getHours(),
-      value.getMinutes(),
-      value.getSeconds(),
-      value.getMilliseconds(),
-    ));
+    return Number.isFinite(value.getTime()) ? value : null;
   }
 
   const rawValue = String(value);
