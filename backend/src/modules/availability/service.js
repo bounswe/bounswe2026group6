@@ -245,10 +245,10 @@ function buildAvailabilitySessionStatus(volunteer) {
   if (volunteer && volunteer.is_available) {
     if (!hasUsableLocation) {
       pauseReason = 'LOCATION_MISSING';
-    } else if (!isLocationFresh) {
-      pauseReason = 'LOCATION_STALE';
     } else if (!isAvailabilitySessionActive) {
       pauseReason = 'AVAILABILITY_EXPIRED';
+    } else if (!isLocationFresh) {
+      pauseReason = 'LOCATION_STALE';
     }
   }
 
