@@ -85,6 +85,18 @@ interface OperationalLocationDao {
 }
 
 @Dao
+interface SafetyStatusDao {
+    @Query("SELECT * FROM safety_status WHERE `key` = 'current' LIMIT 1")
+    fun observe(): Flow<SafetyStatusEntity?>
+
+    @Query("SELECT * FROM safety_status WHERE `key` = 'current' LIMIT 1")
+    suspend fun get(): SafetyStatusEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: SafetyStatusEntity)
+}
+
+@Dao
 interface AssignedRequestDao {
     @Query("SELECT * FROM assigned_requests WHERE locallyCancelled = 0 ORDER BY fetchedAtEpochMillis DESC LIMIT 1")
     fun observeCurrent(): Flow<AssignedRequestEntity?>
