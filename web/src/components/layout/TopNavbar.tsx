@@ -8,6 +8,7 @@ import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
 import { fetchUnreadNotificationCount } from "@/lib/notifications";
 import { fetchMyProfile } from "@/lib/profile";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const navItemsOrdered = [
     { label: "Home", href: "/home" },
@@ -291,6 +292,7 @@ export function TopNavbar() {
 
                     {isMenuOpen ? (
                         <div className="top-navbar-dropdown" onClick={(event) => event.stopPropagation()}>
+                            <ThemeToggle compact />
                             {isAuthenticated ? (
                                 <>
                                     <Link

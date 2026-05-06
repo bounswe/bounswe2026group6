@@ -34,16 +34,16 @@ export function SelectInput({
     return (
         <div className="flex w-full flex-col gap-2">
             {label ? (
-                <label htmlFor={id} className="text-sm font-medium text-gray-800">
+                <label htmlFor={id} className="text-sm font-medium text-[color:var(--text-primary)]">
                     {label}
                 </label>
             ) : null}
 
             <div
                 className={cn(
-                    "relative h-11 w-full rounded-[10px] border bg-white transition-colors",
-                    "border-gray-200 focus-within:border-red-500",
-                    error && "border-red-500",
+                    "relative h-11 w-full rounded-[10px] border bg-[color:var(--surface-card)] transition-colors",
+                    "border-[color:var(--border-subtle)] focus-within:border-[color:var(--primary-500)]",
+                    error && "border-[color:var(--primary-500)]",
                     className
                 )}
             >
@@ -51,7 +51,7 @@ export function SelectInput({
                     <span
                         className={cn(
                             "truncate text-sm",
-                            displayValue ? "text-gray-800" : "text-gray-400"
+                            displayValue ? "text-[color:var(--text-primary)]" : "text-[color:var(--text-muted)]"
                         )}
                     >
                         {displayValue || placeholderLabel}
@@ -67,7 +67,7 @@ export function SelectInput({
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="text-gray-400"
+                        className="text-[color:var(--text-muted)]"
                     >
                         <path d="m6 9 6 6 6-6" />
                     </svg>
@@ -93,9 +93,9 @@ export function SelectInput({
             </div>
 
             {error ? (
-                <p className="text-xs text-red-500">{error}</p>
+                <p className="text-xs text-[color:var(--primary-500)]">{error}</p>
             ) : helperText ? (
-                <p className="text-xs text-gray-400">{helperText}</p>
+                <p className="text-xs text-[color:var(--text-muted)]">{helperText}</p>
             ) : null}
         </div>
     );

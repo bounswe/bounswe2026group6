@@ -12,6 +12,7 @@ import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { fetchMyProfile, patchMyPrivacy } from "@/lib/profile";
 import { LocationPreviewMap } from "@/components/feature/location/LocationPreviewMap";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const DEFAULT_MAP_CENTER = {
     latitude: 41.0082,
@@ -146,7 +147,7 @@ export default function PrivacySecurityView() {
     };
 
     if (loading) {
-        return <p className="text-sm text-gray-500">Loading...</p>;
+        return <p className="text-sm text-[color:var(--text-secondary)]">Loading...</p>;
     }
 
     return (
@@ -186,7 +187,7 @@ export default function PrivacySecurityView() {
                     />
                 </div>
 
-                <div className="mt-5 flex items-center justify-between gap-4 border-t border-gray-100 pt-5">
+                <div className="mt-5 flex items-center justify-between gap-4 border-t border-[color:var(--divider)] pt-5">
                     <div>
                         <p className="text-sm font-medium text-[color:var(--text-primary)]">
                             Share Current Location
@@ -240,6 +241,14 @@ export default function PrivacySecurityView() {
 
             <SectionCard>
                 <SectionHeader
+                    title="Appearance"
+                    subtitle="Choose how NEPH looks on this device."
+                />
+                <ThemeToggle />
+            </SectionCard>
+
+            <SectionCard>
+                <SectionHeader
                     title="Security"
                     subtitle="Use the currently available account-protection actions."
                 />
@@ -264,7 +273,7 @@ export default function PrivacySecurityView() {
                 </div>
             </SectionCard>
 
-            {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+            {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
             {info ? <HelperText>{info}</HelperText> : null}
         </div>
     );

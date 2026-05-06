@@ -7,7 +7,7 @@ const LeafletCrisisMap = dynamic(
         ),
     {
         ssr: false,
-        loading: () => <div className="h-[380px] w-full animate-pulse rounded-[10px] bg-[#eef0f3] md:h-[500px]" />,
+        loading: () => <div className="h-[380px] w-full animate-pulse rounded-[10px] bg-[color:var(--surface-soft)] md:h-[500px]" />,
     }
 );
 

@@ -533,8 +533,8 @@ private fun MapRoad(modifier: Modifier) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.72f))
-            .border(1.dp, Color(0xFFC8D4D8).copy(alpha = 0.70f), RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.70f), RoundedCornerShape(999.dp))
     )
 }
 
@@ -543,8 +543,8 @@ private fun MapNeighborhoodPatch(modifier: Modifier) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.32f))
-            .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
     )
 }
 

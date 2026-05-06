@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
@@ -22,6 +23,8 @@ fun SettingsScreen(
     onProfileClick: () -> Unit,
     profileBadgeText: String,
     onNavigateToPrivacySecurity: () -> Unit,
+    darkThemeEnabled: Boolean,
+    onDarkThemeChange: (Boolean) -> Unit,
     onLogout: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -41,12 +44,26 @@ fun SettingsScreen(
         ) {
             SectionCard {
                 SectionHeader(
-                    title = "Settings",
-                    subtitle = "This page will collect app and account preferences."
+                    title = "Appearance",
+                    subtitle = "Choose how NEPH looks on this device."
+                )
+
+                AppToggleSwitch(
+                    checked = darkThemeEnabled,
+                    onCheckedChange = onDarkThemeChange,
+                    label = "Dark theme",
+                    description = "Use darker colors throughout NEPH."
+                )
+            }
+
+            SectionCard {
+                SectionHeader(
+                    title = "Account",
+                    subtitle = "Manage app and account preferences."
                 )
 
                 Text(
-                    text = "Settings controls will be expanded in a later step.",
+                    text = "Privacy, security, and session controls are available below.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -76,6 +93,8 @@ private fun SettingsScreenPreview() {
             onProfileClick = {},
             profileBadgeText = "PP",
             onNavigateToPrivacySecurity = {},
+            darkThemeEnabled = false,
+            onDarkThemeChange = {},
             onLogout = {}
         )
     }

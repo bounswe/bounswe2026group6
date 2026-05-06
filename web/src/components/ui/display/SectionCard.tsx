@@ -11,7 +11,7 @@ export function SectionCard({
     return (
         <section
             className={cn(
-                "rounded-[16px] border border-[#E7E7EA] bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.06)]",
+                "rounded-[16px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.06)]",
                 className
             )}
             {...props}

@@ -14,9 +14,9 @@ export function SectionHeader({
 }: SectionHeaderProps) {
     return (
         <div className={cn("mb-4 flex flex-col gap-1", className)}>
-            <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
+            <h2 className="text-xl font-semibold text-[color:var(--text-primary)]">{title}</h2>
             {subtitle ? (
-                <p className="text-sm text-gray-500">{subtitle}</p>
+                <p className="text-sm text-[color:var(--text-secondary)]">{subtitle}</p>
             ) : null}
         </div>
     );

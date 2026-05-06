@@ -6,7 +6,10 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -15,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import com.neph.core.NephAppContext
 import com.neph.core.database.NephDatabaseProvider
 import com.neph.core.sync.OfflineSyncScheduler
+import com.neph.core.theme.ThemePreferenceStore
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.operationallocation.data.OperationalLocationRepository
@@ -34,6 +38,7 @@ class MainActivity : ComponentActivity() {
         NephAppContext.initialize(applicationContext)
         NephDatabaseProvider.initialize(applicationContext)
         AuthSessionStore.initialize(applicationContext)
+        ThemePreferenceStore.initialize(applicationContext)
         AvailabilityRepository.initialize(applicationContext)
         OperationalLocationRepository.initialize(applicationContext)
         ProfileRepository.initialize(applicationContext)
@@ -86,7 +91,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun NephApp() {
-    NephTheme {
+    val themeMode by ThemePreferenceStore.themeModeFlow.collectAsState()
+    val darkThemeEnabled = ThemePreferenceStore.resolveDarkTheme(
+        themeMode = themeMode,
+        systemDarkTheme = isSystemInDarkTheme()
+    )
+
+    NephTheme(darkTheme = darkThemeEnabled) {
         val navController = rememberNavController()
         AppNavGraph(
             navController = navController,
@@ -97,7 +108,9 @@ fun NephApp() {
                 }
                 AuthSessionStore.isGuestMode() -> Routes.Home.route
                 else -> Routes.Welcome.route
-            }
+            },
+            darkThemeEnabled = darkThemeEnabled,
+            onDarkThemeChange = ThemePreferenceStore::setDarkThemeEnabled
         )
     }
 }

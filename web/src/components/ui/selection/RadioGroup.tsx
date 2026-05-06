@@ -28,7 +28,7 @@ export function RadioGroup({
     return (
         <div className="flex flex-col gap-2">
             {label ? (
-                <span className="text-sm font-medium text-gray-800">
+                <span className="text-sm font-medium text-[color:var(--text-primary)]">
                     {label}
                 </span>
             ) : null}
@@ -42,7 +42,7 @@ export function RadioGroup({
                 {options.map((option) => (
                     <label
                         key={option.value}
-                        className="flex items-center gap-2 text-sm text-gray-800"
+                        className="flex items-center gap-2 text-sm text-[color:var(--text-primary)]"
                     >
                         <input
                             type="radio"

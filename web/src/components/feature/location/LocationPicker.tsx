@@ -264,7 +264,7 @@ export function LocationPicker({
 
     return (
         <div className="location-picker-wrap flex flex-col gap-3">
-            <HelperText className="text-sm text-[#2b2b33]">{label}</HelperText>
+            <HelperText className="text-sm text-[color:var(--text-primary)]">{label}</HelperText>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <TextInput
@@ -286,12 +286,12 @@ export function LocationPicker({
             </div>
 
             {results.length > 0 ? (
-                <div className="max-h-44 overflow-auto rounded-[10px] border border-[#e7e7ea] bg-white">
+                <div className="max-h-44 overflow-auto rounded-[10px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)]">
                     {results.map((item) => (
                         <button
                             key={`${item.placeId}-${item.latitude}-${item.longitude}`}
                             type="button"
-                            className="w-full border-b border-[#f0f0f2] px-3 py-2 text-left text-sm text-[#2b2b33] transition-colors hover:bg-[#fafafa]"
+                            className="w-full border-b border-[color:var(--divider)] px-3 py-2 text-left text-sm text-[color:var(--text-primary)] transition-colors hover:bg-[color:var(--surface-soft)]"
                             onClick={() => {
                                 onChange({
                                     ...toPickerValue(item),
@@ -343,7 +343,7 @@ export function LocationPicker({
                 </HelperText>
             ) : null}
 
-            {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+            {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
         </div>
     );
 }

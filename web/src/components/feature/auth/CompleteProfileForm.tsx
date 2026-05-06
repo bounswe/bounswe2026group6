@@ -710,7 +710,7 @@ export default function CompleteProfileForm() {
                 />
 
                 <div className="flex flex-col gap-3">
-                    <p className="text-sm font-medium text-[#2B2B33]">
+                    <p className="text-sm font-medium text-[color:var(--text-primary)]">
                         Expertise (optional)
                     </p>
                     {expertiseOptions.map((option) => (
@@ -823,7 +823,7 @@ export default function CompleteProfileForm() {
                     in your selected area. Selecting a suggestion moves the map pin.
                 </HelperText>
                 {locationTreeError ? (
-                    <HelperText className="text-red-500">{locationTreeError}</HelperText>
+                    <HelperText className="text-[color:var(--primary-500)]">{locationTreeError}</HelperText>
                 ) : null}
             </ProfileInfoRow>
 
@@ -839,7 +839,7 @@ export default function CompleteProfileForm() {
                 />
             </div>
 
-            {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+            {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
 
             <SaveActionBar onSave={handleSave} loading={loading} />
         </div>

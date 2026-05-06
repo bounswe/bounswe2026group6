@@ -100,7 +100,7 @@ export function AuthShowcase() {
                         onClick={() => setActiveIndex(index)}
                         className={`h-2.5 rounded-full transition-all ${
                             index === activeIndex
-                                ? "w-8 bg-white"
+                                ? "w-8 bg-[color:var(--text-on-primary)]"
                                 : "w-2.5 bg-white/40 hover:bg-white/60"
                         }`}
                         aria-label={`Go to slide ${index + 1}`}

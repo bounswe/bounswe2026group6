@@ -648,13 +648,13 @@ export default function ProfileView() {
     };
 
     if (loading) {
-        return <p className="text-sm text-gray-500">Loading...</p>;
+        return <p className="text-sm text-[color:var(--text-secondary)]">Loading...</p>;
     }
 
     if (!profile) {
         return (
             <div className="flex max-w-md flex-col gap-4">
-                <HelperText className="text-sm text-gray-500">
+                <HelperText className="text-sm text-[color:var(--text-secondary)]">
                     {error || "No profile data found."}
                 </HelperText>
 
@@ -730,14 +730,14 @@ export default function ProfileView() {
                     <h2 className="text-lg font-semibold">
                         {[profile.firstName, profile.lastName].filter(Boolean).join(" ") || "User"}
                     </h2>
-                    <p className="text-sm text-gray-500">{profile.email || "No email"}</p>
+                    <p className="text-sm text-[color:var(--text-secondary)]">{profile.email || "No email"}</p>
                 </div>
             </div>
 
             <div className="flex flex-1 flex-col gap-6">
                 <SectionCard>
                     <SectionHeader title="Account Information" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         Your contact details are used for account access and emergency
                         communication.
                     </p>
@@ -803,14 +803,14 @@ export default function ProfileView() {
                     </div>
 
                     <div className="mt-4 flex justify-between text-sm">
-                        <span className="text-gray-500">Email</span>
+                        <span className="text-[color:var(--text-secondary)]">Email</span>
                         <span>{profile.email || "-"}</span>
                     </div>
                 </SectionCard>
 
                 <SectionCard>
                     <SectionHeader title="Physical Information" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         This information helps responders assess your physical condition in
                         emergencies.
                     </p>
@@ -881,7 +881,7 @@ export default function ProfileView() {
 
                 <SectionCard>
                     <SectionHeader title="Profession" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         Your profession and expertise help with community coordination.
                     </p>
 
@@ -901,7 +901,7 @@ export default function ProfileView() {
                         />
 
                         <div className="flex flex-col gap-3">
-                            <p className="text-sm font-medium text-gray-800">
+                            <p className="text-sm font-medium text-[color:var(--text-primary)]">
                                 Expertise (optional)
                             </p>
                             {expertiseOptions.map((option) => (
@@ -932,7 +932,7 @@ export default function ProfileView() {
 
                 <SectionCard>
                     <SectionHeader title="Medical Information" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         In emergency situations, this information may help responders make
                         faster and safer medical decisions.
                     </p>
@@ -1008,7 +1008,7 @@ export default function ProfileView() {
 
                 <SectionCard>
                     <SectionHeader title="Location" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         Your location may help emergency services reach you faster.
                     </p>
 
@@ -1125,7 +1125,7 @@ export default function ProfileView() {
                                 suggestion moves the map pin.
                             </HelperText>
                             {locationTreeError ? (
-                                <HelperText className="text-red-500">
+                                <HelperText className="text-[color:var(--primary-500)]">
                                     {locationTreeError}
                                 </HelperText>
                             ) : null}
@@ -1148,7 +1148,7 @@ export default function ProfileView() {
                     </div>
                 </SectionCard>
 
-                {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+                {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
                 {info ? <HelperText>{info}</HelperText> : null}
 
                 <div className="flex justify-end">

@@ -39,7 +39,7 @@ export default function WelcomePage() {
                         <button
                             type="button"
                             onClick={() => router.push("/home")}
-                            className="rounded-[10px] border border-[color:var(--border-subtle)] px-4 py-3 text-sm font-medium text-[color:var(--text-secondary)] transition-colors hover:bg-white"
+                            className="rounded-[10px] border border-[color:var(--border-subtle)] px-4 py-3 text-sm font-medium text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-card)]"
                         >
                             Continue as Guest
                         </button>
