@@ -1,5 +1,7 @@
 const { env } = require('../../config/env');
 
+const FUTURE_EVENT_CLOCK_SKEW_MINUTES = 5;
+
 const setAvailabilitySchema = {
   isAvailable: {
     type: 'boolean',
@@ -86,6 +88,16 @@ function isStaleEventTimestamp(value) {
   return Date.now() - parsed.getTime() > getConfiguredLocationMaxAgeMinutes() * 60 * 1000;
 }
 
+function isFutureEventTimestamp(value) {
+  const parsed = parseEventTimestamp(value);
+
+  if (!parsed) {
+    return false;
+  }
+
+  return parsed.getTime() - Date.now() > FUTURE_EVENT_CLOCK_SKEW_MINUTES * 60 * 1000;
+}
+
 function validateTimestampValue(data, key, errors, prefix = '') {
   if (!hasOwn(data, key) || data[key] === null) {
     return;
@@ -93,6 +105,11 @@ function validateTimestampValue(data, key, errors, prefix = '') {
 
   if (typeof data[key] !== 'string' || !parseEventTimestamp(data[key])) {
     errors.push(`${prefix ? `${prefix}.` : ''}${key} must be a valid ISO timestamp string`);
+    return;
+  }
+
+  if (isFutureEventTimestamp(data[key])) {
+    errors.push(`${prefix ? `${prefix}.` : ''}${key} must not be more than ${FUTURE_EVENT_CLOCK_SKEW_MINUTES} minutes in the future`);
   }
 }
 

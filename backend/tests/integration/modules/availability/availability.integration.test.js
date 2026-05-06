@@ -1165,6 +1165,51 @@ describe('Availability integration', () => {
     expect(await tryToAssignRequest(`req_sync_stale_${_caseName}`)).toBe(false);
   });
 
+  test.each([
+    ['capturedAt', { capturedAt: minutesFromNow(10) }],
+    ['timestamp', { timestamp: minutesFromNow(10) }],
+  ])('POST /api/availability/sync rejects future final available location based on %s', async (_caseName, timeFields) => {
+    const app = createTestApp();
+    const userId = `user_av_sync_future_${_caseName}`;
+    await seedActiveUser(userId, `${userId}@example.com`);
+    await seedVolunteer({
+      volunteerId: `vol_sync_future_${_caseName}`,
+      userId,
+      isAvailable: false,
+      latitude: 40.99,
+      longitude: 29.02,
+      locationUpdatedAt: minutesFromNow(-15),
+    });
+    const before = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    const token = buildAuthToken(userId);
+    const timestamp = timeFields.timestamp || new Date().toISOString();
+
+    const response = await request(app)
+      .post('/api/availability/sync')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        records: [
+          {
+            isAvailable: true,
+            timestamp,
+            latitude: 41.015,
+            longitude: 29.01,
+            ...timeFields,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+
+    const after = await query('SELECT * FROM volunteers WHERE user_id = $1', [userId]);
+    expect(after.rows[0].is_available).toBe(false);
+    expect(after.rows[0].location_updated_at.getTime()).toBe(before.rows[0].location_updated_at.getTime());
+    expect(after.rows[0].availability_confirmed_at).toBeNull();
+    expect(after.rows[0].available_until).toBeNull();
+    expect(Number(after.rows[0].last_known_latitude)).toBeCloseTo(40.99);
+  });
+
   test('POST /api/availability/sync preserves existing coordinates when latest unavailable record lacks coordinates', async () => {
     const app = createTestApp();
     const userId = 'user_av_sync_preserve_location';
