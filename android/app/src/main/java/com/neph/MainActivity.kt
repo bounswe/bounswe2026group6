@@ -33,6 +33,7 @@ import com.neph.features.operationallocation.data.OperationalLocationUpdater
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.requesthelp.data.RequestHelpRepository
+import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.AppNavGraph
 import com.neph.navigation.Routes
 import com.neph.ui.theme.NephTheme
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
         OperationalLocationRepository.initialize(applicationContext)
         ProfileRepository.initialize(applicationContext)
         RequestHelpRepository.initialize(applicationContext)
+        SafetyStatusRepository.initialize(applicationContext)
         requestNotificationPermissionIfNeeded()
         PushTokenSync.syncCurrentToken()
         OfflineSyncScheduler.schedulePeriodicSync(applicationContext)

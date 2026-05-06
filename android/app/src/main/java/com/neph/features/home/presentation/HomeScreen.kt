@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.neph.core.network.ApiException
+import com.neph.core.sync.SyncStatus
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.availability.data.AvailabilityAccessPolicy
@@ -42,6 +43,7 @@ import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
 import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
+import com.neph.features.safetystatus.data.SafetyStatusState
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
@@ -75,6 +77,8 @@ fun HomeScreen(
 
     val availabilityState by AvailabilityRepository.observeAvailabilityState()
         .collectAsState(initial = AvailabilityRepository.getAvailabilityState())
+    val safetyStatusState by SafetyStatusRepository.observeSafetyStatusState()
+        .collectAsState(initial = SafetyStatusState())
     var availabilityLoading by remember { mutableStateOf(false) }
     var availabilityError by remember { mutableStateOf("") }
     var availabilityInfo by remember { mutableStateOf("") }
@@ -379,22 +383,24 @@ fun HomeScreen(
                     null
                 }
                 val sharedLocation = locationAttempt?.location
-                SafetyStatusRepository.markSafe(
+                if (sharedLocation != null) {
+                    runCatching {
+                        OperationalLocationRepository.saveAndSyncIfAuthenticated(sharedLocation)
+                    }
+                }
+                val nextSafetyStatus = SafetyStatusRepository.markSafe(
                     token = safeSessionToken,
                     location = sharedLocation,
                     shareLocationConsent = shareLocation && sharedLocation != null
                 )
-                emergencyInfo = if (sharedLocation != null) {
-                    "You are marked safe. Your current location was shared with your safety status."
-                } else if (shareLocation && permissionDeniedBeforeCapture) {
-                    "You are marked safe. Location was not shared because permission was denied."
-                } else if (shareLocation && locationAttempt?.warning == CurrentLocationShareWarning.PERMISSION_DENIED) {
-                    "You are marked safe. Location was not shared because permission was denied."
-                } else if (shareLocation) {
-                    "You are marked safe. Location was not shared because current location was unavailable."
-                } else {
-                    "You are marked safe. Your location was not shared."
-                }
+                emergencyError = ""
+                emergencyInfo = buildMarkSafeFeedback(
+                    safetyStatus = nextSafetyStatus,
+                    shareLocation = shareLocation,
+                    sharedLocation = sharedLocation,
+                    locationWarning = locationAttempt?.warning,
+                    permissionDeniedBeforeCapture = permissionDeniedBeforeCapture
+                )
             } catch (error: ApiException) {
                 if (error.status == 401) {
                     AuthRepository.logout()
@@ -562,6 +568,21 @@ fun HomeScreen(
                             textAlign = TextAlign.Center
                         )
                     }
+
+                    val safetyStatusSyncMessage = buildSafetyStatusSyncMessage(safetyStatusState)
+                    if (!markSafeLoading && safetyStatusSyncMessage.isNotBlank()) {
+                        Text(
+                            text = safetyStatusSyncMessage,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (safetyStatusState.isFailedSync) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
 
@@ -604,6 +625,49 @@ fun HomeScreen(
             )
         }
     }
+}
+
+private fun buildMarkSafeFeedback(
+    safetyStatus: SafetyStatusState,
+    shareLocation: Boolean,
+    sharedLocation: CurrentDeviceLocation?,
+    locationWarning: CurrentLocationShareWarning?,
+    permissionDeniedBeforeCapture: Boolean
+): String {
+    val locationMessage = when {
+        sharedLocation != null -> "with location."
+        shareLocation && (permissionDeniedBeforeCapture || locationWarning == CurrentLocationShareWarning.PERMISSION_DENIED) ->
+            "without location because permission was denied."
+        shareLocation -> "without location because current location was unavailable."
+        else -> "without location."
+    }
+
+    return when {
+        safetyStatus.isFailedSync -> "Your safe status was saved on this device $locationMessage Sync failed; try again when you have connection."
+        safetyStatus.isPendingSync && safetyStatus.pendingError.requiresLoginForSync() ->
+            "Your safe status was saved on this device $locationMessage It will sync after you log in again."
+        safetyStatus.isPendingSync -> "Your safe status is queued $locationMessage It will sync when connection returns."
+        safetyStatus.syncStatus == SyncStatus.SYNCED -> "Safe status synced $locationMessage"
+        else -> "Your safe status was saved $locationMessage"
+    }
+}
+
+private fun buildSafetyStatusSyncMessage(safetyStatus: SafetyStatusState): String {
+    return when {
+        safetyStatus.isFailedSync -> safetyStatus.pendingError
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "Safe status sync failed: $it" }
+            ?: "Safe status sync failed. Try again when you have connection."
+        safetyStatus.isPendingSync && safetyStatus.pendingError.requiresLoginForSync() ->
+            "Safe status saved locally. It will sync after you log in again."
+        safetyStatus.isPendingSync -> "Safe status saved locally and waiting to sync."
+        else -> ""
+    }
+}
+
+private fun String?.requiresLoginForSync(): Boolean {
+    val message = this?.lowercase().orEmpty()
+    return "login" in message || "session expired" in message
 }
 
 @Preview(showBackground = true, showSystemUi = true)

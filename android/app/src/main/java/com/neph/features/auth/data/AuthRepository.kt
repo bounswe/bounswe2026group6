@@ -11,6 +11,7 @@ import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.safetystatus.data.SafetyStatusRepository
 import org.json.JSONObject
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
@@ -86,6 +87,7 @@ object AuthRepository {
 
         if (!canReuseLocalProfileFields) {
             OperationalLocationRepository.clearLocalCache()
+            SafetyStatusRepository.clearLocalCache()
         }
 
         AuthSessionStore.saveAccessToken(accessToken, rememberMe)
@@ -214,6 +216,11 @@ object AuthRepository {
                 OperationalLocationRepository.clearLocalCache()
             } catch (error: Exception) {
                 Log.w("AuthRepository", "Failed to clear operational location on logout", error)
+            }
+            try {
+                SafetyStatusRepository.clearLocalCache()
+            } catch (error: Exception) {
+                Log.w("AuthRepository", "Failed to clear safety status on logout", error)
             }
         }
     }

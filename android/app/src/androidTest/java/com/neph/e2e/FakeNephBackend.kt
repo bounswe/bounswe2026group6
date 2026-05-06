@@ -58,13 +58,22 @@ data class FakeProfileState(
     var expertiseAreas: List<String> = emptyList()
 )
 
+data class FakeSafetyStatusState(
+    var status: String = "unknown",
+    var note: String? = null,
+    var shareLocationConsent: Boolean = false,
+    var location: JSONObject? = null,
+    var updatedAt: String? = null
+)
+
 private data class FakeUserState(
     val userId: String = "user-1",
     var email: String,
     var password: String,
     var verified: Boolean,
     var accessToken: String = "access-token-1",
-    var profile: FakeProfileState? = null
+    var profile: FakeProfileState? = null,
+    var safetyStatus: FakeSafetyStatusState = FakeSafetyStatusState()
 )
 
 private object MissingJsonField
@@ -87,6 +96,7 @@ private data class NormalizedLocationPatch(
 class FakeNephBackend {
     private var server: MockWebServer? = null
     private var userState: FakeUserState? = null
+    private var profileLocationPatchCount: Int = 0
 
     fun start() {
         if (server != null) return
@@ -109,6 +119,7 @@ class FakeNephBackend {
     @Synchronized
     fun reset() {
         userState = null
+        profileLocationPatchCount = 0
     }
 
     @Synchronized
@@ -124,6 +135,14 @@ class FakeNephBackend {
             profile = profile
         )
     }
+
+    @Synchronized
+    fun currentSafetyStatus(): FakeSafetyStatusState {
+        return requireUser().safetyStatus
+    }
+
+    @Synchronized
+    fun profileLocationPatchCount(): Int = profileLocationPatchCount
 
     private fun handleHttpRequest(request: RecordedRequest): MockResponse {
         val pathWithQuery = request.fakeBackendPathWithQuery()
@@ -179,6 +198,8 @@ class FakeNephBackend {
             route == "/profiles/me/physical" && method == "PATCH" -> handlePatchPhysical(token, body)
             route == "/profiles/me/health" && method == "PATCH" -> handlePatchHealth(token, body)
             route == "/profiles/me/location" && method == "PATCH" -> handlePatchLocation(token, body)
+            route == "/safety-status/me" && method == "GET" -> handleGetSafetyStatus(token)
+            route == "/safety-status/me" && method == "PATCH" -> handlePatchSafetyStatus(token, body)
             route == "/profiles/me/privacy" && method == "PATCH" -> handlePatchPrivacy(token, body)
             route == "/profiles/me/profession" && method == "PATCH" -> handlePatchProfession(token, body)
             route == "/profiles/me/expertise-areas" && method == "PUT" -> handlePutExpertise(token, body)
@@ -570,6 +591,7 @@ class FakeNephBackend {
 
     private fun handlePatchLocation(token: String?, body: JSONObject?): JSONObject {
         val user = requireAuthorizedUser(token)
+        profileLocationPatchCount += 1
         val profile = ensureProfile(user)
         val payload = body ?: JSONObject()
 
@@ -643,6 +665,36 @@ class FakeNephBackend {
         }
 
         return profileResponseJson(user, profile)
+    }
+
+    private fun handleGetSafetyStatus(token: String?): JSONObject {
+        val user = requireAuthorizedUser(token)
+        return JSONObject().put("safetyStatus", safetyStatusJson(user))
+    }
+
+    private fun handlePatchSafetyStatus(token: String?, body: JSONObject?): JSONObject {
+        val user = requireAuthorizedUser(token)
+        val payload = body ?: JSONObject()
+        val safetyStatus = user.safetyStatus
+
+        if (payload.has("status")) {
+            safetyStatus.status = payload.requiredString("status")
+        }
+        if (payload.has("note")) {
+            safetyStatus.note = payload.optStringOrNull("note")
+        }
+        if (payload.has("shareLocationConsent")) {
+            safetyStatus.shareLocationConsent = payload.optBoolean("shareLocationConsent", false)
+        }
+        if (payload.has("location")) {
+            safetyStatus.location = payload.optJSONObject("location")
+        }
+        if (!safetyStatus.shareLocationConsent) {
+            safetyStatus.location = null
+        }
+        safetyStatus.updatedAt = Instant.now().toString()
+
+        return JSONObject().put("safetyStatus", safetyStatusJson(user))
     }
 
     private fun handlePatchPrivacy(token: String?, body: JSONObject?): JSONObject {
@@ -769,6 +821,24 @@ class FakeNephBackend {
                     .put("lastUpdated", profile.locationLastUpdated ?: "2026-04-19T00:00:00Z")
             )
             .put("expertise", expertiseArray)
+    }
+
+    private fun safetyStatusJson(user: FakeUserState): JSONObject {
+        val safetyStatus = user.safetyStatus
+        return JSONObject()
+            .put("userId", user.userId)
+            .put("status", safetyStatus.status)
+            .putNullable("note", safetyStatus.note)
+            .put("shareLocationConsent", safetyStatus.shareLocationConsent)
+            .put(
+                "location",
+                if (safetyStatus.location == null) {
+                    JSONObject.NULL
+                } else {
+                    JSONObject(safetyStatus.location.toString())
+                }
+            )
+            .putNullable("updatedAt", safetyStatus.updatedAt)
     }
 
     private fun currentUserJson(user: FakeUserState): JSONObject {

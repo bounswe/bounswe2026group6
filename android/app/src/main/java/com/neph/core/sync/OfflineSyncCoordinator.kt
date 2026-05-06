@@ -9,6 +9,7 @@ import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.requesthelp.data.RequestHelpRepository
+import com.neph.features.safetystatus.data.SafetyStatusRepository
 
 object OfflineSyncCoordinator {
     private const val Tag = "NephOfflineSync"
@@ -19,6 +20,7 @@ object OfflineSyncCoordinator {
         AuthSessionStore.initialize(appContext)
         AvailabilityRepository.initialize(appContext)
         RequestHelpRepository.initialize(appContext)
+        SafetyStatusRepository.initialize(appContext)
 
         val database = NephDatabaseProvider.requireInstance()
         recoverStaleInProgressOperations()
@@ -97,6 +99,7 @@ object OfflineSyncCoordinator {
                 SyncOperationType.UPDATE_HELP_REQUEST -> RequestHelpRepository.pushUpdateOperation(operation, token)
                 SyncOperationType.UPDATE_HELP_REQUEST_STATUS -> RequestHelpRepository.pushStatusOperation(operation, token)
                 SyncOperationType.CANCEL_ASSIGNMENT -> AssignedRequestRepository.pushCancelOperation(operation, token)
+                SyncOperationType.SET_SAFETY_STATUS -> SafetyStatusRepository.pushSafetyStatusOperation(operation, token)
             }
             false
         } catch (error: ApiException) {
@@ -216,7 +219,11 @@ object OfflineSyncCoordinator {
 
 
     private suspend fun operationRequiresAuthentication(operation: SyncOperationEntity): Boolean {
-        if (operation.entityType == SyncEntityType.AVAILABILITY || operation.entityType == SyncEntityType.ASSIGNED_REQUEST) {
+        if (
+            operation.entityType == SyncEntityType.AVAILABILITY ||
+            operation.entityType == SyncEntityType.ASSIGNED_REQUEST ||
+            operation.entityType == SyncEntityType.SAFETY_STATUS
+        ) {
             return true
         }
 
@@ -235,6 +242,7 @@ object OfflineSyncCoordinator {
                 RequestHelpRepository.refreshAuthenticatedHelpRequests(token)
                 AvailabilityRepository.refreshAssignmentState(token)
                 AssignedRequestRepository.fetchCurrentAssignment(token)
+                SafetyStatusRepository.refreshMySafetyStatus(token)
             }
             RequestHelpRepository.refreshGuestHelpRequests()
             false
@@ -279,6 +287,7 @@ object OfflineSyncCoordinator {
                 }
             }
             SyncEntityType.AVAILABILITY -> AvailabilityRepository.markSyncDeferred(displayMessage)
+            SyncEntityType.SAFETY_STATUS -> SafetyStatusRepository.markSyncDeferred(displayMessage)
         }
         return false
     }
@@ -298,6 +307,16 @@ object OfflineSyncCoordinator {
             lastAttemptAtEpochMillis = System.currentTimeMillis(),
             error = message
         )
+
+        when (operation.entityType) {
+            SyncEntityType.SAFETY_STATUS -> {
+                if (retry) {
+                    SafetyStatusRepository.markSyncDeferred(message)
+                } else {
+                    SafetyStatusRepository.markSyncFailed(message)
+                }
+            }
+        }
 
         if (!retry) {
             when (operation.entityType) {
