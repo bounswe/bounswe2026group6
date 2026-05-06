@@ -13,17 +13,19 @@ import com.neph.BuildConfig
         HelpRequestEntity::class,
         AvailabilityEntity::class,
         OperationalLocationEntity::class,
+        SafetyStatusEntity::class,
         AssignedRequestEntity::class,
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
     abstract fun helpRequestDao(): HelpRequestDao
     abstract fun availabilityDao(): AvailabilityDao
     abstract fun operationalLocationDao(): OperationalLocationDao
+    abstract fun safetyStatusDao(): SafetyStatusDao
     abstract fun assignedRequestDao(): AssignedRequestDao
     abstract fun syncOperationDao(): SyncOperationDao
     abstract fun syncMetadataDao(): SyncMetadataDao
@@ -81,6 +83,34 @@ object NephDatabaseProvider {
             database.execSQL("ALTER TABLE help_requests ADD COLUMN coordinateAccuracyMeters REAL")
         }
     }
+    private val Migration6To7 = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS safety_status (
+                    `key` TEXT NOT NULL PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    note TEXT,
+                    shareLocationConsent INTEGER NOT NULL,
+                    latitude REAL,
+                    longitude REAL,
+                    accuracyMeters REAL,
+                    source TEXT,
+                    capturedAt TEXT,
+                    checkedAtEpochMillis INTEGER NOT NULL,
+                    updatedAtEpochMillis INTEGER NOT NULL,
+                    syncStatus TEXT NOT NULL,
+                    pendingError TEXT,
+                    lastSyncedAtEpochMillis INTEGER,
+                    serverUpdatedAt TEXT
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_safety_status_syncStatus ON safety_status (syncStatus)"
+            )
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -92,7 +122,14 @@ object NephDatabaseProvider {
                 context.applicationContext,
                 NephDatabase::class.java,
                 DatabaseName
-            ).addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5, Migration5To6)
+            ).addMigrations(
+                Migration1To2,
+                Migration2To3,
+                Migration3To4,
+                Migration4To5,
+                Migration5To6,
+                Migration6To7
+            )
                 .build()
                 .also { instance = it }
         }

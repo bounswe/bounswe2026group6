@@ -92,6 +92,32 @@ data class OperationalLocationEntity(
 }
 
 @Entity(
+    tableName = "safety_status",
+    indices = [Index(value = ["syncStatus"])]
+)
+data class SafetyStatusEntity(
+    @PrimaryKey val key: String = CURRENT_KEY,
+    val status: String,
+    val note: String?,
+    val shareLocationConsent: Boolean,
+    val latitude: Double?,
+    val longitude: Double?,
+    val accuracyMeters: Double?,
+    val source: String?,
+    val capturedAt: String?,
+    val checkedAtEpochMillis: Long,
+    val updatedAtEpochMillis: Long,
+    val syncStatus: String = SyncStatus.SYNCED,
+    val pendingError: String? = null,
+    val lastSyncedAtEpochMillis: Long? = null,
+    val serverUpdatedAt: String? = null
+) {
+    companion object {
+        const val CURRENT_KEY = "current"
+    }
+}
+
+@Entity(
     tableName = "assigned_requests",
     indices = [Index(value = ["requestId"]), Index(value = ["syncStatus"])]
 )

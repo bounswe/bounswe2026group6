@@ -20,6 +20,7 @@ object SyncEntityType {
     const val HELP_REQUEST = "HELP_REQUEST"
     const val AVAILABILITY = "AVAILABILITY"
     const val ASSIGNED_REQUEST = "ASSIGNED_REQUEST"
+    const val SAFETY_STATUS = "SAFETY_STATUS"
 }
 
 object SyncOperationType {
@@ -28,6 +29,7 @@ object SyncOperationType {
     const val UPDATE_HELP_REQUEST_STATUS = "UPDATE_HELP_REQUEST_STATUS"
     const val SET_AVAILABILITY = "SET_AVAILABILITY"
     const val CANCEL_ASSIGNMENT = "CANCEL_ASSIGNMENT"
+    const val SET_SAFETY_STATUS = "SET_SAFETY_STATUS"
 }
 
 object LocalOwnerType {
