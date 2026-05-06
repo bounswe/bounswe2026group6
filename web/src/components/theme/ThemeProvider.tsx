@@ -20,29 +20,33 @@ type ThemeContextValue = {
 const ThemeContext = React.createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-    const [theme, setThemeState] = React.useState<ThemeMode>(() => getStoredTheme());
+    const [theme, setThemeState] = React.useState<ThemeMode>("light");
+
+    React.useEffect(() => {
+        setThemeState(getStoredTheme());
+    }, []);
 
     React.useEffect(() => {
         applyThemeToDocument(theme);
     }, [theme]);
 
     React.useEffect(() => {
-        const handleStorage = (event: StorageEvent) => {
-            if (event.key === null || event.key === THEME_STORAGE_KEY) {
-                setThemeState(getStoredTheme());
-            }
-        };
-
-        const handleThemeChanged = () => {
+        const syncStoredTheme = () => {
             setThemeState(getStoredTheme());
         };
 
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === null || event.key === THEME_STORAGE_KEY) {
+                syncStoredTheme();
+            }
+        };
+
         window.addEventListener("storage", handleStorage);
-        window.addEventListener(THEME_CHANGED_EVENT, handleThemeChanged);
+        window.addEventListener(THEME_CHANGED_EVENT, syncStoredTheme);
 
         return () => {
             window.removeEventListener("storage", handleStorage);
-            window.removeEventListener(THEME_CHANGED_EVENT, handleThemeChanged);
+            window.removeEventListener(THEME_CHANGED_EVENT, syncStoredTheme);
         };
     }, []);
 
