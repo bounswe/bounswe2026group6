@@ -26,8 +26,8 @@
     "express-rate-limit": "^8.3.1",
     "firebase-admin": "^13.8.0",
     "jsonwebtoken": "^9.0.3",
-    "nodemailer": "^8.0.4",
+    "nodemailer": "^8.0.5",
     "pg": "^8.13.3",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   }
 }
