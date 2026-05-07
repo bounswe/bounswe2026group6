@@ -225,8 +225,7 @@ fun GatheringAreasScreen(
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(spacing.lg),
-            modifier = Modifier.verticalScroll(rememberScrollState())
+            verticalArrangement = Arrangement.spacedBy(spacing.lg)
         ) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {

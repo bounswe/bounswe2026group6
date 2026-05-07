@@ -155,7 +155,8 @@ fun NewsScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        contentFillMaxSize = true
     ) {
         Column(
             modifier = Modifier.fillMaxHeight(),
