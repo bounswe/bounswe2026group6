@@ -913,7 +913,7 @@ describe('Availability integration', () => {
     expect(requestStatus.rows[0].status).toBe('IN_PROGRESS');
   });
 
-  test('POST /api/availability/toggle to false preserves IN_PROGRESS while cancelling assignment', async () => {
+  test('POST /api/availability/toggle to false reopens IN_PROGRESS when no active assignments remain', async () => {
     const app = createTestApp();
     const volunteerUserId = 'user_v_in_progress_preserve';
     const requesterUserId = 'user_r_in_progress_preserve';
@@ -949,7 +949,7 @@ describe('Availability integration', () => {
     expect(assignmentRows.rows).toHaveLength(0);
 
     const requestStatus = await query('SELECT status FROM help_requests WHERE request_id = $1', ['req_in_progress_preserve']);
-    expect(requestStatus.rows[0].status).toBe('IN_PROGRESS');
+    expect(requestStatus.rows[0].status).toBe('PENDING');
   });
 
   test('minimum first coverage happens before SAR expansion across simultaneous requests', async () => {

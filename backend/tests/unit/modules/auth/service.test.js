@@ -17,6 +17,7 @@ const {
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 } = require('../../../../src/modules/auth/service');
 
 const {
@@ -26,6 +27,7 @@ const {
   findUserById,
   findAdminByUserId,
   updateUserPassword,
+  softDeleteUserAccount,
 } = require('../../../../src/modules/auth/repository');
 
 const {
@@ -380,5 +382,32 @@ describe('logoutUser', () => {
   test('returns success message', async () => {
     const result = await logoutUser();
     expect(result.message).toBeDefined();
+  });
+});
+
+// ─── deleteCurrentUser ───────────────────────────────────────────────────────
+
+describe('deleteCurrentUser', () => {
+  test('soft-deletes the current user', async () => {
+    softDeleteUserAccount.mockResolvedValue({
+      userId: 'uuid-1',
+      cancelledRequestCount: 1,
+      cancelledAssignmentRequestCount: 1,
+      availabilityCancelled: true,
+    });
+
+    const result = await deleteCurrentUser('uuid-1');
+
+    expect(softDeleteUserAccount).toHaveBeenCalledWith('uuid-1');
+    expect(result.deleted).toBe(true);
+    expect(result.availabilityCancelled).toBe(true);
+  });
+
+  test('throws USER_NOT_FOUND when account is already deleted', async () => {
+    softDeleteUserAccount.mockResolvedValue(null);
+
+    await expect(deleteCurrentUser('uuid-1')).rejects.toMatchObject({
+      code: 'USER_NOT_FOUND',
+    });
   });
 });

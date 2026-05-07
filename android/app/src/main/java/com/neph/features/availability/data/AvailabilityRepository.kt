@@ -124,6 +124,16 @@ object AvailabilityRepository {
         }
     }
 
+    suspend fun clearLocalCache() {
+        NephAppContext.getOrNull()?.let(::initialize)
+        cachedState = AvailabilityState()
+        if (::prefs.isInitialized) {
+            prefs.edit().clear().apply()
+        }
+        database.availabilityDao().clear()
+        database.syncOperationDao().deleteByEntityType(SyncEntityType.AVAILABILITY)
+    }
+
     private fun requireDebugBuildForTestingReset() {
         check(BuildConfig.DEBUG) {
             "AvailabilityRepository.resetForTesting() is only available in debug/e2e test builds."

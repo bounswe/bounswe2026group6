@@ -8,6 +8,7 @@ const {
   findUserById,
   findAdminByUserId,
   updateUserPassword,
+  softDeleteUserAccount,
 } = require('./repository');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../../config/mailer');
 
@@ -293,6 +294,24 @@ async function logoutUser() {
   };
 }
 
+async function deleteCurrentUser(userId) {
+  const result = await softDeleteUserAccount(userId);
+
+  if (!result) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  return {
+    message: 'Account deleted successfully.',
+    deleted: true,
+    cancelledRequestCount: result.cancelledRequestCount,
+    cancelledAssignmentRequestCount: result.cancelledAssignmentRequestCount,
+    availabilityCancelled: result.availabilityCancelled,
+  };
+}
+
 module.exports = {
   signupUser,
   loginUser,
@@ -302,4 +321,5 @@ module.exports = {
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 };

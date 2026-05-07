@@ -11,6 +11,7 @@ import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import {
     LocationPicker,
@@ -20,7 +21,12 @@ import {
 import { bloodTypeOptions } from "@/lib/bloodTypes";
 import { countryCodeOptions } from "@/lib/countryCodes";
 import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
-import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
+import {
+    clearAccessToken,
+    deleteCurrentAccount,
+    fetchCurrentUser,
+    getAccessToken,
+} from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { fetchLocationTree, searchLocations } from "@/lib/location";
 import {
@@ -126,6 +132,8 @@ export default function ProfileView() {
         React.useState<LocationPickerValue | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
+    const [deletingAccount, setDeletingAccount] = React.useState(false);
     const [error, setError] = React.useState("");
     const [info, setInfo] = React.useState("");
     const [initialShareLocation, setInitialShareLocation] =
@@ -647,6 +655,41 @@ export default function ProfileView() {
         }
     };
 
+    const handleDeleteAccount = async () => {
+        const token = getAccessToken();
+
+        if (!token) {
+            clearAccessToken();
+            router.replace("/login");
+            return;
+        }
+
+        try {
+            setDeletingAccount(true);
+            setError("");
+            setInfo("");
+
+            await deleteCurrentAccount(token);
+            clearAccessToken();
+            router.replace("/");
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 401) {
+                clearAccessToken();
+                router.replace("/login");
+                return;
+            }
+
+            setError(
+                err instanceof Error && err.message
+                    ? err.message
+                    : "Could not delete your account. Please try again."
+            );
+            setDeleteModalOpen(false);
+        } finally {
+            setDeletingAccount(false);
+        }
+    };
+
     if (loading) {
         return <p className="text-sm text-[color:var(--text-secondary)]">Loading...</p>;
     }
@@ -724,6 +767,38 @@ export default function ProfileView() {
 
     return (
         <div className="flex gap-10">
+            {deleteModalOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                            Delete account?
+                        </h3>
+                        <p className="mt-3 text-sm leading-6 text-gray-600">
+                            This will soft-delete your account, remove personal profile
+                            data, cancel your active help requests, and turn off active
+                            volunteer availability. This action cannot be undone.
+                        </p>
+                        <div className="mt-6 flex gap-3">
+                            <SecondaryButton
+                                type="button"
+                                onClick={() => setDeleteModalOpen(false)}
+                                disabled={deletingAccount}
+                                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                            >
+                                Keep Account
+                            </SecondaryButton>
+                            <PrimaryButton
+                                type="button"
+                                onClick={handleDeleteAccount}
+                                loading={deletingAccount}
+                            >
+                                Delete Account
+                            </PrimaryButton>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="flex w-64 flex-col items-center gap-4">
                 <Avatar size="lg" />
                 <div className="text-center">
@@ -1156,6 +1231,24 @@ export default function ProfileView() {
                         Save Changes
                     </PrimaryButton>
                 </div>
+
+                <SectionCard>
+                    <SectionHeader title="Delete Account" />
+                    <p className="mb-4 text-sm text-gray-500">
+                        Permanently remove personal account data from your profile and
+                        cancel active emergency participation before disabling login.
+                    </p>
+                    <SecondaryButton
+                        type="button"
+                        onClick={() => {
+                            setError("");
+                            setInfo("");
+                            setDeleteModalOpen(true);
+                        }}
+                    >
+                        Delete Account
+                    </SecondaryButton>
+                </SectionCard>
             </div>
         </div>
     );

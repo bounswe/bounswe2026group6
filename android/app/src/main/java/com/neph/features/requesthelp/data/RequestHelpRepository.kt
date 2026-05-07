@@ -312,6 +312,17 @@ object RequestHelpRepository {
         }
     }
 
+    suspend fun clearAuthenticatedLocalCache() {
+        NephAppContext.getOrNull()?.let(::initialize)
+        pendingCoordinateSnapshot = null
+
+        database.syncOperationDao().deleteHelpRequestOperationsForOwner(
+            entityType = SyncEntityType.HELP_REQUEST,
+            ownerType = LocalOwnerType.AUTHENTICATED
+        )
+        database.helpRequestDao().deleteByOwner(LocalOwnerType.AUTHENTICATED)
+    }
+
     private fun requireDebugBuildForTestingReset() {
         check(BuildConfig.DEBUG) {
             "RequestHelpRepository.resetForTesting() is only available in debug/e2e test builds."

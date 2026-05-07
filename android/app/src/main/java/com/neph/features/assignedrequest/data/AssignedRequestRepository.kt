@@ -121,6 +121,11 @@ object AssignedRequestRepository {
         return pending.toUiModel()
     }
 
+    suspend fun clearLocalCache() {
+        database.assignedRequestDao().clearAll()
+        database.syncOperationDao().deleteByEntityType(SyncEntityType.ASSIGNED_REQUEST)
+    }
+
     suspend fun fetchAssignmentRoute(token: String, assignmentId: String): AssignmentRouteUiModel? {
         val response = JsonHttpClient.request(
             path = "/assignments/$assignmentId/route",

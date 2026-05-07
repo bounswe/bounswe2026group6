@@ -4,14 +4,17 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import com.neph.core.NephAppContext
 import com.neph.core.network.ApiException
-import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.core.network.JsonHttpClient
+import com.neph.core.sync.OfflineSyncScheduler
+import com.neph.features.assignedrequest.data.AssignedRequestRepository
+import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -211,6 +214,58 @@ object AuthRepository {
                 }
         }
 
+        clearLocalAuthState()
+    }
+
+    suspend fun deleteAccount(): String {
+        val accessToken = AuthSessionStore.getAccessToken()
+            ?: throw ApiException(
+                message = "Please log in again before deleting your account.",
+                status = 401,
+                code = "UNAUTHORIZED"
+            )
+
+        val response = JsonHttpClient.request(
+            path = "/auth/me",
+            method = "DELETE",
+            token = accessToken
+        )
+
+        clearLocalAuthState()
+        clearDeletedAccountOfflineState()
+        return response.optString("message").ifBlank { "Account deleted successfully." }
+    }
+
+    private suspend fun clearDeletedAccountOfflineState() {
+        clearDeletedAccountCache("authenticated help request cache") {
+            RequestHelpRepository.clearAuthenticatedLocalCache()
+        }
+        clearDeletedAccountCache("assigned request cache") {
+            AssignedRequestRepository.clearLocalCache()
+        }
+        clearDeletedAccountCache("availability cache") {
+            AvailabilityRepository.clearLocalCache()
+        }
+        clearDeletedAccountCache("operational location cache") {
+            OperationalLocationRepository.clearLocalCache()
+        }
+        clearDeletedAccountCache("safety status cache") {
+            SafetyStatusRepository.clearLocalCache()
+        }
+    }
+
+    private suspend fun clearDeletedAccountCache(
+        cacheName: String,
+        clear: suspend () -> Unit
+    ) {
+        try {
+            clear()
+        } catch (error: Exception) {
+            Log.w("AuthRepository", "Failed to clear $cacheName after account deletion", error)
+        }
+    }
+
+    private fun clearLocalAuthState() {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()

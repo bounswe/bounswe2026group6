@@ -58,6 +58,9 @@ interface HelpRequestDao {
 
     @Query("DELETE FROM help_requests WHERE localId = :localId")
     suspend fun deleteByLocalId(localId: String)
+
+    @Query("DELETE FROM help_requests WHERE ownerType = :ownerType")
+    suspend fun deleteByOwner(ownerType: String)
 }
 
 @Dao
@@ -70,6 +73,9 @@ interface AvailabilityDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: AvailabilityEntity)
+
+    @Query("DELETE FROM availability_state")
+    suspend fun clear()
 }
 
 @Dao
@@ -244,6 +250,22 @@ interface SyncOperationDao {
 
     @Query("DELETE FROM sync_operations WHERE status = 'SYNCED'")
     suspend fun deleteSynced()
+
+    @Query("DELETE FROM sync_operations WHERE entityType = :entityType")
+    suspend fun deleteByEntityType(entityType: String)
+
+    @Query(
+        """
+        DELETE FROM sync_operations
+        WHERE entityType = :entityType
+          AND entityId IN (
+              SELECT localId
+              FROM help_requests
+              WHERE ownerType = :ownerType
+          )
+        """
+    )
+    suspend fun deleteHelpRequestOperationsForOwner(entityType: String, ownerType: String)
 }
 
 @Dao

@@ -739,13 +739,15 @@ async function syncRequestStatusPreservingInProgress(requestId, executor = null)
   const sql = `
     UPDATE help_requests hr
     SET status = CASE
-      WHEN hr.status = 'IN_PROGRESS' THEN 'IN_PROGRESS'::request_status
       WHEN EXISTS (
         SELECT 1
         FROM assignments a
         WHERE a.request_id = hr.request_id
           AND a.is_cancelled = FALSE
-      ) THEN 'ASSIGNED'::request_status
+      ) THEN CASE
+        WHEN hr.status = 'IN_PROGRESS' THEN 'IN_PROGRESS'::request_status
+        ELSE 'ASSIGNED'::request_status
+      END
       ELSE 'PENDING'::request_status
     END
     WHERE hr.request_id = $1
