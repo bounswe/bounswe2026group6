@@ -160,9 +160,10 @@ fun AssignedRequestScreen(
             error.isNotBlank() && currentRequest == null -> {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
                     SectionCard {
-                        SectionHeader(
-                            title = "Assigned Request",
-                            subtitle = "We could not load your current assignment."
+                        Text(
+                            text = "We could not load your current assignment.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         HelperText(text = error)
@@ -180,9 +181,10 @@ fun AssignedRequestScreen(
             currentRequest == null -> {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
                     SectionCard {
-                        SectionHeader(
-                            title = "Assigned Request",
-                            subtitle = "This page shows the request currently assigned to you."
+                        Text(
+                            text = "This page shows the request currently assigned to you.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Text(

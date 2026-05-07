@@ -219,6 +219,11 @@ fun GatheringAreasScreen(
         } else {
             Routes.guestDrawerItems
         },
+        bottomNavItems = if (isAuthenticated) {
+            Routes.authenticatedBottomNavItems
+        } else {
+            Routes.guestBottomNavItems
+        },
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
@@ -229,9 +234,10 @@ fun GatheringAreasScreen(
         ) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                    SectionHeader(
-                        title = "Nearby Gathering Areas",
-                        subtitle = "Location-based assembly points and shelters are retrieved from the gathering areas service."
+                    Text(
+                        text = "Location-based assembly points and shelters are retrieved from the gathering areas service.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
