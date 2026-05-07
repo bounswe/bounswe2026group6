@@ -6,6 +6,15 @@ const DEFAULT_CACHE_MAX_ENTRIES = 500;
 const DEFAULT_OVERPASS_USER_AGENT = 'NEPH-Backend/1.0 (+https://github.com/bounswe/bounswe2026group6)';
 const CACHE_COORDINATE_DECIMALS = 4;
 const FALLBACK_REASON = 'No verified backend fallback gathering-area data is available';
+const CATEGORY_METADATA = {
+  assembly_point: { key: 'assembly_point', label: 'Assembly Point' },
+  shelter: { key: 'shelter', label: 'Shelter' },
+  hospital: { key: 'hospital', label: 'Hospital' },
+  police: { key: 'police', label: 'Police Station' },
+  fire_station: { key: 'fire_station', label: 'Fire Station' },
+  pharmacy: { key: 'pharmacy', label: 'Pharmacy' },
+  other: { key: 'other', label: 'Other' },
+};
 
 const nearbyCache = new Map();
 
@@ -122,6 +131,21 @@ function buildOverpassQuery({ lat, lon, radius }) {
     `  node(around:${radius},${lat},${lon})["amenity"="shelter"];`,
     `  way(around:${radius},${lat},${lon})["amenity"="shelter"];`,
     `  relation(around:${radius},${lat},${lon})["amenity"="shelter"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+    `  node(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+    `  way(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+    `  relation(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="police"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="police"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="police"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
     ');',
     'out center tags;',
   ].join('\n');
@@ -133,6 +157,11 @@ function buildOverpassLightweightQuery({ lat, lon, radius }) {
     '(',
       `  node(around:${radius},${lat},${lon})["emergency"="assembly_point"];`,
       `  node(around:${radius},${lat},${lon})["amenity"="shelter"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+      `  node(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="police"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
     ');',
     'out tags;',
   ].join('\n');
@@ -173,6 +202,34 @@ function calculateDistanceMeters(fromLat, fromLon, toLat, toLon) {
   return earthRadiusMeters * c;
 }
 
+function mapTagsToCategory(tags) {
+  if (tags.emergency === 'assembly_point') {
+    return CATEGORY_METADATA.assembly_point;
+  }
+
+  if (tags.amenity === 'shelter') {
+    return CATEGORY_METADATA.shelter;
+  }
+
+  if (tags.amenity === 'hospital' || tags.healthcare === 'hospital') {
+    return CATEGORY_METADATA.hospital;
+  }
+
+  if (tags.amenity === 'police') {
+    return CATEGORY_METADATA.police;
+  }
+
+  if (tags.amenity === 'fire_station') {
+    return CATEGORY_METADATA.fire_station;
+  }
+
+  if (tags.amenity === 'pharmacy') {
+    return CATEGORY_METADATA.pharmacy;
+  }
+
+  return CATEGORY_METADATA.other;
+}
+
 function mapElementToFeature(element, center) {
   if (!isObject(element)) {
     return null;
@@ -187,6 +244,7 @@ function mapElementToFeature(element, center) {
   }
 
   const distanceMeters = Math.round(calculateDistanceMeters(center.lat, center.lon, lat, lon));
+  const category = mapTagsToCategory(tags);
 
   return {
     type: 'Feature',
@@ -198,7 +256,8 @@ function mapElementToFeature(element, center) {
       id: String(element.id || ''),
       osmType: element.type || '',
       name: tags.name || tags['name:tr'] || '',
-      category: tags.emergency || tags.amenity || 'unknown',
+      category: category.key,
+      categoryLabel: category.label,
       distanceMeters,
       rawTags: tags,
     },
@@ -254,6 +313,10 @@ function withSource(result, source, extraMeta = {}) {
       ...extraMeta,
     },
   };
+}
+
+function buildCategoryMetadata() {
+  return Object.values(CATEGORY_METADATA);
 }
 
 async function fetchNearbyFromOverpassUrl(queryText, url) {
@@ -360,6 +423,7 @@ async function getNearbyGatheringAreas(params) {
       meta: {
         requestedLimit: params.limit,
         returnedCount: collection.features.length,
+        categories: buildCategoryMetadata(),
       },
       collection,
     };
@@ -392,6 +456,7 @@ async function getNearbyGatheringAreas(params) {
         returnedCount: collection.features.length,
         providerErrorCode: error.code,
         fallbackReason: FALLBACK_REASON,
+        categories: buildCategoryMetadata(),
       },
       collection,
     };
