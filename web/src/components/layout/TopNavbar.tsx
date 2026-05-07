@@ -205,6 +205,10 @@ export function TopNavbar() {
 
         return true;
     });
+    const notificationAriaLabel =
+        isAuthenticated && unreadCount > 0
+            ? `Notifications (${unreadCount} unread)`
+            : "Notifications";
 
     return (
         <header className="top-navbar">
@@ -229,7 +233,7 @@ export function TopNavbar() {
                     <Link
                         href="/notifications"
                         className={`top-navbar-notification-button${pathname === "/notifications" || pathname.startsWith("/notifications/") ? " is-active" : ""}`}
-                        aria-label="Notifications"
+                        aria-label={notificationAriaLabel}
                     >
                         <svg
                             width="18"
@@ -255,7 +259,10 @@ export function TopNavbar() {
                             />
                         </svg>
                         {isAuthenticated && unreadCount > 0 ? (
-                            <span className="top-navbar-notification-dot" aria-hidden="true" />
+                            <>
+                                <span className="top-navbar-notification-dot" aria-hidden="true" />
+                                <span className="sr-only">{unreadCount} unread notifications</span>
+                            </>
                         ) : null}
                     </Link>
 

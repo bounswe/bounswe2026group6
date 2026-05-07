@@ -67,9 +67,13 @@ export default function NotificationsPage() {
     const [markingAllRead, setMarkingAllRead] = React.useState(false);
     const [savingPushPreference, setSavingPushPreference] = React.useState(false);
     const [markingItemId, setMarkingItemId] = React.useState<string | null>(null);
+    const [isLoadingMore, setIsLoadingMore] = React.useState(false);
+    const refreshRequestIdRef = React.useRef(0);
+    const loadMoreRequestIdRef = React.useRef(0);
 
     const refresh = React.useCallback(async () => {
         if (!token) return;
+        const requestId = ++refreshRequestIdRef.current;
         setIsLoading(true);
         setError(null);
         try {
@@ -78,6 +82,10 @@ export default function NotificationsPage() {
                 fetchNotificationPreferences(token),
             ]);
 
+            if (requestId !== refreshRequestIdRef.current) {
+                return;
+            }
+
             setItems(notifications.items);
             setUnreadCount(notifications.unreadCount);
             setNextCursor(notifications.nextCursor);
@@ -85,7 +93,9 @@ export default function NotificationsPage() {
         } catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : "Failed to load notifications.");
         } finally {
-            setIsLoading(false);
+            if (requestId === refreshRequestIdRef.current) {
+                setIsLoading(false);
+            }
         }
     }, [token]);
 
@@ -99,14 +109,36 @@ export default function NotificationsPage() {
     }, [refresh]);
 
     const loadMore = async () => {
-        if (!token || !nextCursor) return;
+        if (!token || !nextCursor || isLoading || isLoadingMore) return;
+        const requestId = ++loadMoreRequestIdRef.current;
+        const cursorAtRequestStart = nextCursor;
+        setIsLoadingMore(true);
         try {
-            const nextPage = await fetchNotifications(token, { limit: 20, cursor: nextCursor });
-            setItems((prev) => [...prev, ...nextPage.items]);
+            const nextPage = await fetchNotifications(token, { limit: 20, cursor: cursorAtRequestStart });
+
+            if (requestId !== loadMoreRequestIdRef.current || cursorAtRequestStart !== nextCursor) {
+                return;
+            }
+
+            setItems((prev) => {
+                const seenIds = new Set(prev.map((item) => item.id));
+                const merged = [...prev];
+                for (const item of nextPage.items) {
+                    if (!seenIds.has(item.id)) {
+                        merged.push(item);
+                        seenIds.add(item.id);
+                    }
+                }
+                return merged;
+            });
             setUnreadCount(nextPage.unreadCount);
             setNextCursor(nextPage.nextCursor);
         } catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : "Failed to load more.");
+        } finally {
+            if (requestId === loadMoreRequestIdRef.current) {
+                setIsLoadingMore(false);
+            }
         }
     };
 
@@ -128,7 +160,7 @@ export default function NotificationsPage() {
                                 Push ON/OFF controls push delivery preference. Notifications are always listed here in-app.
                             </p>
                             <div className="notifications-toolbar">
-                                <SecondaryButton className="w-auto" onClick={() => void refresh()} disabled={isLoading || markingAllRead || savingPushPreference}>
+                                <SecondaryButton className="w-auto" onClick={() => void refresh()} disabled={isLoading || isLoadingMore || markingAllRead || savingPushPreference}>
                                     Refresh
                                 </SecondaryButton>
                                 <SecondaryButton
@@ -143,7 +175,7 @@ export default function NotificationsPage() {
                                             setMarkingAllRead(false);
                                         }
                                     }}
-                                    disabled={isLoading || markingAllRead || savingPushPreference || unreadCount === 0}
+                                    disabled={isLoading || isLoadingMore || markingAllRead || savingPushPreference || unreadCount === 0}
                                 >
                                     {markingAllRead ? "Marking..." : "Mark All Read"}
                                 </SecondaryButton>
@@ -161,7 +193,7 @@ export default function NotificationsPage() {
                                         }
                                     }}
                                     loading={savingPushPreference}
-                                    disabled={isLoading || markingAllRead}
+                                    disabled={isLoading || isLoadingMore || markingAllRead}
                                 >
                                     Push {pushEnabled ? "ON" : "OFF"}
                                 </PrimaryButton>
@@ -170,6 +202,7 @@ export default function NotificationsPage() {
 
                         {error ? <p className="admin-error-text">{error}</p> : null}
                         {isLoading ? <p className="text-muted">Loading notifications...</p> : null}
+                        {isLoadingMore ? <p className="text-muted">Loading more notifications...</p> : null}
 
                         {items.length === 0 && !isLoading ? (
                             <div className="notifications-empty-state">
@@ -235,8 +268,8 @@ export default function NotificationsPage() {
                         )}
 
                         {nextCursor ? (
-                            <SecondaryButton className="w-auto notifications-load-more" onClick={() => void loadMore()} disabled={isLoading}>
-                                Load More
+                            <SecondaryButton className="w-auto notifications-load-more" onClick={() => void loadMore()} disabled={isLoading || isLoadingMore}>
+                                {isLoadingMore ? "Loading..." : "Load More"}
                             </SecondaryButton>
                         ) : null}
                     </div>
