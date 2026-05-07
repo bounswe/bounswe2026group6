@@ -476,4 +476,82 @@ describe('safety-status integration', () => {
       longitude: 29.01,
     });
   });
+
+  test('GET /api/safety-status/visible nearby supports explicit current-location context', async () => {
+    const app = createTestApp();
+    const viewerId = 'user_current_location_viewer';
+    const nearId = 'user_current_location_near';
+    const farId = 'user_current_location_far';
+    await seedActiveUser(viewerId);
+    await seedActiveUser(nearId);
+    await seedActiveUser(farId);
+    await seedProfile(viewerId, {
+      profileVisibility: 'PRIVATE',
+      locationVisibility: 'PRIVATE',
+      locationSharingEnabled: true,
+      neighborhood: 'Moda',
+      latitude: 40.988,
+      longitude: 29.024,
+    });
+    await seedProfile(nearId, {
+      firstName: 'Current',
+      lastName: 'Nearby',
+      profileVisibility: 'PUBLIC',
+      locationVisibility: 'PUBLIC',
+      locationSharingEnabled: true,
+      neighborhood: 'Levazim',
+      latitude: 41.044,
+      longitude: 29.01,
+    });
+    await seedProfile(farId, {
+      firstName: 'Current',
+      lastName: 'Far',
+      profileVisibility: 'PUBLIC',
+      locationVisibility: 'PUBLIC',
+      locationSharingEnabled: true,
+      neighborhood: 'Bursa',
+      latitude: 40.182,
+      longitude: 29.066,
+    });
+
+    for (const userId of [viewerId, nearId, farId]) {
+      await request(app)
+        .patch('/api/safety-status/me')
+        .set('Authorization', `Bearer ${buildAuthToken(userId)}`)
+        .send({
+          status: userId === farId ? 'safe' : 'not_safe',
+          shareLocationConsent: true,
+          location: { latitude: 41.044, longitude: 29.01 },
+        })
+        .expect(200);
+    }
+
+    const response = await request(app)
+      .get('/api/safety-status/visible?nearby=true&context=current-location&latitude=41.043&longitude=29.009')
+      .set('Authorization', `Bearer ${buildAuthToken(viewerId)}`);
+
+    expect(response.status).toBe(200);
+    const byUserId = Object.fromEntries(
+      response.body.safetyStatuses.map((item) => [item.userId, item]),
+    );
+    expect(byUserId[nearId]).toMatchObject({
+      displayName: 'Current Nearby',
+      status: 'not_safe',
+    });
+    expect(byUserId[viewerId]).toBeUndefined();
+    expect(byUserId[farId]).toBeUndefined();
+  });
+
+  test('GET /api/safety-status/visible current-location context validates coordinates', async () => {
+    const app = createTestApp();
+    const viewerId = 'user_current_location_invalid';
+    await seedActiveUser(viewerId);
+
+    const response = await request(app)
+      .get('/api/safety-status/visible?nearby=true&context=current-location&latitude=bad&longitude=29.009')
+      .set('Authorization', `Bearer ${buildAuthToken(viewerId)}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_FAILED');
+  });
 });

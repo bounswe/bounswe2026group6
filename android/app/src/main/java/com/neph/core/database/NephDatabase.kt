@@ -19,7 +19,7 @@ import com.neph.BuildConfig
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -146,6 +146,67 @@ object NephDatabaseProvider {
             database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_fetchedAtEpochMillis ON nearby_visible_users (fetchedAtEpochMillis)")
         }
     }
+    private val Migration9To10 = object : Migration(9, 10) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS nearby_visible_users_new (
+                    cacheOwnerUserId TEXT NOT NULL,
+                    cacheSource TEXT NOT NULL DEFAULT 'RESIDENTIAL_PROFILE',
+                    userId TEXT NOT NULL,
+                    displayName TEXT,
+                    safetyStatus TEXT NOT NULL,
+                    statusUpdatedAt TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    locationCapturedAt TEXT,
+                    visibilityScope TEXT,
+                    fetchedAtEpochMillis INTEGER NOT NULL,
+                    expiresAtEpochMillis INTEGER NOT NULL,
+                    PRIMARY KEY(cacheOwnerUserId, cacheSource, userId)
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO nearby_visible_users_new (
+                    cacheOwnerUserId,
+                    cacheSource,
+                    userId,
+                    displayName,
+                    safetyStatus,
+                    statusUpdatedAt,
+                    latitude,
+                    longitude,
+                    locationCapturedAt,
+                    visibilityScope,
+                    fetchedAtEpochMillis,
+                    expiresAtEpochMillis
+                )
+                SELECT
+                    cacheOwnerUserId,
+                    'RESIDENTIAL_PROFILE',
+                    userId,
+                    displayName,
+                    safetyStatus,
+                    statusUpdatedAt,
+                    latitude,
+                    longitude,
+                    locationCapturedAt,
+                    visibilityScope,
+                    fetchedAtEpochMillis,
+                    expiresAtEpochMillis
+                FROM nearby_visible_users
+                """.trimIndent()
+            )
+            database.execSQL("DROP TABLE nearby_visible_users")
+            database.execSQL("ALTER TABLE nearby_visible_users_new RENAME TO nearby_visible_users")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_cacheOwnerUserId ON nearby_visible_users (cacheOwnerUserId)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_cacheOwnerUserId_cacheSource ON nearby_visible_users (cacheOwnerUserId, cacheSource)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_safetyStatus ON nearby_visible_users (safetyStatus)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_fetchedAtEpochMillis ON nearby_visible_users (fetchedAtEpochMillis)")
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -165,7 +226,8 @@ object NephDatabaseProvider {
                 Migration5To6,
                 Migration6To7,
                 Migration7To8,
-                Migration8To9
+                Migration8To9,
+                Migration9To10
             )
                 .build()
                 .also { instance = it }
