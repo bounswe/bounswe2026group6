@@ -199,6 +199,7 @@ describe('profiles integration', () => {
 		await seedActiveUser(userId, 'lochybrid1@example.com');
 		const token = buildAuthToken(userId);
 		await createBaseProfile(app, token);
+		const capturedAt = '2026-04-18T11:20:00.000Z';
 
 		const response = await request(app)
 			.patch('/api/profiles/me/location')
@@ -219,7 +220,7 @@ describe('profiles integration', () => {
 					latitude: 41.043,
 					longitude: 29.009,
 					source: 'MANUAL_MAP_PIN',
-					capturedAt: '2026-04-18T11:20:00.000Z',
+					capturedAt,
 				},
 			});
 
@@ -229,6 +230,7 @@ describe('profiles integration', () => {
 		expect(response.body.locationProfile.latitude).toBeCloseTo(41.043, 6);
 		expect(response.body.locationProfile.longitude).toBeCloseTo(29.009, 6);
 		expect(response.body.locationProfile.coordinate).toBeTruthy();
+		expect(Date.parse(response.body.locationProfile.coordinate.capturedAt)).toBe(Date.parse(capturedAt));
 		expect(response.body.locationProfile.administrative).toBeTruthy();
 		expect(response.body.locationProfile.displayAddress).toBe('Levazim, Besiktas, Istanbul');
 		expect(response.body.locationProfile.placeId).toBe('osm:node:12345');
@@ -244,6 +246,7 @@ describe('profiles integration', () => {
 		expect(getResponse.status).toBe(200);
 		expect(getResponse.body.locationProfile.displayAddress).toBe('Levazim, Besiktas, Istanbul');
 		expect(getResponse.body.locationProfile.placeId).toBe('osm:node:12345');
+		expect(Date.parse(getResponse.body.locationProfile.coordinate.capturedAt)).toBe(Date.parse(capturedAt));
 		expect(getResponse.body.locationProfile.administrative.countryCode).toBe('TR');
 		expect(getResponse.body.locationProfile.administrative.district).toBe('Besiktas');
 		expect(getResponse.body.locationProfile.administrative.neighborhood).toBe('Levazim');

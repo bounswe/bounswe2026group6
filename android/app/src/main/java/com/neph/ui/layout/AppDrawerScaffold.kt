@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.neph.navigation.Routes
+import com.neph.ui.components.theme.ThemeIconButton
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.launch
 
@@ -228,6 +229,8 @@ fun AppDrawerScaffold(
                         },
                         actions = {
                             topBarActions()
+
+                            ThemeIconButton()
 
                             if (onOpenSettings != null) {
                                 IconButton(onClick = onOpenSettings) {

@@ -12,8 +12,8 @@ export function SecondaryButton({
         <button
             className={cn(
                 "inline-flex h-11 w-full items-center justify-center rounded-[10px]",
-                "border border-red-500 bg-white px-4 text-sm font-semibold text-red-500",
-                "transition-colors hover:bg-red-50 active:bg-red-100",
+                "border border-[color:var(--primary-500)] bg-[color:var(--surface-card)] px-4 text-sm font-semibold text-[color:var(--primary-500)]",
+                "transition-colors hover:bg-[color:var(--primary-100)] active:bg-[color:var(--primary-soft-200)]",
                 "disabled:cursor-not-allowed disabled:opacity-60",
                 className
             )}

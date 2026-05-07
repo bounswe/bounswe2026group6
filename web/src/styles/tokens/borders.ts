@@ -1,6 +1,6 @@
 export const borders = {
-    default: "1px solid #E7E7EA",
-    divider: "1px solid #EEEEF1",
-    active: "1px solid #D84A4A",
-    error: "1px solid #D84A4A",
+    default: "1px solid var(--border-subtle)",
+    divider: "1px solid var(--divider)",
+    active: "1px solid var(--primary-500)",
+    error: "1px solid var(--error)",
 } as const;

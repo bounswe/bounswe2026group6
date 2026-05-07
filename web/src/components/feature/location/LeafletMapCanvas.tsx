@@ -95,7 +95,7 @@ export function LeafletMapCanvas({
 
     return (
         <div
-            className={`overflow-hidden rounded-[10px] border border-[#e7e7ea] ${heightClassName}`}
+            className={`overflow-hidden rounded-[10px] border border-[color:var(--border-subtle)] ${heightClassName}`}
             role="region"
             aria-label={ariaLabel}
         >

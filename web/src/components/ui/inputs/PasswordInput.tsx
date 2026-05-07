@@ -20,7 +20,7 @@ export function PasswordInput({
     return (
         <div className="flex w-full flex-col gap-2">
             {label ? (
-                <label htmlFor={id} className="text-sm font-medium text-gray-800">
+                <label htmlFor={id} className="text-sm font-medium text-[color:var(--text-primary)]">
                     {label}
                 </label>
             ) : null}
@@ -30,10 +30,10 @@ export function PasswordInput({
                     id={id}
                     type={show ? "text" : "password"}
                     className={cn(
-                        "h-11 w-full rounded-[10px] border bg-white px-3 pr-12 text-sm text-gray-800",
-                        "border-gray-200 placeholder:text-gray-400",
-                        "outline-none transition-colors focus:border-red-500",
-                        error && "border-red-500",
+                        "h-11 w-full rounded-[10px] border bg-[color:var(--surface-card)] px-3 pr-12 text-sm text-[color:var(--text-primary)]",
+                        "border-[color:var(--border-subtle)] placeholder:text-[color:var(--text-muted)]",
+                        "outline-none transition-colors focus:border-[color:var(--primary-500)]",
+                        error && "border-[color:var(--primary-500)]",
                         className
                     )}
                     {...props}
@@ -42,14 +42,14 @@ export function PasswordInput({
                 <button
                     type="button"
                     onClick={() => setShow((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-500"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-[color:var(--text-secondary)]"
                 >
                     {show ? "Hide" : "Show"}
                 </button>
             </div>
 
             {error ? (
-                <p className="text-xs text-red-500">{error}</p>
+                <p className="text-xs text-[color:var(--primary-500)]">{error}</p>
             ) : null}
         </div>
     );

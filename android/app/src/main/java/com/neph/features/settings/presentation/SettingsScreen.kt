@@ -41,12 +41,12 @@ fun SettingsScreen(
         ) {
             SectionCard {
                 SectionHeader(
-                    title = "Settings",
-                    subtitle = "This page will collect app and account preferences."
+                    title = "Account",
+                    subtitle = "Manage app and account preferences."
                 )
 
                 Text(
-                    text = "Settings controls will be expanded in a later step.",
+                    text = "Privacy, security, and session controls are available below.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

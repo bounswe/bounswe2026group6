@@ -25,7 +25,7 @@ export function Checkbox({
             <label
                 htmlFor={id}
                 className={cn(
-                    "flex items-start gap-3 text-sm text-gray-800",
+                    "flex items-start gap-3 text-sm text-[color:var(--text-primary)]",
                     disabled && "cursor-not-allowed opacity-60"
                 )}
             >
@@ -35,13 +35,13 @@ export function Checkbox({
                     checked={checked}
                     disabled={disabled}
                     onChange={(e) => onCheckedChange(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-200 accent-red-500"
+                    className="mt-0.5 h-4 w-4 rounded border-[color:var(--border-subtle)] accent-red-500"
                 />
                 <span>{label}</span>
             </label>
 
             {error ? (
-                <p className="text-xs text-red-500">{error}</p>
+                <p className="text-xs text-[color:var(--primary-500)]">{error}</p>
             ) : null}
         </div>
     );

@@ -25,13 +25,13 @@ export function ToggleSwitch({
             onClick={() => onCheckedChange(!checked)}
             className={cn(
                 "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                checked ? "bg-red-500" : "bg-gray-300",
+                checked ? "bg-[color:var(--primary-500)]" : "bg-[color:var(--border-muted)]",
                 disabled && "cursor-not-allowed opacity-60"
             )}
         >
             <span
                 className={cn(
-                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform",
+                    "inline-block h-5 w-5 transform rounded-full bg-[color:var(--surface-card)] transition-transform",
                     checked ? "translate-x-5" : "translate-x-1"
                 )}
             />

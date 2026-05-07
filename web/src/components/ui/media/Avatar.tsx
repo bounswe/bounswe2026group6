@@ -23,7 +23,7 @@ export function Avatar({
   return (
     <div
       className={cn(
-        "rounded-full bg-gray-200 overflow-hidden flex items-center justify-center",
+        "rounded-full bg-[color:var(--surface-soft)] overflow-hidden flex items-center justify-center",
         sizeClasses[size],
         className
       )}
@@ -31,7 +31,7 @@ export function Avatar({
       {src ? (
         <img src={src} alt={alt} className="w-full h-full object-cover" />
       ) : (
-        <span className="text-gray-500 text-sm">👤</span>
+        <span className="text-[color:var(--text-secondary)] text-sm">👤</span>
       )}
     </div>
   );

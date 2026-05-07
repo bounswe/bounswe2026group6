@@ -10,7 +10,7 @@ const LeafletGatheringAreasMap = dynamic(
     {
         ssr: false,
         loading: () => (
-            <div className="h-[380px] w-full animate-pulse rounded-[10px] border border-[#e7e7ea] bg-[#f8f8f9] md:h-[500px]" />
+            <div className="h-[380px] w-full animate-pulse rounded-[10px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-soft)] md:h-[500px]" />
         ),
     }
 );

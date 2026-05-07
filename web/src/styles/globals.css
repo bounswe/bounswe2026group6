@@ -44,6 +44,45 @@
     --hero-button-overlay-hover: rgba(255, 255, 255, 0.2);
 }
 
+
+html[data-theme="dark"] {
+    --primary-100: #3f1f24;
+    --primary-500: #ff7a7a;
+    --primary-600: #ff8f8f;
+    --primary-700: #ffd1d1;
+
+    --background-page: #121217;
+    --surface-card: #1d1d24;
+    --border-subtle: #33333c;
+    --divider: #292932;
+
+    --text-primary: #f4f4f6;
+    --text-secondary: #c6c6cf;
+    --text-muted: #9494a3;
+    --text-on-primary: #ffffff;
+
+    --success: #58d69d;
+    --warning: #f7c85d;
+    --error: #ff7a7a;
+    --info: #ff9a9a;
+
+    --shadow-card: 0 14px 32px rgba(0, 0, 0, 0.38);
+    --shadow-overlay: 0 24px 48px rgba(0, 0, 0, 0.5);
+
+    --primary-soft-100: #3b2024;
+    --primary-soft-200: #5c2b32;
+    --surface-soft: #262630;
+    --border-muted: #444653;
+    --text-inverse-muted: #e6eaf0;
+    --hero-from: #171720;
+    --hero-via: #242432;
+    --hero-to: #6f2b35;
+    --hero-panel-overlay: rgba(255, 255, 255, 0.08);
+    --hero-panel-border: rgba(255, 255, 255, 0.16);
+    --hero-button-overlay: rgba(255, 255, 255, 0.08);
+    --hero-button-overlay-hover: rgba(255, 255, 255, 0.14);
+}
+
 * {
     box-sizing: border-box;
 }
@@ -125,6 +164,32 @@ textarea::placeholder {
 }
 
 /* Utility-like shared base classes */
+
+.theme-toggle-corner {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 80;
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(8px);
+    transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.theme-toggle-corner:hover {
+    border-color: var(--primary-soft-200);
+    background: var(--primary-soft-100);
+    color: var(--primary-600);
+    transform: translateY(-1px);
+}
 
 .page-bg {
     background: var(--background-page);
@@ -1946,4 +2011,66 @@ textarea::placeholder {
     .page-transition-enter {
         animation: none;
     }
+}
+
+/* Compatibility overrides for legacy Tailwind color utilities during dark theme rollout. */
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-gray-50,
+html[data-theme="dark"] .bg-\[\#fafafa\] {
+    background-color: var(--surface-card) !important;
+}
+
+html[data-theme="dark"] .bg-gray-100,
+html[data-theme="dark"] .bg-gray-200,
+html[data-theme="dark"] .bg-gray-300,
+html[data-theme="dark"] .bg-\[\#f8f8f9\],
+html[data-theme="dark"] .bg-\[\#eef0f3\] {
+    background-color: var(--surface-soft) !important;
+}
+
+html[data-theme="dark"] .text-gray-800,
+html[data-theme="dark"] .text-\[\#2B2B33\],
+html[data-theme="dark"] .text-\[\#2b2b33\] {
+    color: var(--text-primary) !important;
+}
+
+html[data-theme="dark"] .text-gray-500,
+html[data-theme="dark"] .text-gray-400,
+html[data-theme="dark"] .text-\[\#737380\] {
+    color: var(--text-secondary) !important;
+}
+
+html[data-theme="dark"] .border-gray-100,
+html[data-theme="dark"] .border-gray-200,
+html[data-theme="dark"] .border-\[\#E7E7EA\],
+html[data-theme="dark"] .border-\[\#e7e7ea\] {
+    border-color: var(--border-subtle) !important;
+}
+
+html[data-theme="dark"] .placeholder\:text-gray-400::placeholder {
+    color: var(--text-muted) !important;
+}
+
+html[data-theme="dark"] .shadow-\[0_10px_30px_rgba\(0\,0\,0\,0\.06\)\] {
+    box-shadow: var(--shadow-card) !important;
+}
+
+html[data-theme="dark"] select,
+html[data-theme="dark"] option,
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea {
+    background-color: var(--surface-card);
+    color: var(--text-primary);
+}
+
+html[data-theme="dark"] .crisis-tooltip-card {
+    border-color: color-mix(in srgb, var(--border-subtle) 90%, transparent);
+    background: color-mix(in srgb, var(--surface-card) 96%, transparent);
+}
+
+html[data-theme="dark"] .leaflet-control,
+html[data-theme="dark"] .leaflet-control a {
+    background: var(--surface-card);
+    color: var(--text-primary);
+    border-color: var(--border-subtle);
 }

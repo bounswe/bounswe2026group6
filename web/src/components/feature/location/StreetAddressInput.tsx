@@ -164,7 +164,7 @@ export function StreetAddressInput({
             {open && suggestions.length > 0 ? (
                 <ul
                     role="listbox"
-                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-[10px] border border-[#e7e7ea] bg-white shadow-md"
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-[10px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)] shadow-md"
                 >
                     {suggestions.map((item, index) => (
                         <li key={`${item.placeId}-${item.latitude}-${item.longitude}`}>
@@ -174,10 +174,10 @@ export function StreetAddressInput({
                                 aria-selected={index === highlightedIndex}
                                 onMouseEnter={() => setHighlightedIndex(index)}
                                 onClick={() => handleSelect(item)}
-                                className={`block w-full border-b border-[#f0f0f2] px-3 py-2 text-left text-sm text-[#2b2b33] transition-colors ${
+                                className={`block w-full border-b border-[color:var(--divider)] px-3 py-2 text-left text-sm text-[color:var(--text-primary)] transition-colors ${
                                     index === highlightedIndex
-                                        ? "bg-[#fafafa]"
-                                        : "hover:bg-[#fafafa]"
+                                        ? "bg-[color:var(--surface-soft)]"
+                                        : "hover:bg-[color:var(--surface-soft)]"
                                 }`}
                             >
                                 {item.displayName}

@@ -106,7 +106,7 @@ export default function NotificationsPage() {
                             </button>
                         </div>
 
-                        {error ? <p style={{ color: "#b42318" }}>{error}</p> : null}
+                        {error ? <p className="admin-error-text">{error}</p> : null}
                         {isLoading ? <p>Loading...</p> : null}
 
                         {items.length === 0 && !isLoading ? (
