@@ -1,7 +1,7 @@
 export function isValidDestinationCoordinates(
     latitude: number,
     longitude: number
-) {
+): boolean {
     return Number.isFinite(latitude) &&
         Number.isFinite(longitude) &&
         latitude >= -90 &&
@@ -14,7 +14,8 @@ export function buildDirectionsUrl(
     latitude: number,
     longitude: number,
     label?: string
-) {
+): string | null {
+    // Directions are coordinate-based; label is reserved for future destination UI integrations.
     if (!isValidDestinationCoordinates(latitude, longitude)) {
         return null;
     }
@@ -26,7 +27,7 @@ export function openDirections(
     latitude: number,
     longitude: number,
     label?: string
-) {
+): boolean {
     const directionsUrl = buildDirectionsUrl(latitude, longitude, label);
     if (!directionsUrl || typeof window === "undefined") {
         return false;

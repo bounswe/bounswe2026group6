@@ -37,6 +37,7 @@ object NephMapIntegration {
         longitude: Double,
         label: String? = null
     ): String? {
+        // Directions are coordinate-based; label is reserved for future destination UI integrations.
         if (!isValidCoordinate(latitude = latitude, longitude = longitude)) {
             return null
         }
