@@ -16,7 +16,11 @@ const {
   markHelpRequestAsCancelledByRequestId,
   listActiveHelpRequestsVisibility,
 } = require('./repository');
-const { tryToAssignRequest, cancelAssignmentByRequestId } = require('../availability/service');
+const {
+  tryToAssignRequest,
+  cancelAssignmentByRequestId,
+  notifyAssignedVolunteersRequestUpdated,
+} = require('../availability/service');
 const { createNotification } = require('../notifications/service');
 
 const JWT_SECRET = env.jwt.secret;
@@ -115,6 +119,11 @@ async function updateMyHelpRequest(userId, requestId, input) {
     return null;
   }
 
+  await notifyAssignedVolunteersRequestUpdated(
+    updatedRequest.id,
+    userId,
+    'request_details_updated',
+  );
   await tryToAssignRequest(updatedRequest.id);
   return findHelpRequestById(updatedRequest.id);
 }

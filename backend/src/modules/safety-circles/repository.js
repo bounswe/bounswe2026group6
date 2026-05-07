@@ -426,6 +426,7 @@ module.exports = {
   isCircleMember,
   createInvite,
   listInvitesForUser,
+  findInviteForUser,
   respondToInvite,
   removeMember,
   deleteCircle,
