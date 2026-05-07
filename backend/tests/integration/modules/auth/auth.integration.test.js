@@ -574,6 +574,82 @@ describe('DELETE /api/auth/me', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(oldTokenRes.status).toBe(401);
   });
+
+  test('200 - reopens an in-progress request when the deleted user was the only active volunteer', async () => {
+    const app = createTestApp();
+    const deleteUser = {
+      email: 'delete-only-in-progress@example.com',
+      password: '12345678',
+      acceptedTerms: true,
+    };
+    await request(app).post('/api/auth/signup').send(deleteUser);
+    await query(`UPDATE users SET is_email_verified = TRUE WHERE email = $1`, [deleteUser.email]);
+
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: deleteUser.email,
+      password: deleteUser.password,
+    });
+    const token = loginRes.body.accessToken;
+
+    const deletingUserRow = await query(`SELECT user_id FROM users WHERE email = $1`, [deleteUser.email]);
+    const deletingUserId = deletingUserRow.rows[0].user_id;
+    const requesterUserId = 'requester-only-in-progress-delete-test';
+    const volunteerId = 'volunteer-only-in-progress-delete-test';
+    const requestId = 'request-only-in-progress-delete-test';
+    const assignmentId = 'assignment-only-in-progress-delete-test';
+
+    await query(
+      `INSERT INTO users (user_id, email, password_hash, is_email_verified, accepted_terms)
+       VALUES ($1, $2, $3, TRUE, TRUE)`,
+      [requesterUserId, 'requester-only-in-progress-delete-test@example.com', 'hashed-password'],
+    );
+    await query(
+      `INSERT INTO volunteers (
+         volunteer_id, user_id, is_available, skills, need_types, last_known_latitude,
+         last_known_longitude, location_updated_at, available_until, availability_confirmed_at
+       )
+       VALUES ($1, $2, TRUE, ARRAY['shelter'], ARRAY['shelter'], 41.02, 29.02,
+         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 hour', CURRENT_TIMESTAMP)`,
+      [volunteerId, deletingUserId],
+    );
+    await query(
+      `INSERT INTO help_requests (
+         request_id, user_id, help_types, affected_people_count, need_type,
+         contact_full_name, contact_phone, consent_given, status
+       )
+       VALUES ($1, $2, ARRAY['shelter'], 1, 'shelter', 'Requester', 5000000002, TRUE, 'IN_PROGRESS')`,
+      [requestId, requesterUserId],
+    );
+    await query(
+      `INSERT INTO assignments (assignment_id, volunteer_id, request_id)
+       VALUES ($1, $2, $3)`,
+      [assignmentId, volunteerId, requestId],
+    );
+
+    const res = await request(app)
+      .delete('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+
+    const cancelledAssignment = await query(
+      `SELECT is_cancelled FROM assignments WHERE assignment_id = $1`,
+      [assignmentId],
+    );
+    expect(cancelledAssignment.rows[0].is_cancelled).toBe(true);
+
+    const activeAssignmentsForRequest = await query(
+      `SELECT COUNT(*)::int AS count FROM assignments WHERE request_id = $1 AND is_cancelled = FALSE`,
+      [requestId],
+    );
+    expect(activeAssignmentsForRequest.rows[0].count).toBe(0);
+
+    const requestStatus = await query(
+      `SELECT status FROM help_requests WHERE request_id = $1`,
+      [requestId],
+    );
+    expect(requestStatus.rows[0].status).toBe('PENDING');
+  });
 });
 
 // ─── GET /api/auth/verify-email ──────────────────────────────────────────────
