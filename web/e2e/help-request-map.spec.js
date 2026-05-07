@@ -7,6 +7,7 @@ test.beforeEach(async () => {
 
 test('guest can view waiting help requests on the map without operational status details', async ({ page }) => {
   let requestedUrl = '';
+  const list = page.locator('.gathering-areas-list');
 
   await page.route('**/api/help-requests/active**', async (route) => {
     requestedUrl = route.request().url();
@@ -68,9 +69,9 @@ test('guest can view waiting help requests on the map without operational status
 
   await expect(page.getByRole('heading', { name: 'Help Request Map' })).toBeVisible();
   await expect(page.getByText('Showing waiting help requests by type and priority.')).toBeVisible();
-  await expect(page.getByRole('button', { name: /First Aid/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Shelter/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Search and Rescue/i })).toHaveCount(0);
+  await expect(list.getByRole('button', { name: /First Aid/i })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Shelter/i })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Search and Rescue/i })).toHaveCount(0);
   await expect(page.locator('.crisis-pin')).toHaveCount(2);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('Priority: High');
   await expect(page.getByText('PENDING')).toHaveCount(0);
@@ -128,6 +129,12 @@ test('shows empty state and supports refresh after active request lookup fails',
 });
 
 test('supports multi-select request type filters and clears selected details when filtered out', async ({ page }) => {
+<<<<<<< Updated upstream
+=======
+  const filters = page.locator('.crisis-filters-panel');
+  const list = page.locator('.gathering-areas-list');
+
+>>>>>>> Stashed changes
   await page.route('**/api/help-requests/active**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -172,6 +179,7 @@ test('supports multi-select request type filters and clears selected details whe
   await expect(page.locator('.crisis-pin')).toHaveCount(3);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('First Aid');
 
+<<<<<<< Updated upstream
   await page.getByRole('button', { name: 'Shelter' }).click();
   await page.getByRole('button', { name: 'Food / Water Supplies' }).click();
   await expect(page.locator('.crisis-pin')).toHaveCount(2);
@@ -190,5 +198,25 @@ test('supports multi-select request type filters and clears selected details whe
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear' }).click();
+=======
+  await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
+  await filters.getByRole('button', { name: 'Food / Water Supplies', exact: true }).click();
+  await expect(page.locator('.crisis-pin')).toHaveCount(2);
+  await expect(page.locator('.gathering-areas-selected-card')).toContainText('Shelter');
+  await expect(list.getByRole('button', { name: /First Aid/i })).toHaveCount(0);
+
+  await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
+  await filters.getByRole('button', { name: 'Food / Water Supplies', exact: true }).click();
+  await expect(page.locator('.crisis-pin')).toHaveCount(3);
+  await expect(list.getByRole('button', { name: /First Aid/i })).toBeVisible();
+
+  await filters.getByRole('button', { name: 'First Aid', exact: true }).click();
+  await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
+  await filters.getByRole('button', { name: 'Food / Water Supplies', exact: true }).click();
+  await expect(page.getByText('No help requests match the selected request type filters.')).toBeVisible();
+  await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
+
+  await filters.getByRole('button', { name: 'Clear', exact: true }).click();
+>>>>>>> Stashed changes
   await expect(page.locator('.crisis-pin')).toHaveCount(3);
 });
