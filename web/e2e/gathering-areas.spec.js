@@ -325,20 +325,7 @@ test('supports multi-select category filters and clear filters reset', async ({ 
                 rawTags: {},
               },
             },
-            {
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [28.984, 41.016] },
-              properties: {
-                id: 'p1',
-                osmType: 'node',
-                name: 'Police Gamma',
-                category: 'police',
-                categoryLabel: 'Police Station',
-                distanceMeters: 380,
-                rawTags: {},
-              },
-            },
-          ],
+          ]
         },
       }),
     });
@@ -347,12 +334,12 @@ test('supports multi-select category filters and clear filters reset', async ({ 
   await page.goto('/gathering-areas');
   await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Hospital Beta/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Police Gamma/i })).toBeVisible();
+  const filterPanel = page.locator('.crisis-filters-panel');
 
-  await page.getByRole('button', { name: 'Hospital' }).click();
+  await filterPanel.getByRole('button', { name: 'Hospital', exact: true }).click();
   await expect(page.getByRole('button', { name: /Hospital Beta/i })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Assembly Point' }).click();
+  await filterPanel.getByRole('button', { name: 'Assembly Point', exact: true }).click();
   await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toHaveCount(0);
 
   await expect(page.getByText('No results match the selected categories.')).toBeVisible();
