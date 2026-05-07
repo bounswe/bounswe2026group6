@@ -70,10 +70,17 @@ export default function NotificationsPage() {
     const [isLoadingMore, setIsLoadingMore] = React.useState(false);
     const refreshRequestIdRef = React.useRef(0);
     const loadMoreRequestIdRef = React.useRef(0);
+    const listEpochRef = React.useRef(0);
 
     const refresh = React.useCallback(async () => {
         if (!token) return;
+        // Treat refresh as a new authoritative snapshot boundary.
+        // Any in-flight pagination result from older snapshots must be ignored.
+        listEpochRef.current += 1;
+        loadMoreRequestIdRef.current += 1;
+        setIsLoadingMore(false);
         const requestId = ++refreshRequestIdRef.current;
+        const refreshEpoch = listEpochRef.current;
         setIsLoading(true);
         setError(null);
         try {
@@ -82,7 +89,7 @@ export default function NotificationsPage() {
                 fetchNotificationPreferences(token),
             ]);
 
-            if (requestId !== refreshRequestIdRef.current) {
+            if (requestId !== refreshRequestIdRef.current || refreshEpoch !== listEpochRef.current) {
                 return;
             }
 
@@ -91,6 +98,9 @@ export default function NotificationsPage() {
             setNextCursor(notifications.nextCursor);
             setPushEnabled(preferences.preferences.pushEnabled);
         } catch (requestError) {
+            if (requestId !== refreshRequestIdRef.current || refreshEpoch !== listEpochRef.current) {
+                return;
+            }
             setError(requestError instanceof Error ? requestError.message : "Failed to load notifications.");
         } finally {
             if (requestId === refreshRequestIdRef.current) {
@@ -112,11 +122,15 @@ export default function NotificationsPage() {
         if (!token || !nextCursor || isLoading || isLoadingMore) return;
         const requestId = ++loadMoreRequestIdRef.current;
         const cursorAtRequestStart = nextCursor;
+        const loadMoreEpoch = listEpochRef.current;
         setIsLoadingMore(true);
         try {
             const nextPage = await fetchNotifications(token, { limit: 20, cursor: cursorAtRequestStart });
 
-            if (requestId !== loadMoreRequestIdRef.current || cursorAtRequestStart !== nextCursor) {
+            if (
+                requestId !== loadMoreRequestIdRef.current ||
+                loadMoreEpoch !== listEpochRef.current
+            ) {
                 return;
             }
 
@@ -134,6 +148,12 @@ export default function NotificationsPage() {
             setUnreadCount(nextPage.unreadCount);
             setNextCursor(nextPage.nextCursor);
         } catch (requestError) {
+            if (
+                requestId !== loadMoreRequestIdRef.current ||
+                loadMoreEpoch !== listEpochRef.current
+            ) {
+                return;
+            }
             setError(requestError instanceof Error ? requestError.message : "Failed to load more.");
         } finally {
             if (requestId === loadMoreRequestIdRef.current) {
