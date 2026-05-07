@@ -41,6 +41,7 @@ class NearbyVisibleUsersRepositoryTest {
 
         assertEquals(1, users.size)
         assertEquals("viewer-1", users[0].cacheOwnerUserId)
+        assertEquals(NearbyVisibleUsersCacheSource.RESIDENTIAL_PROFILE.storageValue, users[0].cacheSource)
         assertEquals("user-visible", users[0].userId)
         assertEquals("Visible User", users[0].displayName)
         assertEquals("safe", users[0].safetyStatus)
@@ -48,6 +49,33 @@ class NearbyVisibleUsersRepositoryTest {
         assertEquals(41.043, users[0].latitude ?: 0.0, 0.0)
         assertEquals(29.010, users[0].longitude ?: 0.0, 0.0)
         assertEquals(now, users[0].fetchedAtEpochMillis)
+    }
+
+    @Test
+    fun parserStoresCurrentLocationCacheSourceSeparately() {
+        val response = JSONObject()
+            .put(
+                "safetyStatuses",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("userId", "user-current-location")
+                            .put("displayName", "Current Nearby")
+                            .put("status", "safe")
+                    )
+            )
+
+        val user = NearbyVisibleUsersRepository.parseVisibleSafetyStatuses(
+            response,
+            now = 2_000L,
+            cacheOwnerUserId = "viewer-1",
+            cacheSource = NearbyVisibleUsersCacheSource.CURRENT_OPERATIONAL_LOCATION
+        ).single()
+
+        assertEquals(
+            NearbyVisibleUsersCacheSource.CURRENT_OPERATIONAL_LOCATION.storageValue,
+            user.cacheSource
+        )
     }
 
     @Test
@@ -80,6 +108,7 @@ class NearbyVisibleUsersRepositoryTest {
     fun stalePolicyMarksCacheStaleAfterRefreshWindowOrExpiry() {
         val entity = NearbyVisibleUserEntity(
             cacheOwnerUserId = "viewer-1",
+            cacheSource = NearbyVisibleUsersCacheSource.RESIDENTIAL_PROFILE.storageValue,
             userId = "user-stale",
             displayName = "Stale User",
             safetyStatus = "unknown",
