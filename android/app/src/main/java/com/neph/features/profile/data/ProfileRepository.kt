@@ -12,6 +12,12 @@ import java.util.Locale
 
 object ProfileRepository {
     private const val PrefsName = "neph_profile"
+    private const val LocationPermissionPrivacyHintKey = "locationPermissionPrivacyHint"
+
+    internal const val DefaultProfileVisibility = "EMERGENCY_ONLY"
+    internal const val DefaultHealthInfoVisibility = "EMERGENCY_ONLY"
+    internal const val DefaultLocationVisibility = "PRIVATE"
+    internal const val LocationPermissionGrantedVisibility = "EMERGENCY_ONLY"
 
     private lateinit var prefs: SharedPreferences
     private var cachedProfile = ProfileData()
@@ -45,6 +51,22 @@ object ProfileRepository {
     fun getProfile(): ProfileData {
         ensureInitialized()
         return cachedProfile
+    }
+
+    fun rememberLocationPermissionPrivacyHint(granted: Boolean) {
+        ensureInitialized()
+        prefs.edit()
+            .putBoolean(LocationPermissionPrivacyHintKey, granted)
+            .apply()
+    }
+
+    fun defaultLocationVisibilityFromStoredPermission(): String {
+        if (!::prefs.isInitialized) {
+            return DefaultLocationVisibility
+        }
+        return defaultLocationVisibilityForPermission(
+            prefs.getBoolean(LocationPermissionPrivacyHintKey, false)
+        )
     }
 
     fun resetForTesting() {
@@ -201,9 +223,9 @@ object ProfileRepository {
                 method = "PATCH",
                 token = token,
                 body = JSONObject().apply {
-                    put("profileVisibility", normalizedProfile.profileVisibility ?: "PRIVATE")
-                    put("healthInfoVisibility", normalizedProfile.healthInfoVisibility ?: "PRIVATE")
-                    put("locationVisibility", normalizedProfile.locationVisibility ?: "PRIVATE")
+                    put("profileVisibility", normalizedProfile.profileVisibility ?: DefaultProfileVisibility)
+                    put("healthInfoVisibility", normalizedProfile.healthInfoVisibility ?: DefaultHealthInfoVisibility)
+                    put("locationVisibility", normalizedProfile.locationVisibility ?: defaultLocationVisibilityFromStoredPermission())
                     put("locationSharingEnabled", profile.shareLocation ?: false)
                 }
             )
@@ -295,6 +317,31 @@ object ProfileRepository {
         return updated
     }
 
+    suspend fun syncPrivacyDefaultsForLocationPermission(locationPermissionGranted: Boolean): ProfileData? {
+        ensureInitialized()
+        rememberLocationPermissionPrivacyHint(locationPermissionGranted)
+
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        if (token.isBlank()) {
+            return null
+        }
+
+        val profile = try {
+            fetchAndCacheRemoteProfile()
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (_: Exception) {
+            return null
+        }
+
+        return syncPrivacySettings(
+            profileVisibility = profile.profileVisibility ?: DefaultProfileVisibility,
+            healthInfoVisibility = profile.healthInfoVisibility ?: DefaultHealthInfoVisibility,
+            locationVisibility = defaultLocationVisibilityForPermission(locationPermissionGranted),
+            locationSharingEnabled = profile.shareLocation == true
+        )
+    }
+
     internal fun buildPrivacySettingsPatchPayload(
         profileVisibility: String,
         healthInfoVisibility: String,
@@ -307,6 +354,10 @@ object ProfileRepository {
             put("locationVisibility", normalizeVisibility(locationVisibility))
             put("locationSharingEnabled", locationSharingEnabled)
         }
+    }
+
+    internal fun defaultLocationVisibilityForPermission(granted: Boolean): String {
+        return if (granted) LocationPermissionGrantedVisibility else DefaultLocationVisibility
     }
 
     internal fun mergePrivacySettingsResponse(
@@ -604,9 +655,18 @@ object ProfileRepository {
                 .takeIf { it.isNotBlank() },
             extraAddress = extraAddressFromBackend
                 ?: cachedProfileSnapshot.extraAddress,
-            profileVisibility = normalizeVisibility(privacySettings.optStringOrNull("profileVisibility")),
-            healthInfoVisibility = normalizeVisibility(privacySettings.optStringOrNull("healthInfoVisibility")),
-            locationVisibility = normalizeVisibility(privacySettings.optStringOrNull("locationVisibility")),
+            profileVisibility = normalizeVisibility(
+                privacySettings.optStringOrNull("profileVisibility"),
+                DefaultProfileVisibility
+            ),
+            healthInfoVisibility = normalizeVisibility(
+                privacySettings.optStringOrNull("healthInfoVisibility"),
+                DefaultHealthInfoVisibility
+            ),
+            locationVisibility = normalizeVisibility(
+                privacySettings.optStringOrNull("locationVisibility"),
+                defaultLocationVisibilityFromStoredPermission()
+            ),
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled"),
             sharedLatitude = sharedLatitude,
             sharedLongitude = sharedLongitude
@@ -721,11 +781,12 @@ object ProfileRepository {
         return if (has(key) && !isNull(key)) optDouble(key) else null
     }
 
-    private fun normalizeVisibility(value: String?): String {
+    private fun normalizeVisibility(value: String?, fallback: String = DefaultLocationVisibility): String {
         return when (value?.uppercase(Locale.ROOT)) {
             "PUBLIC" -> "PUBLIC"
             "EMERGENCY_ONLY" -> "EMERGENCY_ONLY"
-            else -> "PRIVATE"
+            "PRIVATE" -> "PRIVATE"
+            else -> fallback
         }
     }
 

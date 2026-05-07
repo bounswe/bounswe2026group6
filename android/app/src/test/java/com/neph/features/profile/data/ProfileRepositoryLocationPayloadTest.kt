@@ -30,6 +30,12 @@ class ProfileRepositoryLocationPayloadTest {
     }
 
     @Test
+    fun defaultLocationVisibilityForPermission_tracksPermissionGrant() {
+        assertEquals("EMERGENCY_ONLY", ProfileRepository.defaultLocationVisibilityForPermission(true))
+        assertEquals("PRIVATE", ProfileRepository.defaultLocationVisibilityForPermission(false))
+    }
+
+    @Test
     fun mergePrivacySettingsResponse_preservesUnrelatedCachedProfileFields() {
         val cached = ProfileData(
             firstName = "Ada",

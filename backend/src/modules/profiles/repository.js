@@ -1,6 +1,10 @@
 const { query } = require('../../db/pool');
 const { randomUUID } = require('crypto');
 
+const DEFAULT_PROFILE_VISIBILITY = 'EMERGENCY_ONLY';
+const DEFAULT_HEALTH_INFO_VISIBILITY = 'EMERGENCY_ONLY';
+const DEFAULT_LOCATION_VISIBILITY = 'PRIVATE';
+
 function makeId(prefix) {
   return `${prefix}_${randomUUID().replace(/-/g, '')}`;
 }
@@ -480,9 +484,9 @@ async function upsertPrivacySettings(profileId, data, providedFields = []) {
     VALUES (
       $1,
       $2,
-      CASE WHEN $7 THEN $3::visibility_level ELSE 'PRIVATE'::visibility_level END,
-      CASE WHEN $8 THEN $4::visibility_level ELSE 'PRIVATE'::visibility_level END,
-      CASE WHEN $9 THEN $5::visibility_level ELSE 'PRIVATE'::visibility_level END,
+      CASE WHEN $7 THEN $3::visibility_level ELSE '${DEFAULT_PROFILE_VISIBILITY}'::visibility_level END,
+      CASE WHEN $8 THEN $4::visibility_level ELSE '${DEFAULT_HEALTH_INFO_VISIBILITY}'::visibility_level END,
+      CASE WHEN $9 THEN $5::visibility_level ELSE '${DEFAULT_LOCATION_VISIBILITY}'::visibility_level END,
       CASE WHEN $10 THEN $6 ELSE FALSE END
     )
     ON CONFLICT (profile_id)

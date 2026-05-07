@@ -403,6 +403,8 @@ describe('profiles integration', () => {
 
 		expect(response.status).toBe(200);
 		expect(response.body.privacySettings.profileVisibility).toBe('PUBLIC');
+		expect(response.body.privacySettings.healthInfoVisibility).toBe('EMERGENCY_ONLY');
+		expect(response.body.privacySettings.locationVisibility).toBe('PRIVATE');
 	});
 
 	test('PATCH /api/profiles/me/profession returns 401 without token', async () => {

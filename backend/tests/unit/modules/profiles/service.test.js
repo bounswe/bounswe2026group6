@@ -79,6 +79,17 @@ describe('profiles service', () => {
 		expect(result.expertise[0].profession).toBe('Doctor');
 	});
 
+	test('getMyProfile defaults profile and health visibility to emergency only', async () => {
+		repository.findProfileBundleByUserId.mockResolvedValueOnce(makeBundleRow());
+		repository.listExpertiseByProfileId.mockResolvedValueOnce([]);
+
+		const result = await getMyProfile('u1');
+
+		expect(result.privacySettings.profileVisibility).toBe('EMERGENCY_ONLY');
+		expect(result.privacySettings.healthInfoVisibility).toBe('EMERGENCY_ONLY');
+		expect(result.privacySettings.locationVisibility).toBe('PRIVATE');
+	});
+
 	test('getMyProfile maps date_of_birth to physicalInfo.dateOfBirth', async () => {
 		repository.findProfileBundleByUserId.mockResolvedValueOnce(
 			makeBundleRow({ date_of_birth: '1998-06-20' }),

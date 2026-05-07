@@ -50,9 +50,11 @@ fun PrivacySecurityScreen(
 
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
-    var profileVisibility by remember { mutableStateOf(PrivateVisibility) }
-    var healthInfoVisibility by remember { mutableStateOf(PrivateVisibility) }
-    var locationVisibility by remember { mutableStateOf(PrivateVisibility) }
+    var profileVisibility by remember { mutableStateOf(ProfileRepository.DefaultProfileVisibility) }
+    var healthInfoVisibility by remember { mutableStateOf(ProfileRepository.DefaultHealthInfoVisibility) }
+    var locationVisibility by remember {
+        mutableStateOf(ProfileRepository.defaultLocationVisibilityFromStoredPermission())
+    }
     var shareLocation by remember { mutableStateOf(false) }
     var initialShareLocation by remember { mutableStateOf(false) }
     var hasSavedCoordinates by remember { mutableStateOf(false) }
@@ -62,9 +64,9 @@ fun PrivacySecurityScreen(
     LaunchedEffect(Unit) {
         try {
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
-            profileVisibility = profile.profileVisibility ?: PrivateVisibility
-            healthInfoVisibility = profile.healthInfoVisibility ?: PrivateVisibility
-            locationVisibility = profile.locationVisibility ?: PrivateVisibility
+            profileVisibility = profile.profileVisibility ?: ProfileRepository.DefaultProfileVisibility
+            healthInfoVisibility = profile.healthInfoVisibility ?: ProfileRepository.DefaultHealthInfoVisibility
+            locationVisibility = profile.locationVisibility ?: ProfileRepository.defaultLocationVisibilityFromStoredPermission()
             shareLocation = profile.shareLocation == true
             initialShareLocation = profile.shareLocation == true
             hasSavedCoordinates = profile.sharedLatitude != null && profile.sharedLongitude != null

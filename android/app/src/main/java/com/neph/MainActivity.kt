@@ -2,11 +2,13 @@ package com.neph
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.AlertDialog
@@ -33,6 +35,7 @@ import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.operationallocation.data.OperationalLocationUpdater
+import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.requesthelp.data.RequestHelpRepository
@@ -40,9 +43,18 @@ import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.AppNavGraph
 import com.neph.navigation.Routes
 import com.neph.ui.theme.NephTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private val initialLocationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val granted = DeviceLocationProvider.hasLocationPermission(this) || grants.values.any { it }
+        syncLocationPermissionPrivacy(granted)
+        requestNotificationPermissionIfNeeded()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NephAppContext.initialize(applicationContext)
@@ -54,7 +66,9 @@ class MainActivity : ComponentActivity() {
         ProfileRepository.initialize(applicationContext)
         RequestHelpRepository.initialize(applicationContext)
         SafetyStatusRepository.initialize(applicationContext)
-        requestNotificationPermissionIfNeeded()
+        if (!requestInitialLocationPermissionIfNeeded()) {
+            requestNotificationPermissionIfNeeded()
+        }
         PushTokenSync.syncCurrentToken()
         OfflineSyncScheduler.schedulePeriodicSync(applicationContext)
         OfflineSyncScheduler.enqueueSync(applicationContext, reason = "app-start")
@@ -72,6 +86,38 @@ class MainActivity : ComponentActivity() {
     private fun refreshOperationalLocationSilently() {
         lifecycleScope.launch {
             OperationalLocationUpdater.refreshIfAllowed(applicationContext)
+        }
+    }
+
+    private fun requestInitialLocationPermissionIfNeeded(): Boolean {
+        val prefs = getSharedPreferences(InitialPermissionPrefsName, Context.MODE_PRIVATE)
+        val alreadyPrompted = prefs.getBoolean(InitialLocationPermissionPromptedKey, false)
+        val alreadyGranted = DeviceLocationProvider.hasLocationPermission(this)
+
+        if (alreadyPrompted) {
+            return false
+        }
+
+        if (alreadyGranted) {
+            prefs.edit().putBoolean(InitialLocationPermissionPromptedKey, true).apply()
+            syncLocationPermissionPrivacy(granted = true)
+            return false
+        }
+
+        prefs.edit().putBoolean(InitialLocationPermissionPromptedKey, true).apply()
+        initialLocationPermissionLauncher.launch(DeviceLocationProvider.RequiredLocationPermissions)
+        return true
+    }
+
+    private fun syncLocationPermissionPrivacy(granted: Boolean) {
+        lifecycleScope.launch {
+            try {
+                ProfileRepository.syncPrivacyDefaultsForLocationPermission(granted)
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                // Permission-derived privacy defaults are opportunistic and should not block app launch.
+            }
         }
     }
 
@@ -95,6 +141,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val InitialPermissionPrefsName = "neph_initial_permissions"
+        private const val InitialLocationPermissionPromptedKey = "initialLocationPermissionPrompted"
         private const val REQUEST_POST_NOTIFICATIONS = 1001
     }
 }
