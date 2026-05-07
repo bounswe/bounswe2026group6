@@ -1,11 +1,27 @@
 package com.neph.features.assignedrequest.data
 
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Test
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.TimeZone
 
 class AssignedRequestRepositoryMappingTest {
+    private lateinit var previousTimeZone: TimeZone
+
+    @Before
+    fun setUp() {
+        previousTimeZone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    }
+
+    @After
+    fun tearDown() {
+        TimeZone.setDefault(previousTimeZone)
+    }
+
     @Test
     fun mapAssignmentIncludesUrgencyPriorityAndAgingLabels() {
         val assignment = JSONObject().apply {
