@@ -101,7 +101,7 @@ async function patchAdminAnnouncement(request, response) {
   }
 
   try {
-    const announcement = await updateAnnouncement(announcementId, validation.value);
+    const announcement = await updateAnnouncement(announcementId, validation.value, request.user);
     if (!announcement) {
       return sendError(response, 404, 'NOT_FOUND', 'Announcement not found');
     }

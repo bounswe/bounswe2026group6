@@ -101,6 +101,60 @@ async function notifyRequestOwnerAssigned(requestRow, actorUserId) {
   }
 }
 
+async function notifyRequestOwnerAssignmentUpdated(requestId, actorUserId, reason) {
+  if (!requestId) {
+    return;
+  }
+
+  try {
+    const requestOwner = await findRequestOwnerByRequestId(requestId);
+    if (!requestOwner || !requestOwner.user_id) {
+      return;
+    }
+
+    await createNotification({
+      recipientUserId: requestOwner.user_id,
+      actorUserId: actorUserId || null,
+      type: 'HELP_REQUEST_STATUS_CHANGED',
+      title: 'Help request assignment updated',
+      body: 'A volunteer assignment on your help request was updated.',
+      entity: {
+        type: 'HELP_REQUEST',
+        id: requestId,
+      },
+      data: {
+        screen: 'my-help-requests',
+        requestId,
+        kind: 'owner_assignment_update',
+        reason: reason || 'assignment_updated',
+      },
+    });
+  } catch (error) {
+    console.error('availability.notifyRequestOwnerAssignmentUpdated failed', error);
+  }
+}
+
+async function notifyAssignedVolunteersRequestUpdated(requestId, actorUserId, reason) {
+  if (!requestId) {
+    return;
+  }
+
+  try {
+    const assignments = await findActiveAssignmentsByRequestId(requestId);
+    for (const assignment of assignments) {
+      const volunteer = await findVolunteerById(assignment.volunteer_id);
+      await notifyVolunteerTaskUpdated(
+        volunteer ? volunteer.user_id : null,
+        requestId,
+        actorUserId || null,
+        reason || 'request_details_updated',
+      );
+    }
+  } catch (error) {
+    console.error('availability.notifyAssignedVolunteersRequestUpdated failed', error);
+  }
+}
+
 async function runAssignmentCycle() {
   const availableVolunteers = await findAvailableVolunteersForMatching();
   const sortedVolunteers = [...availableVolunteers].sort((leftVolunteer, rightVolunteer) => {
@@ -400,6 +454,11 @@ async function cancelMyAssignment(userId, { assignmentId }) {
   await notifyVolunteerTaskUpdated(userId, assignment.request_id, userId, 'volunteer_cancelled_assignment');
   await cancelAssignment(assignmentId);
   await syncRequestStatusFromAssignments(assignment.request_id);
+  await notifyRequestOwnerAssignmentUpdated(
+    assignment.request_id,
+    userId,
+    'volunteer_cancelled_assignment',
+  );
 
   await updateVolunteerAvailability(
     volunteer.volunteer_id,
@@ -531,6 +590,11 @@ async function resolveMyAssignment(userId, { requestId }) {
   await notifyVolunteerTaskUpdated(userId, requestId, userId, 'volunteer_resolved_assignment');
   await cancelAssignment(assignment.assignment_id);
   await syncRequestStatusFromAssignments(requestId);
+  await notifyRequestOwnerAssignmentUpdated(
+    requestId,
+    userId,
+    'volunteer_resolved_assignment',
+  );
 
   await updateVolunteerAvailability(
     volunteer.volunteer_id,
@@ -608,4 +672,5 @@ module.exports = {
   tryToAssignRequest,
   cancelAssignmentByRequestId,
   cancelAssignmentsForBannedVolunteer,
+  notifyAssignedVolunteersRequestUpdated,
 };

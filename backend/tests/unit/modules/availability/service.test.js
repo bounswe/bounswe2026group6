@@ -7,6 +7,7 @@ const {
   getAvailabilityStatus,
   tryToAssignRequest,
   cancelAssignmentByRequestId,
+  notifyAssignedVolunteersRequestUpdated,
 } = require('../../../../src/modules/availability/service');
 const repository = require('../../../../src/modules/availability/repository');
 const { createNotification } = require('../../../../src/modules/notifications/service');
@@ -172,6 +173,13 @@ describe('Availability Service', () => {
       expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
       expect(repository.syncRequestStatusPreservingInProgress).toHaveBeenCalledWith('req_123');
       expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false);
+      expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        recipientUserId: 'owner_123',
+        type: 'HELP_REQUEST_STATUS_CHANGED',
+        data: expect.objectContaining({
+          reason: 'volunteer_cancelled_assignment',
+        }),
+      }));
       expect(result.message).toContain('Assignment cancelled, you are now unavailable');
     });
 
@@ -223,6 +231,13 @@ describe('Availability Service', () => {
       expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
       expect(repository.syncRequestStatusPreservingInProgress).toHaveBeenCalledWith('req_123');
       expect(repository.updateVolunteerAvailability).toHaveBeenCalledWith('vol_123', false);
+      expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        recipientUserId: 'owner_123',
+        type: 'HELP_REQUEST_STATUS_CHANGED',
+        data: expect.objectContaining({
+          reason: 'volunteer_resolved_assignment',
+        }),
+      }));
       expect(result.message).toBe('Assignment resolved for this volunteer, you are now unavailable, and matching has been refreshed');
       expect(result.newAssignment).toBeNull();
     });
@@ -236,6 +251,26 @@ describe('Availability Service', () => {
       expect(repository.cancelAssignment).toHaveBeenCalledWith('asg_123');
       expect(repository.createAssignment).not.toHaveBeenCalledWith('vol_123', 'req_123');
       expect(result.newAssignment).toBeNull();
+    });
+  });
+
+  describe('notifyAssignedVolunteersRequestUpdated', () => {
+    it('notifies active volunteers when request details change', async () => {
+      repository.findActiveAssignmentsByRequestId.mockResolvedValue([
+        assignment,
+      ]);
+      repository.findVolunteerById.mockResolvedValue({ volunteer_id: 'vol_123', user_id: 'helper_123' });
+
+      await notifyAssignedVolunteersRequestUpdated('req_123', 'owner_123', 'request_details_updated');
+
+      expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+        recipientUserId: 'helper_123',
+        actorUserId: 'owner_123',
+        type: 'TASK_UPDATED',
+        data: expect.objectContaining({
+          reason: 'request_details_updated',
+        }),
+      }));
     });
   });
 

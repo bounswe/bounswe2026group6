@@ -26,13 +26,27 @@ describe('notification jobs', () => {
     expireStalePendingHelpRequests.mockResolvedValue([]);
   });
 
-  test('does not create hourly availability reminder notifications', async () => {
+  test('creates availability expiring reminder notifications', async () => {
     listAvailabilityReminderCandidates.mockResolvedValue(['user_a', 'user_b']);
 
     await runNotificationJobsOnce();
 
-    expect(listAvailabilityReminderCandidates).not.toHaveBeenCalled();
-    expect(createNotification).not.toHaveBeenCalled();
+    expect(listAvailabilityReminderCandidates).toHaveBeenCalledWith({
+      minMinutesSinceLocationUpdate: expect.any(Number),
+      reminderCooldownMinutes: expect.any(Number),
+      limit: expect.any(Number),
+    });
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      recipientUserId: 'user_a',
+      type: 'VOLUNTEER_AVAILABILITY_EXPIRING',
+      data: expect.objectContaining({
+        kind: 'availability_reminder',
+      }),
+    }));
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      recipientUserId: 'user_b',
+      type: 'VOLUNTEER_AVAILABILITY_EXPIRING',
+    }));
   });
 
   test('creates one paused availability notification for pause candidates', async () => {
