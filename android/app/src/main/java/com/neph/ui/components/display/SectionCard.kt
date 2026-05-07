@@ -29,4 +29,3 @@ fun SectionCard(
         content = content
     )
 }
-
