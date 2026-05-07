@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
@@ -63,6 +65,7 @@ fun AppDrawerScaffold(
     profileLabel: String = "Profile",
     contentMaxWidth: Dp = 960.dp,
     contentFillMaxSize: Boolean = false,
+    contentScrollable: Boolean = !contentFillMaxSize,
     contentAlignment: Alignment = Alignment.TopCenter,
     topBarActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit
@@ -260,17 +263,26 @@ fun AppDrawerScaffold(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                val contentModifier = Modifier
+                    .then(
+                        if (contentFillMaxSize) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier.fillMaxWidth()
+                        }
+                    )
+                    .widthIn(max = contentMaxWidth)
+                    .align(contentAlignment)
+                    .then(
+                        if (contentScrollable) {
+                            Modifier.verticalScroll(rememberScrollState())
+                        } else {
+                            Modifier
+                        }
+                    )
+
                 Column(
-                    modifier = Modifier
-                        .then(
-                            if (contentFillMaxSize) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier.fillMaxWidth()
-                            }
-                        )
-                        .widthIn(max = contentMaxWidth)
-                        .align(contentAlignment),
+                    modifier = contentModifier,
                     verticalArrangement = Arrangement.spacedBy(spacing.lg)
                 ) {
                     content()

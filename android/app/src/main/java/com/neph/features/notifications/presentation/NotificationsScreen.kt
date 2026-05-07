@@ -84,7 +84,8 @@ fun NotificationsScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        contentScrollable = false
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
             SectionCard {
