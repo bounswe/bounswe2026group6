@@ -1,15 +1,9 @@
 package com.neph.ui.map
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,20 +15,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.viewinterop.AndroidView
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.theme.LocalNephSpacing
-import java.io.ByteArrayInputStream
 import java.util.Locale
 
 data class MapPickerSelection(
@@ -149,18 +140,8 @@ fun MapPickerDialog(
 }
 
 private const val MapPickerBridgeName = "AndroidMapPicker"
-private const val MapPickerBaseUrl = "https://neph.app/map-picker/"
-private const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-private const val LeafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 private const val DefaultCenterLatitude = 39.9334
 private const val DefaultCenterLongitude = 32.8597
-private val AllowedOpenStreetMapTileHosts = setOf(
-    "tile.openstreetmap.org",
-    "a.tile.openstreetmap.org",
-    "b.tile.openstreetmap.org",
-    "c.tile.openstreetmap.org"
-)
-private val OpenStreetMapTilePathPattern = Regex("""^/\d+/\d+/\d+\.png$""")
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -171,36 +152,28 @@ private fun MapPickerMap(
     onMapReady: () -> Unit,
     onMapError: (String) -> Unit
 ) {
-    val context = LocalContext.current
+    val latestOnLocationSelected by rememberUpdatedState(onLocationSelected)
+    val latestOnMapReady by rememberUpdatedState(onMapReady)
+    val latestOnMapError by rememberUpdatedState(onMapError)
     val html = remember(initialLatitude, initialLongitude) {
         buildMapHtml(initialLatitude, initialLongitude)
     }
     val bridge = remember {
-        MapPickerBridge(onLocationSelected, onMapReady, onMapError)
-    }
-
-    key(html) {
-        AndroidView(
-            factory = {
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = false
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
-                    settings.javaScriptCanOpenWindowsAutomatically = false
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    webViewClient = MapPickerWebViewClient()
-                    addJavascriptInterface(bridge, MapPickerBridgeName)
-                    loadDataWithBaseURL(MapPickerBaseUrl, html, "text/html", "utf-8", null)
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp)
+        MapPickerBridge(
+            onLocationSelected = { lat, lon -> latestOnLocationSelected(lat, lon) },
+            onMapReady = { latestOnMapReady() },
+            onMapError = { latestOnMapError(it) }
         )
     }
+
+    LeafletMapWebView(
+        html = html,
+        bridgeName = MapPickerBridgeName,
+        bridge = bridge,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+    )
 }
 
 private class MapPickerBridge(
@@ -231,57 +204,6 @@ private class MapPickerBridge(
     }
 }
 
-private class MapPickerWebViewClient : WebViewClient() {
-    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-        val uri = request?.url ?: return true
-        return !request.isForMainFrame || !isAllowedMapPickerNavigation(uri)
-    }
-
-    @Suppress("DEPRECATION")
-    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-        val uri = url?.let(Uri::parse) ?: return true
-        return !isAllowedMapPickerNavigation(uri)
-    }
-
-    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        val uri = request?.url ?: return emptyBlockedResponse()
-        return if (isAllowedMapPickerResource(uri)) {
-            null
-        } else {
-            emptyBlockedResponse()
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
-        val uri = url?.let(Uri::parse) ?: return emptyBlockedResponse()
-        return if (isAllowedMapPickerResource(uri)) {
-            null
-        } else {
-            emptyBlockedResponse()
-        }
-    }
-
-    private fun emptyBlockedResponse(): WebResourceResponse {
-        return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
-    }
-}
-
-private fun isAllowedMapPickerNavigation(uri: Uri): Boolean {
-    return uri.toString() == MapPickerBaseUrl
-}
-
-private fun isAllowedMapPickerResource(uri: Uri): Boolean {
-    val url = uri.toString()
-    if (url == MapPickerBaseUrl || url == LeafletCssUrl || url == LeafletJsUrl) {
-        return true
-    }
-
-    return uri.scheme == "https" &&
-        uri.host in AllowedOpenStreetMapTileHosts &&
-        OpenStreetMapTilePathPattern.matches(uri.path.orEmpty())
-}
-
 private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): String {
     val hasInitial = initialLatitude != null && initialLongitude != null
     val centerLat = initialLatitude ?: DefaultCenterLatitude
@@ -294,18 +216,13 @@ private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): S
         <!DOCTYPE html>
         <html>
         <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <!-- Keep the embedded picker limited to Leaflet assets, OSM tiles, and its inline script. -->
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; style-src 'self' '$LeafletCssUrl' 'unsafe-inline'; script-src '$LeafletJsUrl' 'unsafe-inline'; img-src https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; connect-src 'none'; font-src 'none'; media-src 'none'; navigate-to 'none'" />
-            <link rel="stylesheet" href="$LeafletCssUrl" />
-            <script src="$LeafletJsUrl"></script>
-            <style>
-                html, body, #map { height: 100%; margin: 0; padding: 0; }
-            </style>
+            ${buildLeafletDocumentHead()}
         </head>
         <body>
             <div id="map"></div>
             <script>
+                ${buildLeafletErrorScript(MapPickerBridgeName)}
+
                 var map = L.map('map').setView([$formattedLat, $formattedLon], $zoom);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
@@ -322,11 +239,8 @@ private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): S
 
                 if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapError) {
                     tiles.on('tileerror', function() {
-                        window.$MapPickerBridgeName.onMapError('Map tiles could not be loaded.');
+                        notifyMapError('Map tiles could not be loaded.');
                     });
-                    window.onerror = function(message) {
-                        window.$MapPickerBridgeName.onMapError(String(message || 'Map failed to load.'));
-                    };
                 }
 
                 function setMarker(lat, lon) {

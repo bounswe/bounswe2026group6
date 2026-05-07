@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.gatheringareas.data.GatheringAreaItem
 import com.neph.features.gatheringareas.data.GatheringAreasRepository
@@ -35,6 +36,8 @@ import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
+import com.neph.ui.map.LeafletMapMarker
+import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.formatMapCoordinate
 import com.neph.ui.theme.LocalNephSpacing
@@ -68,6 +71,7 @@ fun GatheringAreasScreen(
     var lastCenterLongitude by remember { mutableStateOf<Double?>(null) }
     var lastSearchOrigin by remember { mutableStateOf<GatheringAreasSearchOrigin?>(null) }
     var nearbyResult by remember { mutableStateOf<NearbyGatheringAreasResult?>(null) }
+    var selectedAreaId by remember { mutableStateOf<String?>(null) }
     val hasSearchCenter = lastCenterLatitude != null && lastCenterLongitude != null
 
     fun fetchGatheringAreas(
@@ -96,6 +100,7 @@ fun GatheringAreasScreen(
                 sourceLabel = normalizedLabel
                 lastCenterLatitude = result.centerLatitude
                 lastCenterLongitude = result.centerLongitude
+                selectedAreaId = result.areas.firstOrNull()?.id
 
                 if (result.areas.isEmpty()) {
                     infoMessage = "No gathering areas were found in this area."
@@ -279,6 +284,15 @@ fun GatheringAreasScreen(
                 }
 
                 nearbyResult?.areas?.isEmpty() == true -> {
+                    val result = nearbyResult ?: return@AppDrawerScaffold
+
+                    GatheringAreasMapCard(
+                        result = result,
+                        selectedAreaId = null,
+                        onAreaSelected = { selectedAreaId = it },
+                        onOpenAreaInMap = ::openAreaInMap
+                    )
+
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                             SectionHeader(
@@ -304,6 +318,8 @@ fun GatheringAreasScreen(
 
                 else -> {
                     val result = nearbyResult ?: return@AppDrawerScaffold
+                    val selectedArea = result.areas.firstOrNull { it.id == selectedAreaId }
+                        ?: result.areas.firstOrNull()
 
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
@@ -325,6 +341,13 @@ fun GatheringAreasScreen(
                             }
                         }
                     }
+
+                    GatheringAreasMapCard(
+                        result = result,
+                        selectedAreaId = selectedArea?.id,
+                        onAreaSelected = { selectedAreaId = it },
+                        onOpenAreaInMap = ::openAreaInMap
+                    )
 
                     result.areas.forEachIndexed { index, area ->
                         SectionCard {
@@ -361,6 +384,10 @@ fun GatheringAreasScreen(
                                     )
                                 }
 
+                                if (area.id == selectedArea?.id) {
+                                    HelperText(text = "Selected on map.")
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.End
@@ -386,6 +413,125 @@ fun GatheringAreasScreen(
                     HelperText(text = infoMessage)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GatheringAreasMapCard(
+    result: NearbyGatheringAreasResult,
+    selectedAreaId: String?,
+    onAreaSelected: (String) -> Unit,
+    onOpenAreaInMap: (GatheringAreaItem) -> Unit
+) {
+    val spacing = LocalNephSpacing.current
+    var mapReady by remember(result.centerLatitude, result.centerLongitude, result.areas, selectedAreaId) {
+        mutableStateOf(false)
+    }
+    var mapError by remember(result.centerLatitude, result.centerLongitude, result.areas, selectedAreaId) {
+        mutableStateOf("")
+    }
+    val selectedArea = result.areas.firstOrNull { it.id == selectedAreaId }
+    val markers = result.areas.map { area ->
+        LeafletMapMarker(
+            id = area.id,
+            latitude = area.latitude,
+            longitude = area.longitude,
+            title = area.name.ifBlank { "Unnamed Gathering Area" },
+            subtitle = "${formatCategory(area.category)} • ${formatDistance(area.distanceMeters)}"
+        )
+    }
+
+    SectionCard {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            SectionHeader(
+                title = "Gathering Areas Map",
+                subtitle = if (markers.isEmpty()) {
+                    "Showing the searched area. No gathering area markers were returned."
+                } else {
+                    "Tap a marker to preview that gathering area."
+                }
+            )
+
+            LeafletMarkerMap(
+                centerLatitude = result.centerLatitude,
+                centerLongitude = result.centerLongitude,
+                markers = markers,
+                selectedMarkerId = selectedAreaId,
+                onMarkerSelected = onAreaSelected,
+                onMapReady = { mapReady = true },
+                onMapError = { message ->
+                    mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+            )
+
+            if (!mapReady && mapError.isBlank()) {
+                HelperText(text = "Loading map...")
+            }
+
+            if (mapError.isNotBlank()) {
+                HelperText(text = mapError)
+            }
+
+            if (markers.isEmpty()) {
+                HelperText(
+                    text = "No gathering area markers are available for this search center."
+                )
+            }
+
+            selectedArea?.let { area ->
+                GatheringAreaMapSelectionPreview(
+                    area = area,
+                    onOpenAreaInMap = onOpenAreaInMap
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GatheringAreaMapSelectionPreview(
+    area: GatheringAreaItem,
+    onOpenAreaInMap: (GatheringAreaItem) -> Unit
+) {
+    val spacing = LocalNephSpacing.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            text = area.name.ifBlank { "Unnamed Gathering Area" },
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "Category: ${formatCategory(area.category)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "Distance: ${formatDistance(area.distanceMeters)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        val address = area.addressLine?.takeIf { it.isNotBlank() }
+        Text(
+            text = address ?: "Coordinates: ${formatMapCoordinate(area.latitude)}, ${formatMapCoordinate(area.longitude)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextActionButton(
+                text = "Open in Map",
+                onClick = { onOpenAreaInMap(area) }
+            )
         }
     }
 }
