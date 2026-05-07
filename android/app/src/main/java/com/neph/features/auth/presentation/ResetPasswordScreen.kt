@@ -16,10 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.TextActionButton
+import com.neph.ui.components.display.BrandLogo
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.inputs.PasswordField
@@ -90,10 +92,9 @@ fun ResetPasswordScreen(
         title = "Reset Password",
         subtitle = "Paste the reset link from your email and choose a new password.",
         logoContent = {
-            Text(
-                text = "NEPH",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary
+            BrandLogo(
+                size = 64.dp,
+                showWordmark = false
             )
         }
     ) {
