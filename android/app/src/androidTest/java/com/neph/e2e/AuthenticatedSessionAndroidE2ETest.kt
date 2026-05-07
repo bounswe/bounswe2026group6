@@ -93,6 +93,23 @@ class AuthenticatedSessionAndroidE2ETest {
         composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
     }
 
+    @Test
+    fun authenticatedUser_can_deleteAccountFromSettings() {
+        waitForText("I need help")
+        composeRule.onNodeWithText("I need help").assertIsDisplayed()
+
+        composeRule.onAllNodesWithContentDescription("Open settings")[0].performClick()
+        waitForClickable("Delete Account")
+        composeRule.onAllNodes(hasText("Delete Account") and hasClickAction())[0].performClick()
+
+        waitForText("Delete account?")
+        composeRule.onNodeWithText("Delete account?").assertIsDisplayed()
+        composeRule.onAllNodes(hasText("Delete Account") and hasClickAction())[1].performClick()
+
+        waitForText("Continue as Guest")
+        composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
+    }
+
     private fun clickableNode(text: String) = composeRule.onNode(hasText(text) and hasClickAction())
 
     private fun waitForClickable(text: String, timeoutMillis: Long = 15_000) {
