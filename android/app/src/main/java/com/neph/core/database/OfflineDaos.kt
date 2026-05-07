@@ -132,19 +132,27 @@ interface NearbyVisibleUserDao {
         """
         SELECT * FROM nearby_visible_users
         WHERE cacheOwnerUserId = :cacheOwnerUserId
+          AND cacheSource = :cacheSource
         ORDER BY fetchedAtEpochMillis DESC, displayName ASC, userId ASC
         """
     )
-    fun observeByCacheOwner(cacheOwnerUserId: String): Flow<List<NearbyVisibleUserEntity>>
+    fun observeByCacheOwnerAndSource(
+        cacheOwnerUserId: String,
+        cacheSource: String
+    ): Flow<List<NearbyVisibleUserEntity>>
 
     @Query(
         """
         SELECT * FROM nearby_visible_users
         WHERE cacheOwnerUserId = :cacheOwnerUserId
+          AND cacheSource = :cacheSource
         ORDER BY fetchedAtEpochMillis DESC, displayName ASC, userId ASC
         """
     )
-    suspend fun getByCacheOwner(cacheOwnerUserId: String): List<NearbyVisibleUserEntity>
+    suspend fun getByCacheOwnerAndSource(
+        cacheOwnerUserId: String,
+        cacheSource: String
+    ): List<NearbyVisibleUserEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(users: List<NearbyVisibleUserEntity>)
@@ -153,10 +161,18 @@ interface NearbyVisibleUserDao {
         """
         DELETE FROM nearby_visible_users
         WHERE cacheOwnerUserId = :cacheOwnerUserId
+          AND cacheSource = :cacheSource
           AND userId NOT IN (:visibleUserIds)
         """
     )
-    suspend fun deleteUsersNotIn(cacheOwnerUserId: String, visibleUserIds: List<String>)
+    suspend fun deleteUsersNotIn(
+        cacheOwnerUserId: String,
+        cacheSource: String,
+        visibleUserIds: List<String>
+    )
+
+    @Query("DELETE FROM nearby_visible_users WHERE cacheOwnerUserId = :cacheOwnerUserId AND cacheSource = :cacheSource")
+    suspend fun clearByCacheOwnerAndSource(cacheOwnerUserId: String, cacheSource: String)
 
     @Query("DELETE FROM nearby_visible_users WHERE cacheOwnerUserId = :cacheOwnerUserId")
     suspend fun clearByCacheOwner(cacheOwnerUserId: String)
