@@ -160,6 +160,18 @@ fun HelpRequestMapScreen(
         }
     }
 
+    fun openRequestDirections(item: ActiveHelpRequestMapItem) {
+        val opened = NephMapIntegration.openDirections(
+            context = context,
+            latitude = item.latitude,
+            longitude = item.longitude,
+            label = item.typeLabel
+        )
+        if (!opened) {
+            infoMessage = "Directions are unavailable for this request location."
+        }
+    }
+
     LaunchedEffect(Unit) {
         loadWaitingRequests()
     }
@@ -274,7 +286,8 @@ fun HelpRequestMapScreen(
                             if (selectedRequest != null) {
                                 RequestDetails(
                                     item = selectedRequest,
-                                    onOpenMap = { openRequestInMap(selectedRequest) }
+                                    onOpenMap = { openRequestInMap(selectedRequest) },
+                                    onGetDirections = { openRequestDirections(selectedRequest) }
                                 )
                             }
                         }
@@ -298,7 +311,8 @@ fun HelpRequestMapScreen(
                                     item = item,
                                     selected = item.requestId == selectedRequest?.requestId,
                                     onSelect = { selectedRequestId = item.requestId },
-                                    onOpenMap = { openRequestInMap(item) }
+                                    onOpenMap = { openRequestInMap(item) },
+                                    onGetDirections = { openRequestDirections(item) }
                                 )
 
                                 if (index < visibleRequests.lastIndex) {
@@ -422,7 +436,8 @@ private fun RequestTypeFiltersCard(
 @Composable
 private fun RequestDetails(
     item: ActiveHelpRequestMapItem,
-    onOpenMap: () -> Unit
+    onOpenMap: () -> Unit,
+    onGetDirections: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
 
@@ -461,6 +476,10 @@ private fun RequestDetails(
             horizontalArrangement = Arrangement.End
         ) {
             TextActionButton(
+                text = "Get Directions",
+                onClick = onGetDirections
+            )
+            TextActionButton(
                 text = "Open in Map",
                 onClick = onOpenMap
             )
@@ -473,7 +492,8 @@ private fun RequestListItem(
     item: ActiveHelpRequestMapItem,
     selected: Boolean,
     onSelect: () -> Unit,
-    onOpenMap: () -> Unit
+    onOpenMap: () -> Unit,
+    onGetDirections: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val backgroundColor = if (selected) {
@@ -518,6 +538,7 @@ private fun RequestListItem(
                     }
                 )
             }
+            TextActionButton(text = "Get Directions", onClick = onGetDirections)
             TextActionButton(text = "Open", onClick = onOpenMap)
         }
         Spacer(modifier = Modifier.height(spacing.sm))

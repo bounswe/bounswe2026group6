@@ -32,6 +32,8 @@ data class AssignedRequestUiModel(
     val riskFlags: List<String>,
     val vulnerableGroups: List<String>,
     val bloodType: String?,
+    val latitude: Double?,
+    val longitude: Double?,
     val locationLabel: String,
     val status: String,
     val statusLabel: String,
@@ -214,6 +216,8 @@ object AssignedRequestRepository {
             riskFlagsJson = JSONArray(assignment.optJSONArray("risk_flags").toStringList()).toString(),
             vulnerableGroupsJson = JSONArray(assignment.optJSONArray("vulnerable_groups").toStringList()).toString(),
             bloodType = assignment.optString("blood_type").trim().takeIf { it.isNotBlank() },
+            latitude = readAssignmentCoordinate(assignment, "latitude"),
+            longitude = readAssignmentCoordinate(assignment, "longitude"),
             locationLabel = buildLocationLabel(assignment),
             status = status,
             urgencyLevel = urgencyLevel,
@@ -256,6 +260,8 @@ object AssignedRequestRepository {
             riskFlags = riskFlagsJson.jsonArrayToStringList().map(::formatValue),
             vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList().map(::formatValue),
             bloodType = bloodType,
+            latitude = latitude,
+            longitude = longitude,
             locationLabel = locationLabel,
             status = status,
             statusLabel = statusLabel,
@@ -317,6 +323,13 @@ object AssignedRequestRepository {
         } else {
             "Location unavailable"
         }
+    }
+
+    private fun readAssignmentCoordinate(assignment: JSONObject, key: String): Double? {
+        if (!assignment.has(key) || assignment.isNull(key)) {
+            return null
+        }
+        return assignment.optDouble(key).takeIf { it.isFinite() }
     }
 
     private fun formatStatus(status: String): String {

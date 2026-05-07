@@ -19,7 +19,7 @@ import com.neph.BuildConfig
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -207,6 +207,12 @@ object NephDatabaseProvider {
             database.execSQL("CREATE INDEX IF NOT EXISTS index_nearby_visible_users_fetchedAtEpochMillis ON nearby_visible_users (fetchedAtEpochMillis)")
         }
     }
+    private val Migration10To11 = object : Migration(10, 11) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE assigned_requests ADD COLUMN latitude REAL")
+            database.execSQL("ALTER TABLE assigned_requests ADD COLUMN longitude REAL")
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -227,7 +233,8 @@ object NephDatabaseProvider {
                 Migration6To7,
                 Migration7To8,
                 Migration8To9,
-                Migration9To10
+                Migration9To10,
+                Migration10To11
             )
                 .build()
                 .also { instance = it }

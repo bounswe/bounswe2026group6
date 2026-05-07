@@ -33,6 +33,7 @@ import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 
@@ -127,6 +128,29 @@ fun AssignedRequestScreen(
             routeMessage = "Route information is unavailable right now."
         } finally {
             routeLoading = false
+        }
+    }
+
+    fun openAssignedRequestDirections(request: AssignedRequestUiModel) {
+        val latitude = request.latitude
+        val longitude = request.longitude
+        if (
+            latitude == null ||
+            longitude == null ||
+            !NephMapIntegration.isValidCoordinate(latitude = latitude, longitude = longitude)
+        ) {
+            infoMessage = "Directions are unavailable because this request has no usable coordinates."
+            return
+        }
+
+        val opened = NephMapIntegration.openDirections(
+            context = context,
+            latitude = latitude,
+            longitude = longitude,
+            label = request.helpTypeSummary
+        )
+        if (!opened) {
+            infoMessage = "Could not open directions for this assigned request."
         }
     }
 
@@ -328,6 +352,22 @@ fun AssignedRequestScreen(
                             )
 
                             DetailLine(label = "Location", value = request.locationLabel)
+
+                            if (
+                                request.latitude != null &&
+                                request.longitude != null &&
+                                NephMapIntegration.isValidCoordinate(
+                                    latitude = request.latitude,
+                                    longitude = request.longitude
+                                )
+                            ) {
+                                SecondaryButton(
+                                    text = "Get Directions",
+                                    onClick = { openAssignedRequestDirections(request) }
+                                )
+                            } else {
+                                HelperText(text = "Directions are unavailable because this request has no usable coordinates.")
+                            }
 
                             when {
                                 routeLoading -> {

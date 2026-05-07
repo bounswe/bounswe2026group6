@@ -192,6 +192,18 @@ fun GatheringAreasScreen(
         }
     }
 
+    fun openAreaDirections(item: GatheringAreaItem) {
+        val opened = NephMapIntegration.openDirections(
+            context = context,
+            latitude = item.latitude,
+            longitude = item.longitude,
+            label = item.name.ifBlank { "Gathering Area" }
+        )
+        if (!opened) {
+            infoMessage = "Directions are unavailable for this gathering area."
+        }
+    }
+
     val currentResult = nearbyResult
     val categoryOptions = remember(currentResult) {
         resolveCategoryOptions(currentResult)
@@ -316,7 +328,8 @@ fun GatheringAreasScreen(
                         visibleAreas = emptyList(),
                         selectedAreaId = null,
                         onAreaSelected = { selectedAreaId = it },
-                        onOpenAreaInMap = ::openAreaInMap
+                        onOpenAreaInMap = ::openAreaInMap,
+                        onGetDirections = ::openAreaDirections
                     )
 
                     SectionCard {
@@ -416,7 +429,8 @@ fun GatheringAreasScreen(
                         visibleAreas = visibleAreas,
                         selectedAreaId = selectedArea?.id,
                         onAreaSelected = { selectedAreaId = it },
-                        onOpenAreaInMap = ::openAreaInMap
+                        onOpenAreaInMap = ::openAreaInMap,
+                        onGetDirections = ::openAreaDirections
                     )
 
                     visibleAreas.forEachIndexed { index, area ->
@@ -463,6 +477,10 @@ fun GatheringAreasScreen(
                                     horizontalArrangement = Arrangement.End
                                 ) {
                                     TextActionButton(
+                                        text = "Get Directions",
+                                        onClick = { openAreaDirections(area) }
+                                    )
+                                    TextActionButton(
                                         text = "Open in Map",
                                         onClick = { openAreaInMap(area) }
                                     )
@@ -493,7 +511,8 @@ private fun GatheringAreasMapCard(
     visibleAreas: List<GatheringAreaItem>,
     selectedAreaId: String?,
     onAreaSelected: (String) -> Unit,
-    onOpenAreaInMap: (GatheringAreaItem) -> Unit
+    onOpenAreaInMap: (GatheringAreaItem) -> Unit,
+    onGetDirections: (GatheringAreaItem) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     var mapReady by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
@@ -559,7 +578,8 @@ private fun GatheringAreasMapCard(
             selectedArea?.let { area ->
                 GatheringAreaMapSelectionPreview(
                     area = area,
-                    onOpenAreaInMap = onOpenAreaInMap
+                    onOpenAreaInMap = onOpenAreaInMap,
+                    onGetDirections = onGetDirections
                 )
             }
         }
@@ -569,7 +589,8 @@ private fun GatheringAreasMapCard(
 @Composable
 private fun GatheringAreaMapSelectionPreview(
     area: GatheringAreaItem,
-    onOpenAreaInMap: (GatheringAreaItem) -> Unit
+    onOpenAreaInMap: (GatheringAreaItem) -> Unit,
+    onGetDirections: (GatheringAreaItem) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
 
@@ -602,6 +623,10 @@ private fun GatheringAreaMapSelectionPreview(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
+            TextActionButton(
+                text = "Get Directions",
+                onClick = { onGetDirections(area) }
+            )
             TextActionButton(
                 text = "Open in Map",
                 onClick = { onOpenAreaInMap(area) }

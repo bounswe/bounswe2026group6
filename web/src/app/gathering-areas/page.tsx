@@ -6,6 +6,7 @@ import { SectionCard } from "@/components/ui/display/SectionCard";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { GatheringAreasMap } from "@/components/feature/location/GatheringAreasMap";
 import { fetchNearbyGatheringAreas } from "@/lib/gatheringAreas";
+import { openDirections } from "@/lib/mapDirections";
 import { reverseLocation } from "@/lib/location";
 import type { GatheringAreaCategoryMeta, GatheringAreaFeature, NearbyGatheringAreasResponse } from "@/types/location";
 import type { GatheringAreaMapFeature } from "@/components/feature/location/LeafletGatheringAreasMap";
@@ -334,6 +335,7 @@ export default function GatheringAreasPage() {
     const [locationNote, setLocationNote] = React.useState("Resolving your current location...");
     const [dataNotice, setDataNotice] = React.useState("");
     const [dataNoticeTitle, setDataNoticeTitle] = React.useState("");
+    const [directionsMessage, setDirectionsMessage] = React.useState("");
     const [lastUpdated, setLastUpdated] = React.useState("");
     const requestIdRef = React.useRef(0);
     const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
@@ -415,6 +417,7 @@ export default function GatheringAreasPage() {
     const handleSelectArea = React.useCallback((featureId: string) => {
         setSelectedAreaId(featureId);
         setIsDetailsOpen(true);
+        setDirectionsMessage("");
     }, []);
 
     const loadNearbyAreas = React.useCallback(
@@ -647,6 +650,13 @@ export default function GatheringAreasPage() {
         setSelectedCategoryKeys(categoryOptions.map((item) => item.key));
     }, [categoryOptions]);
 
+    const handleGetDirections = React.useCallback((area: GatheringAreaMapFeature) => {
+        const opened = openDirections(area.latitude, area.longitude, area.name || "Gathering area");
+        setDirectionsMessage(
+            opened ? "" : "Directions are unavailable for this gathering area."
+        );
+    }, []);
+
     return (
         <AppShell
             title="Gathering Areas"
@@ -714,6 +724,16 @@ export default function GatheringAreasPage() {
                                         <p className="gathering-areas-selected-meta">
                                             Address: {selectedArea.address}
                                         </p>
+                                        <PrimaryButton
+                                            type="button"
+                                            className="mt-1 h-10 w-auto"
+                                            onClick={() => handleGetDirections(selectedArea)}
+                                        >
+                                            Get Directions
+                                        </PrimaryButton>
+                                        {directionsMessage ? (
+                                            <p className="gathering-areas-selected-meta">{directionsMessage}</p>
+                                        ) : null}
                                     </article>
                                 ) : (
                                     <p className="gathering-areas-empty-detail">

@@ -136,6 +136,8 @@ data class AssignedRequestEntity(
     val riskFlagsJson: String,
     val vulnerableGroupsJson: String,
     val bloodType: String?,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val locationLabel: String,
     val status: String,
     val urgencyLevel: String? = null,
