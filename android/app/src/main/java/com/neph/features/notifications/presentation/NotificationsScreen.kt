@@ -264,6 +264,7 @@ fun NotificationsScreen(
                                         )
                                         notifications = notifications + page.items
                                         unreadCount = page.unreadCount
+                                        NotificationsBadge.set(page.unreadCount)
                                         nextCursor = page.nextCursor
                                     } catch (error: Exception) {
                                         errorMessage = error.message ?: "Failed to load more notifications."

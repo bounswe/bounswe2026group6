@@ -38,6 +38,7 @@ import com.neph.features.operationallocation.data.OperationalLocationUpdater
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.notifications.data.PushTokenSync
+import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.AppNavGraph
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
             requestNotificationPermissionIfNeeded()
         }
         PushTokenSync.syncCurrentToken()
+        NotificationsBadge.hydrateIfAuthenticated()
         OfflineSyncScheduler.schedulePeriodicSync(applicationContext)
         OfflineSyncScheduler.enqueueSync(applicationContext, reason = "app-start")
         setContent {
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshOperationalLocationSilently()
+        NotificationsBadge.hydrateIfAuthenticated()
     }
 
     private fun refreshOperationalLocationSilently() {
