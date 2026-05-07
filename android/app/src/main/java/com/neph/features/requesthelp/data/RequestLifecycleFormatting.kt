@@ -3,7 +3,10 @@ package com.neph.features.requesthelp.data
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 internal fun formatOperationalLevel(value: String?): String? {
     return value
@@ -17,12 +20,32 @@ internal fun formatOperationalLevel(value: String?): String? {
 }
 
 internal fun formatLifecycleTimestamp(raw: String?): String? {
-    return raw
+    val value = raw
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?.replace('T', ' ')
-        ?.substringBefore('.')
-        ?.substringBefore('Z')
+        ?: return null
+
+    val instant = parseTimestampToInstant(value)
+        ?: return value
+            .replace('T', ' ')
+            .substringBefore('.')
+            .substringBefore('Z')
+
+    return LifecycleDisplayFormatter
+        .withZone(ZoneId.systemDefault())
+        .format(instant)
+}
+
+private val LifecycleDisplayFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
+
+private fun parseTimestampToInstant(raw: String): Instant? {
+    val value = raw.trim().takeIf { it.isNotBlank() } ?: return null
+
+    return runCatching { Instant.parse(value) }
+        .recoverCatching { OffsetDateTime.parse(value).toInstant() }
+        .recoverCatching { LocalDateTime.parse(value.replace(' ', 'T')).toInstant(ZoneOffset.UTC) }
+        .getOrNull()
 }
 
 internal fun buildDurationLabel(
@@ -59,8 +82,5 @@ private fun formatDurationMinutes(totalMinutes: Long): String {
 private fun parseTimestampToEpochMillis(raw: String?): Long? {
     val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
 
-    return runCatching { Instant.parse(value).toEpochMilli() }
-        .recoverCatching { OffsetDateTime.parse(value).toInstant().toEpochMilli() }
-        .recoverCatching { LocalDateTime.parse(value.replace(' ', 'T')).toInstant(ZoneOffset.UTC).toEpochMilli() }
-        .getOrNull()
+    return parseTimestampToInstant(value)?.toEpochMilli()
 }
