@@ -19,6 +19,12 @@ Rules:
 - keep one migration concern per file
 - never edit an already committed migration file; create a new migration instead
 
+## Data backfill notes
+
+- `20260420_120000__extend_location_profiles_administrative_fields.sql` intentionally backfills only `display_address` from legacy `address`.
+- Other structured columns (`country_code`, `district`, `neighborhood`, `extra_address`, `postal_code`, `place_id`) are left nullable for existing rows because legacy schema does not reliably contain those values.
+- If historical best-effort enrichment is required later, add a new append-only migration instead of rewriting existing migration history.
+
 ## Write migrations safely
 
 - prefer additive changes first (ADD COLUMN, CREATE INDEX)

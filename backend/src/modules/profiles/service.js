@@ -13,6 +13,36 @@ const {
   listExpertiseByProfileId,
 } = require('./repository');
 
+function toIsoDateString(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const dateOnlyMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (dateOnlyMatch) {
+    return dateOnlyMatch[1];
+  }
+
+  const parsedMs = Date.parse(raw);
+  if (Number.isNaN(parsedMs)) {
+    return null;
+  }
+
+  return new Date(parsedMs).toISOString().slice(0, 10);
+}
+
 function mapProfileRow(row) {
   return {
     profile: {
@@ -37,16 +67,37 @@ function mapProfileRow(row) {
     },
     physicalInfo: {
       age: row.age,
+      dateOfBirth: toIsoDateString(row.date_of_birth),
       gender: row.gender,
       height: row.height,
       weight: row.weight,
     },
     locationProfile: {
       address: row.address,
+      displayAddress: row.display_address || row.address,
       city: row.city,
       country: row.country,
       latitude: row.latitude,
       longitude: row.longitude,
+      administrative: {
+        countryCode: row.country_code,
+        country: row.country,
+        city: row.city,
+        district: row.district,
+        neighborhood: row.neighborhood,
+        extraAddress: row.extra_address,
+        postalCode: row.postal_code,
+      },
+      coordinate: row.latitude === null || row.longitude === null
+        ? null
+        : {
+          latitude: row.latitude,
+          longitude: row.longitude,
+          accuracyMeters: row.coordinate_accuracy_meters,
+          source: row.coordinate_source,
+          capturedAt: row.coordinate_captured_at || row.last_updated,
+        },
+      placeId: row.place_id,
       lastUpdated: row.last_updated,
     },
   };

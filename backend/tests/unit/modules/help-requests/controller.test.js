@@ -8,21 +8,25 @@ jest.mock('../../../../src/modules/help-requests/service', () => ({
 	getGuestHelpRequest: jest.fn(),
 	updateMyHelpRequestStatus: jest.fn(),
 	updateGuestHelpRequestStatus: jest.fn(),
+	listActiveHelpRequestsForVisibility: jest.fn(),
 }));
 
 jest.mock('../../../../src/modules/help-requests/validators', () => ({
 	readUserId: jest.fn(),
 	validateCreateHelpRequest: jest.fn(),
 	validateHelpRequestStatusUpdate: jest.fn(),
+	validateActiveHelpRequestListQuery: jest.fn(),
 }));
 
 const service = require('../../../../src/modules/help-requests/service');
 const validators = require('../../../../src/modules/help-requests/validators');
+const { env } = require('../../../../src/config/env');
 const {
 	createHelpRequest,
 	listHelpRequests,
 	getHelpRequest,
 	patchHelpRequestStatus,
+	listActiveHelpRequests,
 } = require('../../../../src/modules/help-requests/controller');
 
 function buildResponse() {
@@ -34,6 +38,24 @@ function buildResponse() {
 
 describe('help-requests controller', () => {
 	describe('createHelpRequest', () => {
+		test('returns 403 when guest submission is disabled by config', async () => {
+			const previousValue = env.helpRequests.guestCreateEnabled;
+			env.helpRequests.guestCreateEnabled = false;
+			validators.readUserId.mockReturnValueOnce(null);
+			const response = buildResponse();
+
+			try {
+				await createHelpRequest({ body: {} }, response);
+			} finally {
+				env.helpRequests.guestCreateEnabled = previousValue;
+			}
+
+			expect(response.status).toHaveBeenCalledWith(403);
+			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({
+				code: 'GUEST_HELP_REQUESTS_DISABLED',
+			}));
+		});
+
 		test('proceeds to validation even when user is not authenticated (guest)', async () => {
 			validators.readUserId.mockReturnValueOnce(null);
 			validators.validateCreateHelpRequest.mockReturnValueOnce({
@@ -461,6 +483,105 @@ describe('help-requests controller', () => {
 			await patchHelpRequestStatus({ body: {}, params: { requestId: 'req_1' } }, response);
 
 			expect(response.status).toHaveBeenCalledWith(500);
+		});
+	});
+
+	describe('listActiveHelpRequests', () => {
+		test('allows guest access when user is missing', async () => {
+			validators.readUserId.mockReturnValueOnce(null);
+			validators.validateActiveHelpRequestListQuery.mockReturnValueOnce({
+				errors: [],
+				value: {
+					typeFilters: [],
+					statusFilters: ['PENDING', 'ASSIGNED', 'IN_PROGRESS'],
+					bbox: null,
+					limit: 100,
+					offset: 0,
+				},
+			});
+			service.listActiveHelpRequestsForVisibility.mockResolvedValueOnce({
+				items: [],
+				total: 0,
+			});
+			const response = buildResponse();
+
+			await listActiveHelpRequests({ query: {} }, response);
+
+			expect(response.status).toHaveBeenCalledWith(200);
+		});
+
+		test('returns 400 on query validation failure', async () => {
+			validators.readUserId.mockReturnValueOnce('u1');
+			validators.validateActiveHelpRequestListQuery.mockReturnValueOnce({
+				errors: ['`limit` must be an integer between 1 and 500.'],
+				value: null,
+			});
+			const response = buildResponse();
+
+			await listActiveHelpRequests({ query: {} }, response);
+
+			expect(response.status).toHaveBeenCalledWith(400);
+			expect(response.json).toHaveBeenCalledWith(expect.objectContaining({
+				code: 'VALIDATION_FAILED',
+			}));
+		});
+
+		test('returns 200 with payload for regular user', async () => {
+			validators.readUserId.mockReturnValueOnce('u1');
+			validators.validateActiveHelpRequestListQuery.mockReturnValueOnce({
+				errors: [],
+				value: {
+					typeFilters: ['first_aid'],
+					statusFilters: ['PENDING'],
+					bbox: null,
+					limit: 50,
+					offset: 0,
+				},
+			});
+			service.listActiveHelpRequestsForVisibility.mockResolvedValueOnce({
+				items: [{ requestId: 'req_1' }],
+				total: 1,
+			});
+			const response = buildResponse();
+
+			await listActiveHelpRequests({
+				query: { type: 'first_aid' },
+				user: { isAdmin: false },
+			}, response);
+
+			expect(service.listActiveHelpRequestsForVisibility).toHaveBeenCalledWith(expect.objectContaining({
+				isAdmin: false,
+			}));
+			expect(response.status).toHaveBeenCalledWith(200);
+		});
+
+		test('passes isAdmin=true when authenticated user is admin', async () => {
+			validators.readUserId.mockReturnValueOnce('admin_1');
+			validators.validateActiveHelpRequestListQuery.mockReturnValueOnce({
+				errors: [],
+				value: {
+					typeFilters: [],
+					statusFilters: ['PENDING', 'ASSIGNED', 'IN_PROGRESS'],
+					bbox: null,
+					limit: 100,
+					offset: 0,
+				},
+			});
+			service.listActiveHelpRequestsForVisibility.mockResolvedValueOnce({
+				items: [],
+				total: 0,
+			});
+			const response = buildResponse();
+
+			await listActiveHelpRequests({
+				query: {},
+				user: { isAdmin: true },
+			}, response);
+
+			expect(service.listActiveHelpRequestsForVisibility).toHaveBeenCalledWith(expect.objectContaining({
+				isAdmin: true,
+			}));
+			expect(response.status).toHaveBeenCalledWith(200);
 		});
 	});
 });

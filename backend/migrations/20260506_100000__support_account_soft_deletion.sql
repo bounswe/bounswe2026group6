@@ -1,0 +1,15 @@
+BEGIN;
+
+ALTER TABLE user_profiles
+  ALTER COLUMN first_name DROP NOT NULL,
+  ALTER COLUMN last_name DROP NOT NULL;
+
+ALTER TABLE help_requests
+  ALTER COLUMN contact_phone DROP NOT NULL;
+
+ALTER TABLE request_locations
+  ALTER COLUMN country DROP NOT NULL,
+  ALTER COLUMN city DROP NOT NULL,
+  ALTER COLUMN district DROP NOT NULL;
+
+COMMIT;

@@ -17,6 +17,7 @@ const {
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 } = require('../../../../src/modules/auth/service');
 
 const {
@@ -26,6 +27,7 @@ const {
   findUserById,
   findAdminByUserId,
   updateUserPassword,
+  softDeleteUserAccount,
 } = require('../../../../src/modules/auth/repository');
 
 const {
@@ -147,6 +149,7 @@ describe('loginUser', () => {
       email: 'test@test.com',
       password_hash: hash,
       is_email_verified: true,
+      is_banned: false,
       is_deleted: false,
     });
     findAdminByUserId.mockResolvedValue(null);
@@ -158,6 +161,25 @@ describe('loginUser', () => {
 
     expect(result.accessToken).toBeDefined();
     expect(result.user.email).toBe('test@test.com');
+  });
+
+  test('throws USER_BANNED when account is banned', async () => {
+    const bcrypt = require('bcrypt');
+    const hash = await bcrypt.hash('12345678', 10);
+
+    findUserByEmail.mockResolvedValue({
+      user_id: 'uuid-1',
+      email: 'test@test.com',
+      password_hash: hash,
+      is_email_verified: true,
+      is_banned: true,
+      is_deleted: false,
+    });
+
+    await expect(loginUser({
+      email: 'test@test.com',
+      password: '12345678',
+    })).rejects.toMatchObject({ code: 'USER_BANNED' });
   });
 });
 
@@ -187,6 +209,13 @@ describe('verifyUserEmail', () => {
       process.env.JWT_SECRET || 'dev-secret-123'
     );
 
+    findUserById.mockResolvedValue({
+      user_id: 'uuid-1',
+      email: 'test@test.com',
+      is_deleted: false,
+      is_banned: false,
+    });
+
     markEmailVerified.mockResolvedValue({
       user_id: 'uuid-1',
       email: 'test@test.com',
@@ -195,6 +224,23 @@ describe('verifyUserEmail', () => {
 
     const result = await verifyUserEmail(token);
     expect(result.user.isEmailVerified).toBe(true);
+  });
+
+  test('throws USER_BANNED when verifying a banned account', async () => {
+    const token = jwt.sign(
+      { type: 'email-verification', userId: 'uuid-banned', email: 'banned@test.com' },
+      process.env.JWT_SECRET || 'dev-secret-123'
+    );
+
+    findUserById.mockResolvedValue({
+      user_id: 'uuid-banned',
+      email: 'banned@test.com',
+      is_deleted: false,
+      is_banned: true,
+    });
+
+    await expect(verifyUserEmail(token)).rejects.toMatchObject({ code: 'USER_BANNED' });
+    expect(markEmailVerified).not.toHaveBeenCalled();
   });
 });
 
@@ -336,5 +382,32 @@ describe('logoutUser', () => {
   test('returns success message', async () => {
     const result = await logoutUser();
     expect(result.message).toBeDefined();
+  });
+});
+
+// ─── deleteCurrentUser ───────────────────────────────────────────────────────
+
+describe('deleteCurrentUser', () => {
+  test('soft-deletes the current user', async () => {
+    softDeleteUserAccount.mockResolvedValue({
+      userId: 'uuid-1',
+      cancelledRequestCount: 1,
+      cancelledAssignmentRequestCount: 1,
+      availabilityCancelled: true,
+    });
+
+    const result = await deleteCurrentUser('uuid-1');
+
+    expect(softDeleteUserAccount).toHaveBeenCalledWith('uuid-1');
+    expect(result.deleted).toBe(true);
+    expect(result.availabilityCancelled).toBe(true);
+  });
+
+  test('throws USER_NOT_FOUND when account is already deleted', async () => {
+    softDeleteUserAccount.mockResolvedValue(null);
+
+    await expect(deleteCurrentUser('uuid-1')).rejects.toMatchObject({
+      code: 'USER_NOT_FOUND',
+    });
   });
 });

@@ -8,37 +8,52 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
+import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.myhelprequests.data.buildMyHelpRequestsOverview
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.buttons.TextActionButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
@@ -49,6 +64,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyHelpRequestsScreen(
     onNavigateToRoute: (String) -> Unit,
@@ -60,13 +76,104 @@ fun MyHelpRequestsScreen(
     val spacing = LocalNephSpacing.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val listState = rememberLazyListState()
 
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf("") }
-    var requests by remember { mutableStateOf<List<MyHelpRequestUiModel>>(emptyList()) }
-    var refreshVersion by remember { mutableStateOf(0) }
-    var actionInProgressRequestId by remember { mutableStateOf<String?>(null) }
+    val requests by MyHelpRequestsRepository.observeHelpRequests(isAuthenticated)
+        .collectAsState(initial = emptyList())
+    var actionInProgress by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf("") }
+    var initialRefreshInProgress by remember(isAuthenticated, token) { mutableStateOf(true) }
+    var reconnectRefreshInProgress by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<PendingRequestAction?>(null) }
+    val pullToRefreshState = rememberPullToRefreshState()
+
+    fun refreshRequests(showFullPageLoading: Boolean) {
+        if (!showFullPageLoading && (initialRefreshInProgress || reconnectRefreshInProgress)) return
+        if (showFullPageLoading && reconnectRefreshInProgress) return
+
+        scope.launch {
+            if (showFullPageLoading) {
+                initialRefreshInProgress = true
+            } else {
+                reconnectRefreshInProgress = true
+            }
+
+            OfflineSyncScheduler.enqueueSync(context, reason = "my-help-requests-refresh", replaceExisting = true)
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.fetchMyHelpRequests(token)
+                } else {
+                    MyHelpRequestsRepository.fetchGuestHelpRequests()
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (error: ApiException) {
+                if (error.status == 401 && isAuthenticated) {
+                    AuthRepository.logout()
+                    onNavigateToRoute(Routes.Login.route)
+                }
+            } catch (_: Exception) {
+                // Keep showing the best local snapshot if reconnecting fails.
+            } finally {
+                if (showFullPageLoading) {
+                    initialRefreshInProgress = false
+                } else {
+                    reconnectRefreshInProgress = false
+                }
+            }
+        }
+    }
+
+    fun resolveCurrentRequest(currentActiveRequest: MyHelpRequestUiModel) {
+        actionMessage = ""
+        actionInProgress = true
+        scope.launch {
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.markRequestAsResolved(
+                        token = token,
+                        requestId = currentActiveRequest.id
+                    )
+                } else {
+                    MyHelpRequestsRepository.markGuestRequestAsResolved(
+                        requestId = currentActiveRequest.id,
+                        guestAccessToken = currentActiveRequest.guestAccessToken
+                    )
+                }
+                actionMessage = "Request marked resolved."
+            } catch (_: Exception) {
+                actionMessage = "Could not update request status."
+            } finally {
+                actionInProgress = false
+            }
+        }
+    }
+
+    fun cancelCurrentRequest(currentActiveRequest: MyHelpRequestUiModel) {
+        actionMessage = ""
+        actionInProgress = true
+        scope.launch {
+            try {
+                if (isAuthenticated && token.isNotBlank()) {
+                    MyHelpRequestsRepository.markRequestAsCancelled(
+                        token = token,
+                        requestId = currentActiveRequest.id
+                    )
+                } else {
+                    MyHelpRequestsRepository.markGuestRequestAsCancelled(
+                        requestId = currentActiveRequest.id,
+                        guestAccessToken = currentActiveRequest.guestAccessToken
+                    )
+                }
+                actionMessage = "Request cancelled."
+            } catch (_: Exception) {
+                actionMessage = "Could not cancel request."
+            } finally {
+                actionInProgress = false
+            }
+        }
+    }
 
     AppDrawerScaffold(
         title = "My Help Requests",
@@ -83,206 +190,335 @@ fun MyHelpRequestsScreen(
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
         contentFillMaxSize = true
     ) {
-        LaunchedEffect(isAuthenticated, token, refreshVersion) {
-            loading = true
-            error = ""
-
-            try {
-                requests = if (!isAuthenticated || token.isBlank()) {
-                    MyHelpRequestsRepository.fetchGuestHelpRequests()
-                } else {
-                    MyHelpRequestsRepository.fetchMyHelpRequests(token)
-                }
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (errorResponse: ApiException) {
-                if (errorResponse.status == 401 && isAuthenticated) {
-                    AuthRepository.logout()
-                    requests = emptyList()
-                    error = "Your session expired. Please log in again to view your help requests."
-                } else {
-                    error = errorResponse.message.ifBlank { "Could not load your help requests." }
-                }
-            } catch (_: Exception) {
-                error = "Something went wrong while loading your help requests."
-            } finally {
-                loading = false
-            }
+        LaunchedEffect(isAuthenticated, token) {
+            refreshRequests(showFullPageLoading = true)
         }
 
-        when {
-            loading -> {
-                LoadingStateView()
-            }
+        PullToRefreshBox(
+            isRefreshing = reconnectRefreshInProgress,
+            onRefresh = { refreshRequests(showFullPageLoading = false) },
+            state = pullToRefreshState,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val overview = buildMyHelpRequestsOverview(requests)
+            val currentActiveRequest = overview.activeRequests.firstOrNull()
+            val requestHistory = overview.historyRequests
 
-            error.isNotBlank() -> {
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
-                    SectionCard {
-                        SectionHeader(
-                            title = "My Help Requests",
-                            subtitle = "We could not load your request history."
-                        )
-
-                        HelperText(text = error)
-
-                        SecondaryButton(
-                            text = "Retry",
-                            onClick = { refreshVersion += 1 }
-                        )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(spacing.lg),
+                contentPadding = PaddingValues(vertical = spacing.sm)
+            ) {
+                if (reconnectRefreshInProgress) {
+                    item {
+                        ReconnectRefreshIndicator()
                     }
                 }
-            }
 
-            requests.isEmpty() -> {
-                EmptyStateView(
-                    onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) }
-                )
-            }
-
-            else -> {
-                val activeRequest = requests.firstOrNull { it.isActive }
-                val requestHistory = requests.filterNot { it.isActive }
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(spacing.lg),
-                    contentPadding = PaddingValues(vertical = spacing.sm)
-                ) {
-                    item {
-                        SectionHeader(
-                            title = "Current Request",
-                            subtitle = if (isAuthenticated) {
-                                "Your latest active help request is shown first."
-                            } else {
-                                "Your latest guest help request is shown first."
-                            }
-                        )
-                    }
-
-                    if (activeRequest == null) {
+                when {
+                    initialRefreshInProgress && requests.isEmpty() -> {
                         item {
-                            SectionCard {
-                                Text(
-                                    text = "No active help request right now.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    } else {
-                        item {
-                            MyHelpRequestCard(
-                                request = activeRequest,
-                                titleOverride = activeRequest.helpTypeSummary,
-                                subtitleOverride = activeRequest.createdAt ?: "Created time unavailable",
-                                actionMessage = actionMessage,
-                                onResolve = if (isAuthenticated && token.isNotBlank()) {
-                                    {
-                                        actionMessage = ""
-                                        actionInProgressRequestId = activeRequest.id
-                                        scope.launch {
-                                            try {
-                                                val updatedRequest = MyHelpRequestsRepository.markRequestAsResolved(
-                                                    token = token,
-                                                    requestId = activeRequest.id
-                                                )
-                                                requests = buildList {
-                                                    for (request in requests) {
-                                                        if (request.id == activeRequest.id && updatedRequest != null) {
-                                                            add(updatedRequest)
-                                                        } else {
-                                                            add(request)
-                                                        }
-                                                    }
-                                                }
-                                                actionMessage = "Your help request was marked as resolved."
-                                            } catch (cancellationException: CancellationException) {
-                                                throw cancellationException
-                                            } catch (errorResponse: ApiException) {
-                                                if (errorResponse.status == 401) {
-                                                    AuthRepository.logout()
-                                                    error = "Your session expired. Please log in again to manage your request."
-                                                } else {
-                                                    actionMessage = errorResponse.message.ifBlank {
-                                                        "Could not update your help request."
-                                                    }
-                                                }
-                                            } catch (_: Exception) {
-                                                actionMessage = "Something went wrong while updating your help request."
-                                            } finally {
-                                                actionInProgressRequestId = null
-                                            }
-                                        }
-                                    }
-                                } else if (!isAuthenticated && activeRequest.guestAccessToken != null) {
-                                    {
-                                        actionMessage = ""
-                                        actionInProgressRequestId = activeRequest.id
-                                        scope.launch {
-                                            try {
-                                                val updatedRequest = MyHelpRequestsRepository.markGuestRequestAsResolved(
-                                                    requestId = activeRequest.id,
-                                                    guestAccessToken = activeRequest.guestAccessToken
-                                                )
-                                                requests = buildList {
-                                                    for (request in requests) {
-                                                        if (request.id == activeRequest.id && updatedRequest != null) {
-                                                            add(updatedRequest)
-                                                        } else {
-                                                            add(request)
-                                                        }
-                                                    }
-                                                }
-                                                actionMessage = "Your help request was marked as resolved."
-                                            } catch (cancellationException: CancellationException) {
-                                                throw cancellationException
-                                            } catch (errorResponse: ApiException) {
-                                                actionMessage = errorResponse.message.ifBlank {
-                                                    "Could not update your help request."
-                                                }
-                                            } catch (_: Exception) {
-                                                actionMessage = "Something went wrong while updating your help request."
-                                            } finally {
-                                                actionInProgressRequestId = null
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    null
-                                },
-                                resolveLoading = actionInProgressRequestId == activeRequest.id
+                            LoadingStateView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 520.dp)
                             )
                         }
                     }
 
-                    if (requestHistory.isNotEmpty()) {
+                    requests.isEmpty() -> {
+                        item {
+                            EmptyStateView(
+                                onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 520.dp)
+                            )
+                        }
+                    }
+
+                    else -> {
+
+                        if (overview.hasMultipleRequestContext) {
+                            item {
+                                RequestsOverviewCard(
+                                    overview = overview,
+                                    isAuthenticated = isAuthenticated
+                                )
+                            }
+                        }
+
                         item {
                             SectionHeader(
-                                title = "Request History",
+                                title = "Current Request",
                                 subtitle = if (isAuthenticated) {
-                                    "Previous requests from your account."
+                                    "Your latest active help request is shown first."
                                 } else {
-                                    "Previous guest requests created from this device."
+                                    "Your latest guest help request is shown first."
                                 }
                             )
                         }
 
-                        items(requestHistory, key = { it.id }) { request ->
-                            MyHelpRequestCard(request = request)
+                        if (currentActiveRequest == null) {
+                            item {
+                                SectionCard {
+                                    Text(
+                                        text = "No active help request right now.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = currentActiveRequest.id) {
+                                MyHelpRequestCard(
+                                    request = currentActiveRequest,
+                                    titleOverride = currentActiveRequest.helpTypeSummary,
+                                    subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
+                                        ?: "Opened time unavailable",
+                                    actionMessage = actionMessage,
+                                    onEdit = { pendingAction = PendingRequestAction.Edit(currentActiveRequest) },
+                                    onCancel = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                        { pendingAction = PendingRequestAction.Cancel(currentActiveRequest) }
+                                    } else {
+                                        null
+                                    },
+                                    onResolve = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                        { pendingAction = PendingRequestAction.Resolve(currentActiveRequest) }
+                                    } else {
+                                        null
+                                    },
+                                    actionLoading = actionInProgress
+                                )
+                            }
+                        }
+
+                        if (requestHistory.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Request History",
+                                    subtitle = if (isAuthenticated) {
+                                        "Previous requests from your account."
+                                    } else {
+                                        "Previous guest requests created from this device."
+                                    }
+                                )
+                            }
+
+                            items(requestHistory, key = { it.id }) { request ->
+                                MyHelpRequestCard(request = request)
+                            }
                         }
                     }
                 }
             }
+        }
+
+        pendingAction?.let { action ->
+            ConfirmRequestActionDialog(
+                action = action,
+                onDismiss = { pendingAction = null },
+                onConfirm = {
+                    pendingAction = null
+                    when (action) {
+                        is PendingRequestAction.Edit -> onNavigateToRoute(Routes.requestHelpWithDraft(action.request.localId))
+                        is PendingRequestAction.Cancel -> cancelCurrentRequest(action.request)
+                        is PendingRequestAction.Resolve -> resolveCurrentRequest(action.request)
+                    }
+                }
+            )
+        }
+    }
+}
+
+private sealed class PendingRequestAction(open val request: MyHelpRequestUiModel) {
+    data class Edit(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+    data class Cancel(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+    data class Resolve(override val request: MyHelpRequestUiModel) : PendingRequestAction(request)
+}
+
+@Composable
+private fun ConfirmRequestActionDialog(
+    action: PendingRequestAction,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val title = when (action) {
+        is PendingRequestAction.Edit -> "Edit help request?"
+        is PendingRequestAction.Cancel -> "Cancel help request?"
+        is PendingRequestAction.Resolve -> "Mark request resolved?"
+    }
+    val text = when (action) {
+        is PendingRequestAction.Edit -> "You will return to the request form and update this same request."
+        is PendingRequestAction.Cancel -> "This closes the request as cancelled."
+        is PendingRequestAction.Resolve -> "This closes the request as resolved."
+    }
+    val confirm = when (action) {
+        is PendingRequestAction.Edit -> "Edit"
+        is PendingRequestAction.Cancel -> "Cancel request"
+        is PendingRequestAction.Resolve -> "Mark resolved"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title) },
+        text = { Text(text = text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirm)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Keep current")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReconnectRefreshIndicator(modifier: Modifier = Modifier) {
+    val spacing = LocalNephSpacing.current
+
+    SectionCard(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(32.dp),
+                    strokeWidth = 2.dp
+                )
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Trying to reconnect",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Text(
+                text = "Trying to reconnect...",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
 @Composable
-private fun LoadingStateView() {
+private fun RequestsOverviewCard(
+    overview: com.neph.features.myhelprequests.data.MyHelpRequestsOverviewUiModel,
+    isAuthenticated: Boolean
+) {
+    val spacing = LocalNephSpacing.current
+
+    SectionCard {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            SectionHeader(
+                title = "Overview",
+                subtitle = if (isAuthenticated) {
+                    "See your current and previous requests together."
+                } else {
+                    "See the requests tracked from this device together."
+                }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                OverviewMetric(
+                    label = "Tracked",
+                    value = overview.totalRequests.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewMetric(
+                    label = "Current",
+                    value = if (overview.activeCount > 0) "Yes" else "No",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                OverviewMetric(
+                    label = "Resolved",
+                    value = overview.resolvedCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewMetric(
+                    label = "Cancelled",
+                    value = overview.cancelledCount.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            val responderSummary = when {
+                overview.activeCount > 0 && overview.assignedResponderCount > 0 -> {
+                    "Your current request includes assigned responder details below."
+                }
+
+                overview.historyCount > 0 -> {
+                    "${overview.historyCount} previous request${if (overview.historyCount == 1) "" else "s"} kept in history for quick context."
+                }
+
+                else -> {
+                    "Open and closed requests stay grouped so the flow remains easy to scan."
+                }
+            }
+
+            Text(
+                text = responderSummary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverviewMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    val spacing = LocalNephSpacing.current
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(spacing.xs)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun LoadingStateView(modifier: Modifier = Modifier) {
     val spacing = LocalNephSpacing.current
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -302,12 +538,13 @@ private fun LoadingStateView() {
 
 @Composable
 private fun EmptyStateView(
-    onRequestHelp: () -> Unit
+    onRequestHelp: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -360,7 +597,9 @@ private fun MyHelpRequestCard(
     subtitleOverride: String? = null,
     actionMessage: String = "",
     onResolve: (() -> Unit)? = null,
-    resolveLoading: Boolean = false
+    onEdit: (() -> Unit)? = null,
+    onCancel: (() -> Unit)? = null,
+    actionLoading: Boolean = false
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
@@ -375,7 +614,8 @@ private fun MyHelpRequestCard(
         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
             SectionHeader(
                 title = titleOverride ?: request.helpTypeSummary,
-                subtitle = subtitleOverride ?: (request.createdAt ?: "Created time unavailable")
+                subtitle = subtitleOverride ?: (request.createdAt?.let { "Opened: $it" }
+                    ?: "Opened time unavailable")
             )
 
             Text(
@@ -396,48 +636,109 @@ private fun MyHelpRequestCard(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            if (
-                request.helperFullName != null ||
-                request.helperPhone != null ||
-                request.helperProfession != null ||
-                request.helperExpertise != null
-            ) {
+            request.openDurationLabel?.let {
+                Text(
+                    text = if (request.isActive) "Open for: $it" else "Was open for: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            request.closedAtLabel?.let {
+                Text(
+                    text = "${request.closedStateLabel ?: "Closed"}: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (request.isPendingSync) {
+                HelperText(text = request.pendingSyncMessage())
+            }
+
+            if (request.isFailedSync) {
+                HelperText(text = request.failedSyncMessage())
+                if (request.isActive) {
+                    SecondaryButton(
+                        text = "Retry Sync",
+                        onClick = {
+                            OfflineSyncScheduler.enqueueSync(context, reason = "manual-help-request-retry", replaceExisting = true)
+                        }
+                    )
+                }
+            }
+
+            request.lastSyncedAt?.let {
+                Text(
+                    text = "Last synced: $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (request.responders.isNotEmpty()) {
                 SectionHeader(
-                    title = "Assigned Helper Details",
-                    subtitle = "Name, phone, profession, and expertise of your assigned helper."
+                    title = if (request.responders.size == 1) "Assigned Helper Details" else "Assigned Responders",
+                    subtitle = if (request.responders.size == 1) {
+                        "Name, phone, profession, and expertise of your assigned helper."
+                    } else {
+                        "Name, phone, profession, and expertise of active responders assigned to this request."
+                    }
                 )
 
-                request.helperFullName?.let {
-                    Text(
-                        text = "Name: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                    request.responders.forEachIndexed { index, responder ->
+                        Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                            if (request.responders.size > 1) {
+                                Text(
+                                    text = "Responder ${index + 1}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
 
-                request.helperPhone?.let {
-                    Text(
-                        text = "Phone: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { openDialer(it) }
-                    )
-                }
+                            responder.fullName?.let {
+                                Text(
+                                    text = "Name: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
-                request.helperProfession?.let {
-                    Text(
-                        text = "Profession: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                            responder.phone?.let {
+                                Text(
+                                    text = "Phone: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable { openDialer(it) }
+                                )
+                            }
 
-                request.helperExpertise?.let {
-                    Text(
-                        text = "Expertise: $it",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                            responder.profession?.let {
+                                Text(
+                                    text = "Profession: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            responder.expertise?.let {
+                                Text(
+                                    text = "Expertise: $it",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (!responder.hasVisibleDetails) {
+                                Text(
+                                    text = "Responder details unavailable.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -449,18 +750,70 @@ private fun MyHelpRequestCard(
                 )
             }
 
-            if (request.isActive && onResolve != null) {
+            if (request.isActive) {
                 if (actionMessage.isNotBlank()) {
                     HelperText(text = actionMessage)
                 }
 
                 PrimaryButton(
-                    text = "Mark Request As Resolved",
-                    onClick = onResolve,
-                    loading = resolveLoading
+                    text = "Edit Request",
+                    onClick = onEdit ?: {},
+                    enabled = onEdit != null && !actionLoading
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+                ) {
+                    SecondaryButton(
+                        text = "Cancel",
+                        onClick = onCancel ?: {},
+                        modifier = Modifier.weight(1f),
+                        enabled = onCancel != null && !actionLoading
+                    )
+
+                    TextActionButton(
+                        text = "Mark Resolved",
+                        onClick = onResolve ?: {},
+                        modifier = Modifier.weight(1f),
+                        enabled = onResolve != null && !actionLoading
+                    )
+                }
+
+                if (actionLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .align(Alignment.CenterHorizontally),
+                        strokeWidth = 2.dp
+                    )
+                }
             }
         }
+    }
+}
+
+private fun MyHelpRequestUiModel.pendingSyncMessage(): String {
+    return when (status.trim().uppercase()) {
+        "CANCELLED" -> if (syncStatus == com.neph.core.sync.SyncStatus.PENDING_CREATE) {
+            "Cancellation saved offline, waiting to sync."
+        } else {
+            "Cancellation waiting to sync."
+        }
+        "RESOLVED" -> if (syncStatus == com.neph.core.sync.SyncStatus.PENDING_CREATE) {
+            "Resolution saved offline, waiting to sync."
+        } else {
+            "Resolution waiting to sync."
+        }
+        else -> "Saved locally. NEPH will sync this change when the network is available."
+    }
+}
+
+private fun MyHelpRequestUiModel.failedSyncMessage(): String {
+    return when (status.trim().uppercase()) {
+        "CANCELLED" -> pendingError ?: "Cancellation could not sync yet. Pull down to reconnect when online."
+        "RESOLVED" -> pendingError ?: "Resolution could not sync yet. Pull down to reconnect when online."
+        else -> pendingError ?: "Sync failed. Retry when connected."
     }
 }
 

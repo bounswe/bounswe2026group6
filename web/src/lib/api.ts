@@ -19,6 +19,7 @@ type ApiRequestOptions = Omit<RequestInit, "body"> & {
 
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "/api";
+const REQUEST_TIMEOUT_MS = 12_000;
 
 function normalizePath(path: string) {
     return path.startsWith("/") ? path : `/${path}`;
@@ -127,14 +128,31 @@ export async function apiRequest<T>(
     options: ApiRequestOptions = {}
 ): Promise<T> {
     let response: Response;
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => {
+        timeoutController.abort();
+    }, REQUEST_TIMEOUT_MS);
+    const signal = options.signal || timeoutController.signal;
 
     try {
         response = await fetch(`${API_BASE_URL}${normalizePath(path)}`, {
             ...options,
             headers: buildHeaders(options),
             body: buildBody(options.body),
+            signal,
         });
-    } catch {
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof DOMException && error.name === "AbortError") {
+            throw new ApiError(
+                "Request timed out. Please try again.",
+                {
+                    code: "REQUEST_TIMEOUT",
+                    status: 0,
+                }
+            );
+        }
+
         throw new ApiError(
             "Could not reach the server. Please check your connection and try again.",
             {
@@ -143,6 +161,7 @@ export async function apiRequest<T>(
             }
         );
     }
+    clearTimeout(timeoutId);
 
     if (response.status === 204) {
         return undefined as T;

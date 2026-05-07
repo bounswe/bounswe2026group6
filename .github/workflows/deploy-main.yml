@@ -44,6 +44,7 @@ jobs:
               npm install --omit=dev --no-audit --no-fund
             fi
 
+            npm run migrate
             pm2 restart neph-backend || pm2 start src/server.js --name neph-backend
 
             cd ../web

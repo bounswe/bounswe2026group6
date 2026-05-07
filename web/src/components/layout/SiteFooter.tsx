@@ -2,9 +2,8 @@ import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 
 const quickLinks = [
-    { label: "Who We Are", href: "/who-we-are" },
-    { label: "About Project", href: "/about-project" },
-    { label: "Donate", href: "/donate" },
+    { label: "News", href: "/news" },
+    { label: "Emergency Numbers", href: "/emergency-numbers" },
 ];
 
 const policyLinks = [

@@ -91,6 +91,16 @@ function validateRequiredString(fieldName, value, errors, { maxLength = 255 } = 
   return normalized;
 }
 
+const placeholderValues = new Set(['unknown', 'unknown requester', 'n/a', 'na']);
+
+function validateRequiredNonPlaceholderString(fieldName, value, errors, { maxLength = 255 } = {}) {
+  const normalized = validateRequiredString(fieldName, value, errors, { maxLength });
+  if (normalized && placeholderValues.has(normalized.toLowerCase())) {
+    errors.push(`\`${fieldName}\` must be real user-provided information.`);
+  }
+  return normalized;
+}
+
 function validateOptionalString(fieldName, value, errors, { maxLength = 255 } = {}) {
   if (value == null) {
     return '';
@@ -110,6 +120,14 @@ function validateOptionalString(fieldName, value, errors, { maxLength = 255 } = 
   return normalized;
 }
 
+function validateOptionalNonPlaceholderString(fieldName, value, errors, { maxLength = 255 } = {}) {
+  const normalized = validateOptionalString(fieldName, value, errors, { maxLength });
+  if (normalized && placeholderValues.has(normalized.toLowerCase())) {
+    errors.push(`\`${fieldName}\` must be real user-provided information.`);
+  }
+  return normalized;
+}
+
 function isValidTurkishMobileNumber(value) {
   return Number.isInteger(value) && value >= 5000000000 && value <= 5999999999;
 }
@@ -117,6 +135,11 @@ function isValidTurkishMobileNumber(value) {
 function validateRequiredPhoneNumber(fieldName, value, errors) {
   if (!isValidTurkishMobileNumber(value)) {
     errors.push(`\`${fieldName}\` must be a 10-digit integer starting with 5.`);
+    return null;
+  }
+
+  if (value === 5000000000) {
+    errors.push(`\`${fieldName}\` must be a real contact phone number.`);
     return null;
   }
 
@@ -133,7 +156,61 @@ function validateOptionalPhoneNumber(fieldName, value, errors) {
     return null;
   }
 
+  if (value === 5000000000) {
+    errors.push(`\`${fieldName}\` must be a real contact phone number.`);
+    return null;
+  }
+
   return value;
+}
+
+function validateCoordinateObject(fieldName, value, errors) {
+  if (value == null) {
+    return null;
+  }
+
+  if (!isPlainObject(value)) {
+    errors.push(`\`${fieldName}\` must be an object.`);
+    return null;
+  }
+
+  const latitudeProvided = Object.prototype.hasOwnProperty.call(value, 'latitude');
+  const longitudeProvided = Object.prototype.hasOwnProperty.call(value, 'longitude');
+
+  if (latitudeProvided !== longitudeProvided) {
+    errors.push(`\`${fieldName}.latitude\` and \`${fieldName}.longitude\` must be provided together.`);
+  }
+
+  const latitude = value.latitude;
+  const longitude = value.longitude;
+
+  if (latitudeProvided && latitude !== null && (typeof latitude !== 'number' || latitude < -90 || latitude > 90)) {
+    errors.push(`\`${fieldName}.latitude\` must be a number between -90 and 90.`);
+  }
+
+  if (longitudeProvided && longitude !== null && (typeof longitude !== 'number' || longitude < -180 || longitude > 180)) {
+    errors.push(`\`${fieldName}.longitude\` must be a number between -180 and 180.`);
+  }
+
+  let accuracyMeters = null;
+  if (Object.prototype.hasOwnProperty.call(value, 'accuracyMeters')) {
+    if (value.accuracyMeters !== null && (typeof value.accuracyMeters !== 'number' || value.accuracyMeters < 0)) {
+      errors.push(`\`${fieldName}.accuracyMeters\` must be a number greater than or equal to 0.`);
+    } else {
+      accuracyMeters = value.accuracyMeters;
+    }
+  }
+
+  const source = validateOptionalString(`${fieldName}.source`, value.source, errors, { maxLength: 40 });
+  const capturedAt = validateOptionalString(`${fieldName}.capturedAt`, value.capturedAt, errors, { maxLength: 80 });
+
+  return {
+    latitude: latitudeProvided ? latitude : null,
+    longitude: longitudeProvided ? longitude : null,
+    accuracyMeters,
+    source,
+    capturedAt,
+  };
 }
 
 function validateCreateHelpRequest(payload) {
@@ -153,16 +230,18 @@ function validateCreateHelpRequest(payload) {
     maxLength: 500,
   });
 
-  let affectedPeopleCount = null;
-  if (!Number.isInteger(payload.affectedPeopleCount) || payload.affectedPeopleCount < 1) {
-    errors.push('`affectedPeopleCount` must be an integer greater than or equal to 1.');
-  } else {
-    affectedPeopleCount = payload.affectedPeopleCount;
+  let affectedPeopleCount = 1;
+  if (payload.affectedPeopleCount != null) {
+    if (!Number.isInteger(payload.affectedPeopleCount) || payload.affectedPeopleCount < 1) {
+      errors.push('`affectedPeopleCount` must be an integer greater than or equal to 1.');
+    } else {
+      affectedPeopleCount = payload.affectedPeopleCount;
+    }
   }
 
   const riskFlags = validateStringArray('riskFlags', payload.riskFlags, errors);
   const vulnerableGroups = validateStringArray('vulnerableGroups', payload.vulnerableGroups, errors);
-  const description = validateRequiredString('description', payload.description, errors, {
+  const description = validateOptionalString('description', payload.description, errors, {
     maxLength: 2000,
   });
   const bloodType = validateOptionalString('bloodType', payload.bloodType, errors, {
@@ -182,22 +261,84 @@ function validateCreateHelpRequest(payload) {
   if (!isPlainObject(payload.location)) {
     errors.push('`location` is required and must be an object.');
   } else {
+    const coordinate = validateCoordinateObject('location.coordinate', payload.location.coordinate, errors);
+
+    let latitude = null;
+    let longitude = null;
+
+    if (Object.prototype.hasOwnProperty.call(payload.location, 'latitude')) {
+      if (
+        payload.location.latitude !== null
+        && (typeof payload.location.latitude !== 'number' || payload.location.latitude < -90 || payload.location.latitude > 90)
+      ) {
+        errors.push('`location.latitude` must be a number between -90 and 90.');
+      } else {
+        latitude = payload.location.latitude;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload.location, 'longitude')) {
+      if (
+        payload.location.longitude !== null
+        && (typeof payload.location.longitude !== 'number' || payload.location.longitude < -180 || payload.location.longitude > 180)
+      ) {
+        errors.push('`location.longitude` must be a number between -180 and 180.');
+      } else {
+        longitude = payload.location.longitude;
+      }
+    }
+
+    if ((latitude === null) !== (longitude === null)) {
+      errors.push('`location.latitude` and `location.longitude` must be provided together.');
+    }
+
+    if (
+      coordinate
+      && Object.prototype.hasOwnProperty.call(payload.location, 'latitude')
+      && Object.prototype.hasOwnProperty.call(payload.location.coordinate, 'latitude')
+      && payload.location.latitude !== null
+      && payload.location.coordinate.latitude !== null
+      && payload.location.latitude !== payload.location.coordinate.latitude
+    ) {
+      errors.push('`location.latitude` conflicts with `location.coordinate.latitude`.');
+    }
+
+    if (
+      coordinate
+      && Object.prototype.hasOwnProperty.call(payload.location, 'longitude')
+      && Object.prototype.hasOwnProperty.call(payload.location.coordinate, 'longitude')
+      && payload.location.longitude !== null
+      && payload.location.coordinate.longitude !== null
+      && payload.location.longitude !== payload.location.coordinate.longitude
+    ) {
+      errors.push('`location.longitude` conflicts with `location.coordinate.longitude`.');
+    }
+
     location = {
-      country: validateRequiredString('location.country', payload.location.country, errors, {
+      country: validateRequiredNonPlaceholderString('location.country', payload.location.country, errors, {
         maxLength: 100,
       }),
-      city: validateRequiredString('location.city', payload.location.city, errors, {
+      city: validateRequiredNonPlaceholderString('location.city', payload.location.city, errors, {
         maxLength: 100,
       }),
-      district: validateRequiredString('location.district', payload.location.district, errors, {
+      district: validateRequiredNonPlaceholderString('location.district', payload.location.district, errors, {
         maxLength: 100,
       }),
-      neighborhood: validateRequiredString('location.neighborhood', payload.location.neighborhood, errors, {
+      neighborhood: validateOptionalNonPlaceholderString('location.neighborhood', payload.location.neighborhood, errors, {
         maxLength: 100,
       }),
       extraAddress: validateOptionalString('location.extraAddress', payload.location.extraAddress, errors, {
         maxLength: 500,
       }),
+      displayAddress: validateOptionalString('location.displayAddress', payload.location.displayAddress, errors, {
+        maxLength: 500,
+      }),
+      placeId: validateOptionalString('location.placeId', payload.location.placeId, errors, {
+        maxLength: 100,
+      }),
+      latitude,
+      longitude,
+      coordinate,
     };
   }
 
@@ -206,7 +347,7 @@ function validateCreateHelpRequest(payload) {
     errors.push('`contact` is required and must be an object.');
   } else {
     contact = {
-      fullName: validateRequiredString('contact.fullName', payload.contact.fullName, errors, {
+      fullName: validateOptionalNonPlaceholderString('contact.fullName', payload.contact.fullName, errors, {
         maxLength: 200,
       }),
       phone: validateRequiredPhoneNumber('contact.phone', payload.contact.phone, errors),
@@ -216,6 +357,13 @@ function validateCreateHelpRequest(payload) {
         errors,
       ),
     };
+  }
+
+  if (description === '' && contact?.fullName === '') {
+    warnings.push({
+      code: 'LOW_CONTEXT_HELP_REQUEST',
+      message: 'Description and contact full name are both empty. Add at least one when possible to improve emergency coordination.',
+    });
   }
 
   return {
@@ -255,8 +403,102 @@ function validateHelpRequestStatusUpdate(payload) {
   };
 }
 
+const ACTIVE_VISIBILITY_STATUSES = new Set(['PENDING', 'ASSIGNED', 'IN_PROGRESS']);
+const BBOX_SEGMENT_COUNT = 4;
+
+function validateActiveHelpRequestListQuery(query = {}) {
+  const errors = [];
+
+  const rawTypes = typeof query.type === 'string' ? query.type : '';
+  const typeFilters = rawTypes
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  const rawStatuses = typeof query.status === 'string' ? query.status : '';
+  const statusFilters = rawStatuses
+    .split(',')
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+
+  const invalidStatuses = statusFilters.filter((value) => !ACTIVE_VISIBILITY_STATUSES.has(value));
+  if (invalidStatuses.length > 0) {
+    errors.push(
+      `\`status\` contains invalid values: ${invalidStatuses.join(', ')}. Allowed values: PENDING, ASSIGNED, IN_PROGRESS.`,
+    );
+  }
+
+  let bbox = null;
+  if (typeof query.bbox === 'string' && query.bbox.trim() !== '') {
+    const parts = query.bbox
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (parts.length !== BBOX_SEGMENT_COUNT) {
+      errors.push('`bbox` must have 4 comma-separated values: minLng,minLat,maxLng,maxLat.');
+    } else {
+      const [minLngRaw, minLatRaw, maxLngRaw, maxLatRaw] = parts;
+      const minLng = Number(minLngRaw);
+      const minLat = Number(minLatRaw);
+      const maxLng = Number(maxLngRaw);
+      const maxLat = Number(maxLatRaw);
+
+      if (![minLng, minLat, maxLng, maxLat].every((value) => Number.isFinite(value))) {
+        errors.push('`bbox` values must be valid numbers.');
+      } else {
+        if (minLng < -180 || minLng > 180 || maxLng < -180 || maxLng > 180) {
+          errors.push('`bbox` longitude values must be between -180 and 180.');
+        }
+        if (minLat < -90 || minLat > 90 || maxLat < -90 || maxLat > 90) {
+          errors.push('`bbox` latitude values must be between -90 and 90.');
+        }
+        if (minLng > maxLng) {
+          errors.push('`bbox` minLng must be less than or equal to maxLng.');
+        }
+        if (minLat > maxLat) {
+          errors.push('`bbox` minLat must be less than or equal to maxLat.');
+        }
+
+        if (errors.length === 0) {
+          bbox = { minLng, minLat, maxLng, maxLat };
+        }
+      }
+    }
+  }
+
+  const limit =
+    query.limit === undefined
+      ? 100
+      : Number(query.limit);
+  const offset =
+    query.offset === undefined
+      ? 0
+      : Number(query.offset);
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    errors.push('`limit` must be an integer between 1 and 500.');
+  }
+
+  if (!Number.isInteger(offset) || offset < 0 || offset > 100000) {
+    errors.push('`offset` must be an integer between 0 and 100000.');
+  }
+
+  return {
+    errors,
+    value: {
+      typeFilters,
+      statusFilters: statusFilters.length > 0 ? statusFilters : ['PENDING', 'ASSIGNED', 'IN_PROGRESS'],
+      bbox,
+      limit,
+      offset,
+    },
+  };
+}
+
 module.exports = {
   readUserId,
   validateCreateHelpRequest,
   validateHelpRequestStatusUpdate,
+  validateActiveHelpRequestListQuery,
 };

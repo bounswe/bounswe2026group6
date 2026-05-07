@@ -11,7 +11,13 @@ import {
     defaultEmergencyContacts,
     type EmergencyContact,
 } from "../../lib/emergencyNumbers";
-import { mockNews } from "@/lib/news";
+import {
+    FALLBACK_ANNOUNCEMENTS,
+    announcementToNewsItem,
+    fetchAnnouncements,
+    readCachedAnnouncements,
+    type NewsItem,
+} from "@/lib/news";
 
 type HeroSlide = {
     title: string;
@@ -27,11 +33,11 @@ const heroSlides: HeroSlide[] = [
     {
         title: "We care for you and every community around you",
         description:
-            "NEPH is a social responsibility initiative focused on preparedness, solidarity, and faster local coordination before and during emergencies.",
-        primaryCtaLabel: "Who We Are",
-        primaryCtaHref: "/who-we-are",
-        secondaryCtaLabel: "About Us",
-        secondaryCtaHref: "/about-project",
+            "NEPH helps people prepare, stay informed, and coordinate faster support before and during emergencies.",
+        primaryCtaLabel: "Browse News",
+        primaryCtaHref: "/news",
+        secondaryCtaLabel: "Emergency Numbers",
+        secondaryCtaHref: "/emergency-numbers",
         isMainSlide: true,
     },
     {
@@ -59,9 +65,35 @@ const heroSlides: HeroSlide[] = [
     },
 ];
 
+function describeNewsPreviewFailure(err: unknown) {
+    const rawDetail = err instanceof Error ? err.message : "";
+    if (/could not reach the server/i.test(rawDetail)) {
+        return "the live announcements service did not respond";
+    }
+
+    return rawDetail || "the announcements API did not respond";
+}
+
+function formatLastUpdated(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    });
+}
+
 export default function HomePage() {
     const router = useRouter();
     const [activeSlide, setActiveSlide] = React.useState(0);
+    const [previewNews, setPreviewNews] = React.useState<NewsItem[]>([]);
+    const [newsLoading, setNewsLoading] = React.useState(true);
+    const [newsError, setNewsError] = React.useState("");
+    const [newsUpdatedAt, setNewsUpdatedAt] = React.useState("");
+    const [usingFallbackNews, setUsingFallbackNews] = React.useState(false);
 
     React.useEffect(() => {
         const timer = setInterval(() => {
@@ -71,8 +103,42 @@ export default function HomePage() {
         return () => clearInterval(timer);
     }, []);
 
+    const loadPreviewNews = React.useCallback(async () => {
+        setNewsLoading(true);
+        setNewsError("");
+        setUsingFallbackNews(false);
+
+        try {
+            const announcements = await fetchAnnouncements({ limit: 3 });
+            setPreviewNews(announcements.map(announcementToNewsItem));
+            setNewsUpdatedAt(new Date().toISOString());
+        } catch (err) {
+            const cached = readCachedAnnouncements();
+            const cachedAnnouncements = cached?.announcements.slice(0, 3) || [];
+            const hasCachedAnnouncements = cachedAnnouncements.length > 0;
+            const fallbackAnnouncements = hasCachedAnnouncements
+                ? cachedAnnouncements
+                : FALLBACK_ANNOUNCEMENTS.slice(0, 3);
+            const sourceLabel = hasCachedAnnouncements
+                ? "cached announcements"
+                : "demo announcements";
+
+            setPreviewNews(fallbackAnnouncements.map(announcementToNewsItem));
+            setNewsUpdatedAt(hasCachedAnnouncements && cached ? cached.savedAt : FALLBACK_ANNOUNCEMENTS[0]?.createdAt || "");
+            setUsingFallbackNews(true);
+            setNewsError(
+                `Latest announcements could not be refreshed (${describeNewsPreviewFailure(err)}). Showing ${sourceLabel}.`
+            );
+        } finally {
+            setNewsLoading(false);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        void loadPreviewNews();
+    }, [loadPreviewNews]);
+
     const currentSlide = heroSlides[activeSlide];
-    const previewNews = mockNews.slice(0, 3);
     const previewContacts = defaultEmergencyContacts.slice(0, 3);
 
     return (
@@ -131,15 +197,65 @@ export default function HomePage() {
                             subtitle="A short preview from announcements and community updates."
                         />
 
-                        <div className="home-news-list">
-                            {previewNews.map((item) => (
-                                <article key={item.id} className="home-news-card">
-                                    <p className="home-news-category">{item.category}</p>
-                                    <h3 className="home-news-title">{item.title}</h3>
-                                    <p className="home-news-summary">{item.summary}</p>
-                                </article>
-                            ))}
-                        </div>
+                        {newsLoading ? (
+                            <div className="home-news-list" aria-label="Loading latest announcements">
+                                {[0, 1, 2].map((index) => (
+                                    <div key={index} className="home-news-card news-item-skeleton">
+                                        <span className="news-skeleton-line is-chip" />
+                                        <span className="news-skeleton-line is-title" />
+                                        <span className="news-skeleton-line is-short" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : newsError ? (
+                            <>
+                                <div className={usingFallbackNews ? "news-status-box is-warning" : "news-status-box is-error"}>
+                                    <div>
+                                        <p className="news-status-title">Using fallback news preview</p>
+                                        <p className="news-status-copy">{newsError}</p>
+                                        {newsUpdatedAt ? (
+                                            <p className="news-status-copy">
+                                                Last updated: {formatLastUpdated(newsUpdatedAt)}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                    <PrimaryButton className="w-auto" onClick={() => void loadPreviewNews()}>
+                                        Retry latest news
+                                    </PrimaryButton>
+                                </div>
+
+                                <div className="home-news-list">
+                                    {previewNews.map((item) => (
+                                        <article key={item.id} className="home-news-card">
+                                            <p className="home-news-category">{item.category}</p>
+                                            <h3 className="home-news-title">{item.title}</h3>
+                                            <p className="home-news-summary">{item.summary}</p>
+                                        </article>
+                                    ))}
+                                </div>
+                            </>
+                        ) : previewNews.length === 0 ? (
+                            <div className="admin-empty-state">
+                                <p>No announcements have been published yet.</p>
+                            </div>
+                        ) : (
+                            <>
+                                {newsUpdatedAt ? (
+                                    <p className="news-status-copy">
+                                        Last updated: {formatLastUpdated(newsUpdatedAt)}
+                                    </p>
+                                ) : null}
+                                <div className="home-news-list">
+                                    {previewNews.map((item) => (
+                                        <article key={item.id} className="home-news-card">
+                                            <p className="home-news-category">{item.category}</p>
+                                            <h3 className="home-news-title">{item.title}</h3>
+                                            <p className="home-news-summary">{item.summary}</p>
+                                        </article>
+                                    ))}
+                                </div>
+                            </>
+                        )}
 
                         <div className="home-news-action-wrap">
                             <SecondaryButton onClick={() => router.push("/news")}>View All News</SecondaryButton>

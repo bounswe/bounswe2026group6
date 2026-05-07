@@ -4,6 +4,7 @@ const {
 	readUserId,
 	validateCreateHelpRequest,
 	validateHelpRequestStatusUpdate,
+	validateActiveHelpRequestListQuery,
 } = require('../../../../src/modules/help-requests/validators');
 
 describe('help-requests validators', () => {
@@ -112,12 +113,48 @@ describe('help-requests validators', () => {
 
 			expect(errors).toEqual(expect.arrayContaining([
 				expect.stringContaining('`helpTypes` is required'),
-				expect.stringContaining('`affectedPeopleCount`'),
-				expect.stringContaining('`description` is required'),
 				expect.stringContaining('`location` is required'),
 				expect.stringContaining('`contact` is required'),
 				expect.stringContaining('`consentGiven`'),
 			]));
+		});
+
+		test('accepts payload with missing optional fields', () => {
+			const payload = {
+				helpTypes: ['first_aid'],
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'besiktas',
+				},
+				contact: {
+					phone: 5052318546,
+				},
+				consentGiven: true,
+			};
+
+			const { errors, warnings, value } = validateCreateHelpRequest(payload);
+
+			expect(errors).toHaveLength(0);
+			expect(warnings).toEqual([
+				{
+					code: 'LOW_CONTEXT_HELP_REQUEST',
+					message: 'Description and contact full name are both empty. Add at least one when possible to improve emergency coordination.',
+				},
+			]);
+			expect(value.affectedPeopleCount).toBe(1);
+			expect(value.description).toBe('');
+			expect(value.location.neighborhood).toBe('');
+			expect(value.contact.fullName).toBe('');
+		});
+
+		test('rejects invalid provided affectedPeopleCount instead of defaulting it', () => {
+			const payload = buildPayload();
+			payload.affectedPeopleCount = 'invalid';
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`affectedPeopleCount` must be an integer greater than or equal to 1.');
 		});
 
 		test('rejects empty helpTypes', () => {
@@ -168,6 +205,70 @@ describe('help-requests validators', () => {
 			const { errors } = validateCreateHelpRequest(payload);
 
 			expect(errors).toContain('`location.city` is required.');
+		});
+
+		test('rejects emergency draft placeholder contact and location values', () => {
+			const payload = buildPayload();
+			payload.location.country = 'unknown';
+			payload.location.city = 'unknown';
+			payload.location.district = 'unknown';
+			payload.location.neighborhood = 'unknown';
+			payload.contact.fullName = 'Unknown requester';
+			payload.contact.phone = 5000000000;
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toEqual(expect.arrayContaining([
+				'`location.country` must be real user-provided information.',
+				'`location.city` must be real user-provided information.',
+				'`location.district` must be real user-provided information.',
+				'`location.neighborhood` must be real user-provided information.',
+				'`contact.fullName` must be real user-provided information.',
+				'`contact.phone` must be a real contact phone number.',
+			]));
+		});
+
+		test('accepts hybrid location coordinate object', () => {
+			const payload = buildPayload();
+			payload.location.coordinate = {
+				latitude: 41.043,
+				longitude: 29.009,
+				source: 'MANUAL_MAP_PIN',
+				capturedAt: '2026-04-18T11:20:00.000Z',
+			};
+
+			const { errors, value } = validateCreateHelpRequest(payload);
+
+			expect(errors).toHaveLength(0);
+			expect(value.location.coordinate).toBeTruthy();
+			expect(value.location.coordinate.latitude).toBeCloseTo(41.043, 6);
+			expect(value.location.coordinate.longitude).toBeCloseTo(29.009, 6);
+		});
+
+		test('rejects hybrid location coordinate when longitude is missing', () => {
+			const payload = buildPayload();
+			payload.location.coordinate = {
+				latitude: 41.043,
+			};
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`location.coordinate.latitude` and `location.coordinate.longitude` must be provided together.');
+		});
+
+		test('rejects conflicting flat and nested coordinate values', () => {
+			const payload = buildPayload();
+			payload.location.latitude = 41.043;
+			payload.location.longitude = 29.009;
+			payload.location.coordinate = {
+				latitude: 41.111,
+				longitude: 29.009,
+				source: 'MANUAL_MAP_PIN',
+			};
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`location.latitude` conflicts with `location.coordinate.latitude`.');
 		});
 
 		test('rejects invalid contact fields', () => {
@@ -244,6 +345,78 @@ describe('help-requests validators', () => {
 			const { errors } = validateHelpRequestStatusUpdate({ status: 123 });
 
 			expect(errors.length).toBeGreaterThan(0);
+		});
+	});
+
+	describe('validateActiveHelpRequestListQuery', () => {
+		test('uses defaults when optional query params are absent', () => {
+			const { errors, value } = validateActiveHelpRequestListQuery({});
+
+			expect(errors).toHaveLength(0);
+			expect(value.typeFilters).toEqual([]);
+			expect(value.statusFilters).toEqual(['PENDING', 'ASSIGNED', 'IN_PROGRESS']);
+			expect(value.limit).toBe(100);
+			expect(value.offset).toBe(0);
+			expect(value.bbox).toBeNull();
+		});
+
+		test('parses type and status filters', () => {
+			const { errors, value } = validateActiveHelpRequestListQuery({
+				type: 'first_aid, shelter ',
+				status: 'pending,assigned',
+				limit: '20',
+				offset: '5',
+			});
+
+			expect(errors).toHaveLength(0);
+			expect(value.typeFilters).toEqual(['first_aid', 'shelter']);
+			expect(value.statusFilters).toEqual(['PENDING', 'ASSIGNED']);
+			expect(value.limit).toBe(20);
+			expect(value.offset).toBe(5);
+		});
+
+		test('parses bbox values', () => {
+			const { errors, value } = validateActiveHelpRequestListQuery({
+				bbox: '28.9,40.9,29.2,41.2',
+			});
+
+			expect(errors).toHaveLength(0);
+			expect(value.bbox).toEqual({
+				minLng: 28.9,
+				minLat: 40.9,
+				maxLng: 29.2,
+				maxLat: 41.2,
+			});
+		});
+
+		test('rejects unsupported statuses', () => {
+			const { errors } = validateActiveHelpRequestListQuery({
+				status: 'resolved',
+			});
+
+			expect(errors).toEqual(expect.arrayContaining([
+				expect.stringContaining('`status` contains invalid values'),
+			]));
+		});
+
+		test('rejects malformed bbox', () => {
+			const { errors } = validateActiveHelpRequestListQuery({
+				bbox: '29.1,41.1,29.2',
+			});
+
+			expect(errors).toContain('`bbox` must have 4 comma-separated values: minLng,minLat,maxLng,maxLat.');
+		});
+
+		test('rejects invalid pagination values', () => {
+			const { errors } = validateActiveHelpRequestListQuery({
+				limit: '0',
+				offset: '-1',
+			});
+
+			expect(errors).toEqual(expect.arrayContaining([
+				'`limit` must be an integer between 1 and 500.',
+				'`offset` must be an integer between 0 and 100000.',
+			]));
 		});
 	});
 });

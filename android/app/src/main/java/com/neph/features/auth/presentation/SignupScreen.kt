@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
@@ -160,6 +161,7 @@ fun SignupScreen(
                     onValueChange = { email = it },
                     label = "Email",
                     placeholder = "Enter your email",
+                    testTag = "signup_email",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
                 )
 
@@ -167,14 +169,16 @@ fun SignupScreen(
                     value = password,
                     onValueChange = { password = it },
                     label = "Password",
-                    placeholder = "Create a password"
+                    placeholder = "Create a password",
+                    testTag = "signup_password"
                 )
 
                 PasswordField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it },
                     label = "Confirm Password",
-                    placeholder = "Re-enter your password"
+                    placeholder = "Re-enter your password",
+                    testTag = "signup_confirm_password"
                 )
 
 
@@ -185,6 +189,7 @@ fun SignupScreen(
                     androidx.compose.material3.Checkbox(
                         checked = acceptedTerms,
                         onCheckedChange = { acceptedTerms = it },
+                        modifier = Modifier.testTag("signup_terms_checkbox"),
                         colors = androidx.compose.material3.CheckboxDefaults.colors(
                             checkedColor = MaterialTheme.colorScheme.primary,
                             uncheckedColor = MaterialTheme.colorScheme.outline,

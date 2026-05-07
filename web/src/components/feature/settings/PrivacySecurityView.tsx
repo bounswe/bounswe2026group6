@@ -6,10 +6,23 @@ import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
+import { RadioGroup } from "@/components/ui/selection/RadioGroup";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { fetchMyProfile, patchMyPrivacy } from "@/lib/profile";
+import { LocationPreviewMap } from "@/components/feature/location/LocationPreviewMap";
+
+const DEFAULT_MAP_CENTER = {
+    latitude: 41.0082,
+    longitude: 28.9784,
+};
+
+const visibilityOptions = [
+    { label: "Private", value: "PRIVATE" },
+    { label: "Emergency only", value: "EMERGENCY_ONLY" },
+    { label: "Public", value: "PUBLIC" },
+];
 
 export default function PrivacySecurityView() {
     const router = useRouter();
@@ -17,7 +30,15 @@ export default function PrivacySecurityView() {
 
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [profileVisibility, setProfileVisibility] = React.useState("PRIVATE");
+    const [healthInfoVisibility, setHealthInfoVisibility] = React.useState("PRIVATE");
+    const [locationVisibility, setLocationVisibility] = React.useState("PRIVATE");
     const [shareLocation, setShareLocation] = React.useState(false);
+    const [initialShareLocation, setInitialShareLocation] = React.useState(false);
+    const [locationPreview, setLocationPreview] = React.useState<{
+        latitude: number;
+        longitude: number;
+    } | null>(null);
     const [error, setError] = React.useState("");
     const [info, setInfo] = React.useState("");
 
@@ -38,7 +59,23 @@ export default function PrivacySecurityView() {
 
             try {
                 const profile = await fetchMyProfile(token);
+                setProfileVisibility(profile.privacySettings.profileVisibility || "PRIVATE");
+                setHealthInfoVisibility(profile.privacySettings.healthInfoVisibility || "PRIVATE");
+                setLocationVisibility(profile.privacySettings.locationVisibility || "PRIVATE");
                 setShareLocation(profile.privacySettings.locationSharingEnabled);
+                setInitialShareLocation(profile.privacySettings.locationSharingEnabled);
+
+                if (
+                    typeof profile.locationProfile.latitude === "number" &&
+                    typeof profile.locationProfile.longitude === "number"
+                ) {
+                    setLocationPreview({
+                        latitude: profile.locationProfile.latitude,
+                        longitude: profile.locationProfile.longitude,
+                    });
+                } else {
+                    setLocationPreview(null);
+                }
             } catch (err) {
                 if (err instanceof ApiError && err.status === 401) {
                     redirectToLoginAfterAuthExpiry();
@@ -71,10 +108,21 @@ export default function PrivacySecurityView() {
             setError("");
             setInfo("");
 
+            if (!initialShareLocation && shareLocation) {
+                setError(
+                    "To enable Share Current Location, go to Profile, click Use Current Location, and save there first."
+                );
+                return;
+            }
+
             await patchMyPrivacy(token, {
+                profileVisibility,
+                healthInfoVisibility,
+                locationVisibility,
                 locationSharingEnabled: shareLocation,
             });
 
+            setInitialShareLocation(shareLocation);
             setInfo("Privacy settings updated successfully.");
         } catch (err) {
             if (err instanceof ApiError && err.status === 401) {
@@ -98,7 +146,7 @@ export default function PrivacySecurityView() {
     };
 
     if (loading) {
-        return <p className="text-sm text-gray-500">Loading...</p>;
+        return <p className="text-sm text-[color:var(--text-secondary)]">Loading...</p>;
     }
 
     return (
@@ -106,10 +154,39 @@ export default function PrivacySecurityView() {
             <SectionCard>
                 <SectionHeader
                     title="Privacy"
-                    subtitle="Control the account settings the backend currently supports."
+                    subtitle="Choose who can see profile, health, and location details."
                 />
 
-                <div className="mt-4 flex items-center justify-between gap-4">
+                <div className="mt-4 grid gap-5">
+                    <RadioGroup
+                        label="Profile visibility"
+                        name="profileVisibility"
+                        value={profileVisibility}
+                        options={visibilityOptions}
+                        onValueChange={setProfileVisibility}
+                        direction="column"
+                    />
+
+                    <RadioGroup
+                        label="Health information visibility"
+                        name="healthInfoVisibility"
+                        value={healthInfoVisibility}
+                        options={visibilityOptions}
+                        onValueChange={setHealthInfoVisibility}
+                        direction="column"
+                    />
+
+                    <RadioGroup
+                        label="Saved location visibility"
+                        name="locationVisibility"
+                        value={locationVisibility}
+                        options={visibilityOptions}
+                        onValueChange={setLocationVisibility}
+                        direction="column"
+                    />
+                </div>
+
+                <div className="mt-5 flex items-center justify-between gap-4 border-t border-[color:var(--divider)] pt-5">
                     <div>
                         <p className="text-sm font-medium text-[color:var(--text-primary)]">
                             Share Current Location
@@ -121,15 +198,43 @@ export default function PrivacySecurityView() {
                     </div>
 
                     <ToggleSwitch
+                        aria-label="Share Current Location"
                         checked={shareLocation}
                         onCheckedChange={setShareLocation}
                     />
                 </div>
 
                 <div className="mt-5 flex justify-end">
-                    <PrimaryButton onClick={handleSave} loading={saving}>
+                    <PrimaryButton className="w-auto" onClick={handleSave} loading={saving}>
                         Save Privacy Settings
                     </PrimaryButton>
+                </div>
+
+                <div className="mt-5 grid gap-2">
+                    <h3 className="text-sm font-medium text-[color:var(--text-primary)]">
+                        Shared Location Preview
+                    </h3>
+                    <p className="text-sm text-[color:var(--text-secondary)]">
+                        Review the location that may be shared for emergency coordination.
+                    </p>
+                    {shareLocation ? (
+                        <LocationPreviewMap
+                            center={locationPreview || DEFAULT_MAP_CENTER}
+                            selectedPosition={locationPreview}
+                            interactionMode="readonly"
+                            heightClassName="h-56"
+                            zoom={locationPreview ? 13 : 11}
+                        />
+                    ) : (
+                        <HelperText>
+                            Turn on Share Current Location to show your saved location preview.
+                        </HelperText>
+                    )}
+                    {shareLocation && !locationPreview ? (
+                        <HelperText>
+                            No saved coordinates yet. Save your profile location to see it here.
+                        </HelperText>
+                    ) : null}
                 </div>
             </SectionCard>
 
@@ -159,7 +264,7 @@ export default function PrivacySecurityView() {
                 </div>
             </SectionCard>
 
-            {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+            {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
             {info ? <HelperText>{info}</HelperText> : null}
         </div>
     );

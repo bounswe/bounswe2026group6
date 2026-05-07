@@ -16,8 +16,8 @@ export function PrimaryButton({
         <button
             className={cn(
                 "inline-flex h-11 w-full items-center justify-center rounded-[10px]",
-                "bg-red-500 px-4 text-sm font-semibold text-white",
-                "transition-colors hover:bg-red-600 active:bg-red-700",
+                "bg-[color:var(--primary-500)] px-4 text-sm font-semibold text-[color:var(--text-on-primary)]",
+                "transition-colors hover:bg-[color:var(--primary-600)] active:bg-[color:var(--primary-700)]",
                 "disabled:cursor-not-allowed disabled:opacity-60",
                 className
             )}

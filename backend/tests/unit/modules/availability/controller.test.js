@@ -28,7 +28,7 @@ describe('Availability Controller', () => {
 
   describe('handleSetAvailability', () => {
     it('should return 200 on success', async () => {
-      req.body = { isAvailable: true };
+      req.body = { isAvailable: true, latitude: 41.0, longitude: 29.0 };
       service.setAvailability.mockResolvedValue({ success: true });
 
       await handleSetAvailability(req, res);

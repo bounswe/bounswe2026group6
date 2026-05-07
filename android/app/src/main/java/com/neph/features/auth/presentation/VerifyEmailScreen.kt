@@ -131,6 +131,7 @@ fun VerifyEmailScreen(
             onValueChange = { tokenOrLink = it },
             label = "Verification Link or Token",
             placeholder = "Paste the link or token from your email",
+            testTag = "verify_email_token",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
         )
 

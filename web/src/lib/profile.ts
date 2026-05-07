@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { countryCodeOptions } from "@/lib/countryCodes";
+import { expertiseOptions } from "@/lib/profileOptions";
 
 export type BackendProfileResponse = {
     profile: {
@@ -24,16 +25,35 @@ export type BackendProfileResponse = {
     };
     physicalInfo: {
         age: number | null;
+        dateOfBirth?: string | null;
         gender: string | null;
         height: number | null;
         weight: number | null;
     };
     locationProfile: {
         address: string | null;
+        displayAddress?: string | null;
         city: string | null;
         country: string | null;
+        placeId?: string | null;
         latitude: number | null;
         longitude: number | null;
+        administrative?: {
+            countryCode?: string | null;
+            country?: string | null;
+            city?: string | null;
+            district?: string | null;
+            neighborhood?: string | null;
+            extraAddress?: string | null;
+            postalCode?: string | null;
+        };
+        coordinate?: {
+            latitude?: number | null;
+            longitude?: number | null;
+            accuracyMeters?: number | null;
+            source?: string | null;
+            capturedAt?: string | null;
+        } | null;
         lastUpdated: string | null;
     };
     expertise: Array<{
@@ -46,7 +66,8 @@ export type BackendProfileResponse = {
 };
 
 export type EditableProfileData = {
-    fullName: string;
+    firstName: string;
+    lastName: string;
     email: string;
     phone: string;
     countryCode: string;
@@ -56,7 +77,7 @@ export type EditableProfileData = {
     weight: string;
     bloodType: string;
     gender: string;
-    age: string;
+    dateOfBirth: string;
     medicalHistory: string;
     chronicDiseases: string;
     allergies: string;
@@ -111,23 +132,22 @@ export function joinFullName(firstName?: string | null, lastName?: string | null
     return [firstName, lastName].filter(Boolean).join(" ").trim();
 }
 
-export function splitFullName(fullName: string) {
-    const normalized = fullName.trim().replace(/\s+/g, " ");
-
-    if (!normalized) {
-        return {
-            firstName: "",
-            lastName: "",
-        };
+function normalizeDateOnly(value?: string | null) {
+    if (!value) {
+        return "";
     }
 
-    const parts = normalized.split(" ");
-    const firstName = parts.shift() || "";
+    const normalized = value.trim();
+    if (!normalized) {
+        return "";
+    }
 
-    return {
-        firstName,
-        lastName: parts.join(" "),
-    };
+    const parsed = Date.parse(normalized);
+    if (Number.isNaN(parsed)) {
+        return "";
+    }
+
+    return new Date(parsed).toISOString().slice(0, 10);
 }
 
 export function parseListField(value: string) {
@@ -175,14 +195,21 @@ export function mapBackendProfileToEditableProfile(
 ): EditableProfileData {
     const phoneParts = normalizePhoneParts(profile.profile.phoneNumber);
     const expertise = profile.expertise[0];
+    const normalizedProfession = expertise?.profession === "Volunteer" ? "" : (expertise?.profession || "");
 
     return {
-        fullName: joinFullName(profile.profile.firstName, profile.profile.lastName),
+        firstName: profile.profile.firstName || "",
+        lastName: profile.profile.lastName || "",
         email,
         phone: phoneParts.phone,
         countryCode: phoneParts.countryCode,
-        profession: expertise?.profession || "",
-        expertise: expertise?.expertiseAreas || [],
+        profession: normalizedProfession,
+        expertise: (expertise?.expertiseAreas || [])
+            .map((area) => area.trim())
+            .filter((area) =>
+                expertiseOptions.some((allowed) => allowed.toLocaleLowerCase() === area.toLocaleLowerCase())
+            )
+            .map(() => expertiseOptions[0]),
         height:
             profile.physicalInfo.height !== null && profile.physicalInfo.height !== undefined
                 ? String(profile.physicalInfo.height)
@@ -193,10 +220,7 @@ export function mapBackendProfileToEditableProfile(
                 : "",
         bloodType: profile.healthInfo.bloodType || "",
         gender: profile.physicalInfo.gender || "",
-        age:
-            profile.physicalInfo.age !== null && profile.physicalInfo.age !== undefined
-                ? String(profile.physicalInfo.age)
-                : "",
+        dateOfBirth: normalizeDateOnly(profile.physicalInfo.dateOfBirth),
         medicalHistory: serializeListField(profile.healthInfo.medicalConditions),
         chronicDiseases: serializeListField(profile.healthInfo.chronicDiseases),
         allergies: serializeListField(profile.healthInfo.allergies),
@@ -230,6 +254,7 @@ export async function patchMyPhysical(
     token: string,
     payload: {
         age?: number | null;
+        dateOfBirth?: string | null;
         gender?: string | null;
         height?: number | null;
         weight?: number | null;
@@ -260,7 +285,31 @@ export async function patchMyHealth(
 
 export async function patchMyLocation(
     token: string,
-    payload: { address?: string | null; city?: string | null; country?: string | null }
+    payload: {
+        address?: string | null;
+        city?: string | null;
+        country?: string | null;
+        latitude?: number | null;
+        longitude?: number | null;
+        displayAddress?: string | null;
+        placeId?: string | null;
+        administrative?: {
+            countryCode?: string | null;
+            country?: string | null;
+            city?: string | null;
+            district?: string | null;
+            neighborhood?: string | null;
+            extraAddress?: string | null;
+            postalCode?: string | null;
+        };
+        coordinate?: {
+            latitude?: number | null;
+            longitude?: number | null;
+            accuracyMeters?: number | null;
+            source?: string | null;
+            capturedAt?: string | null;
+        };
+    }
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/location", {
         method: "PATCH",
@@ -271,7 +320,12 @@ export async function patchMyLocation(
 
 export async function patchMyPrivacy(
     token: string,
-    payload: { locationSharingEnabled?: boolean }
+    payload: {
+        profileVisibility?: string;
+        healthInfoVisibility?: string;
+        locationVisibility?: string;
+        locationSharingEnabled?: boolean;
+    }
 ) {
     return apiRequest<BackendProfileResponse>("/profiles/me/privacy", {
         method: "PATCH",

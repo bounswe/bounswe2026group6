@@ -3,14 +3,11 @@ const {
   loginUser,
   verifyUserEmail,
   getCurrentUser,
-  getUsersForAdmin,
-  getHelpRequestsForAdmin,
-  getAnnouncementsForAdmin,
-  getStatsForAdmin,
   resendVerificationEmail,
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 } = require('./service');
 const {
   validateSignupInput,
@@ -75,6 +72,13 @@ async function login(req, res) {
       });
     }
 
+    if (error.code === 'USER_BANNED') {
+      return res.status(403).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
     return res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Something went wrong',
@@ -101,6 +105,13 @@ async function verifyEmail(req, res) {
       });
     }
 
+    if (error.code === 'USER_BANNED') {
+      return res.status(403).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
     return res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Something went wrong',
@@ -121,58 +132,6 @@ async function getMe(req, res) {
       });
     }
 
-    return res.status(500).json({
-      code: 'INTERNAL_ERROR',
-      message: 'Something went wrong',
-    });
-  }
-}
-
-async function getAdminUsers(_req, res) {
-  try {
-    const users = await getUsersForAdmin();
-
-    return res.status(200).json({ users });
-  } catch (_error) {
-    return res.status(500).json({
-      code: 'INTERNAL_ERROR',
-      message: 'Something went wrong',
-    });
-  }
-}
-
-async function getAdminHelpRequests(_req, res) {
-  try {
-    const helpRequests = await getHelpRequestsForAdmin();
-
-    return res.status(200).json({ helpRequests });
-  } catch (_error) {
-    return res.status(500).json({
-      code: 'INTERNAL_ERROR',
-      message: 'Something went wrong',
-    });
-  }
-}
-
-async function getAdminAnnouncements(_req, res) {
-  try {
-    const announcements = await getAnnouncementsForAdmin();
-
-    return res.status(200).json({ announcements });
-  } catch (_error) {
-    return res.status(500).json({
-      code: 'INTERNAL_ERROR',
-      message: 'Something went wrong',
-    });
-  }
-}
-
-async function getAdminStats(_req, res) {
-  try {
-    const stats = await getStatsForAdmin();
-
-    return res.status(200).json({ stats });
-  } catch (_error) {
     return res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Something went wrong',
@@ -286,18 +245,35 @@ async function logout(req, res) {
   }
 }
 
+async function deleteMe(req, res) {
+  try {
+    const result = await deleteCurrentUser(req.user.userId);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error.code === 'USER_NOT_FOUND') {
+      return res.status(404).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Something went wrong',
+    });
+  }
+}
+
 module.exports = {
   getAuthInfo,
   signup,
   login,
   verifyEmail,
   getMe,
-  getAdminUsers,
-  getAdminHelpRequests,
-  getAdminAnnouncements,
-  getAdminStats,
   resendVerification,
   forgotPassword,
   resetPasswordHandler,
   logout,
+  deleteMe,
 };

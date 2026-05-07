@@ -2,23 +2,31 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "leaflet": "^1.9.4",
     "next": "^16.2.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "@tailwindcss/postcss": "^4.2.2",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
-    "postcss": "^8.5.10",
+    "postcss": "8.5.10",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
   }
 }

@@ -1,12 +1,27 @@
 package com.neph.features.auth.data
 
+import android.util.Log
+import com.google.firebase.messaging.FirebaseMessaging
+import com.neph.core.NephAppContext
 import com.neph.core.network.ApiException
 import com.neph.core.network.JsonHttpClient
+import com.neph.core.sync.OfflineSyncScheduler
+import com.neph.features.assignedrequest.data.AssignedRequestRepository
+import com.neph.features.availability.data.AvailabilityRepository
+import com.neph.features.notifications.data.PushTokenSync
+import com.neph.features.notifications.data.NotificationsRepository
+import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
+import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.RequestHelpRepository
+import com.neph.features.safetystatus.data.SafetyStatusRepository
 import org.json.JSONObject
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 enum class LoginDestination {
     PROFILE,
@@ -14,6 +29,7 @@ enum class LoginDestination {
 }
 
 object AuthRepository {
+    private val ioScope = CoroutineScope(Dispatchers.IO)
     suspend fun signup(
         email: String,
         password: String,
@@ -67,13 +83,20 @@ object AuthRepository {
         }
 
         val user = response.optJSONObject("user")
+        val userId = user?.optString("userId")?.trim().orEmpty()
         val userEmail = user?.optString("email")?.ifBlank { normalizedEmail } ?: normalizedEmail
         val canReuseLocalProfileFields = previousProfile.email
             ?.trim()
             ?.equals(userEmail, ignoreCase = true)
             ?: false
 
-        AuthSessionStore.saveAccessToken(accessToken, rememberMe)
+        if (!canReuseLocalProfileFields) {
+            OperationalLocationRepository.clearLocalCache()
+            SafetyStatusRepository.clearLocalCache()
+        }
+
+        AuthSessionStore.saveAccessToken(accessToken, rememberMe, userId = userId)
+        PushTokenSync.syncCurrentToken()
         ProfileRepository.clearProfile()
         ProfileRepository.saveProfile(
             if (canReuseLocalProfileFields) {
@@ -86,6 +109,7 @@ object AuthRepository {
         return try {
             ProfileRepository.fetchAndCacheRemoteProfile()
             AuthSessionStore.clearPendingVerificationEmail()
+            NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login") }
             LoginDestination.PROFILE
         } catch (cancellationException: CancellationException) {
             throw cancellationException
@@ -93,6 +117,7 @@ object AuthRepository {
             when (error.status) {
                 404 -> {
                     AuthSessionStore.clearPendingVerificationEmail()
+                    NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login-without-profile") }
                     LoginDestination.COMPLETE_PROFILE
                 }
                 401 -> {
@@ -119,7 +144,10 @@ object AuthRepository {
 
         val accessToken = response.optString("accessToken")
         if (accessToken.isNotBlank()) {
-            AuthSessionStore.saveAccessToken(accessToken, rememberMe = true)
+            val userId = response.optJSONObject("user")?.optString("userId")?.trim().orEmpty()
+            AuthSessionStore.saveAccessToken(accessToken, rememberMe = true, userId = userId)
+            PushTokenSync.syncCurrentToken()
+            NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
 
         AuthSessionStore.clearPendingVerificationEmail()
@@ -172,9 +200,92 @@ object AuthRepository {
     }
 
     fun logout() {
+        val accessToken = AuthSessionStore.getAccessToken()
+        if (!accessToken.isNullOrBlank()) {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { deviceToken ->
+                    ioScope.launch {
+                        try {
+                            NotificationsRepository.unregisterDeviceToken(accessToken, deviceToken)
+                        } catch (error: Exception) {
+                            Log.w("AuthRepository", "Failed to unregister FCM token on logout", error)
+                        }
+                    }
+                }
+        }
+
+        clearLocalAuthState()
+    }
+
+    suspend fun deleteAccount(): String {
+        val accessToken = AuthSessionStore.getAccessToken()
+            ?: throw ApiException(
+                message = "Please log in again before deleting your account.",
+                status = 401,
+                code = "UNAUTHORIZED"
+            )
+
+        val response = JsonHttpClient.request(
+            path = "/auth/me",
+            method = "DELETE",
+            token = accessToken
+        )
+
+        clearLocalAuthState()
+        clearDeletedAccountOfflineState()
+        return response.optString("message").ifBlank { "Account deleted successfully." }
+    }
+
+    private suspend fun clearDeletedAccountOfflineState() {
+        clearDeletedAccountCache("authenticated help request cache") {
+            RequestHelpRepository.clearAuthenticatedLocalCache()
+        }
+        clearDeletedAccountCache("assigned request cache") {
+            AssignedRequestRepository.clearLocalCache()
+        }
+        clearDeletedAccountCache("availability cache") {
+            AvailabilityRepository.clearLocalCache()
+        }
+        clearDeletedAccountCache("operational location cache") {
+            OperationalLocationRepository.clearLocalCache()
+        }
+        clearDeletedAccountCache("safety status cache") {
+            SafetyStatusRepository.clearLocalCache()
+        }
+    }
+
+    private suspend fun clearDeletedAccountCache(
+        cacheName: String,
+        clear: suspend () -> Unit
+    ) {
+        try {
+            clear()
+        } catch (error: Exception) {
+            Log.w("AuthRepository", "Failed to clear $cacheName after account deletion", error)
+        }
+    }
+
+    private fun clearLocalAuthState() {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
+        ioScope.launch {
+            try {
+                NearbyVisibleUsersRepository.clearLocalCache()
+            } catch (error: Exception) {
+                Log.w("AuthRepository", "Failed to clear nearby visible users on logout", error)
+            }
+            try {
+                OperationalLocationRepository.clearLocalCache()
+            } catch (error: Exception) {
+                Log.w("AuthRepository", "Failed to clear operational location on logout", error)
+            }
+            try {
+                SafetyStatusRepository.clearLocalCache()
+            } catch (error: Exception) {
+                Log.w("AuthRepository", "Failed to clear safety status on logout", error)
+            }
+        }
     }
 
     private fun extractTokenFromLink(tokenOrLink: String): String {

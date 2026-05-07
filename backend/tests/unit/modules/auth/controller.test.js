@@ -15,6 +15,7 @@ const {
   forgotPassword,
   resetPasswordHandler,
   logout,
+  deleteMe,
 } = require('../../../../src/modules/auth/controller');
 
 const {
@@ -26,6 +27,7 @@ const {
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 } = require('../../../../src/modules/auth/service');
 
 const {
@@ -155,6 +157,24 @@ describe('login', () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
   });
+
+  test('403 - user is banned', async () => {
+    validateLoginInput.mockReturnValue(null);
+    const error = new Error('User banned');
+    error.code = 'USER_BANNED';
+    loginUser.mockRejectedValue(error);
+    const req = { body: {} };
+    const res = mockRes();
+
+    await login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'USER_BANNED',
+      }),
+    );
+  });
 });
 
 // ─── verifyEmail ──────────────────────────────────────────────────────────────
@@ -192,6 +212,24 @@ describe('verifyEmail', () => {
     await verifyEmail(req, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  test('403 - banned user cannot complete verification login flow', async () => {
+    validateVerificationInput.mockReturnValue(null);
+    const error = new Error('User banned');
+    error.code = 'USER_BANNED';
+    verifyUserEmail.mockRejectedValue(error);
+    const req = { query: { token: 'banned-token' } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'USER_BANNED',
+      }),
+    );
   });
 
   test('500 - internal error', async () => {
@@ -415,5 +453,56 @@ describe('logout', () => {
     await logout(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+// ─── deleteMe ────────────────────────────────────────────────────────────────
+
+describe('deleteMe', () => {
+  test('200 - soft-deletes current user', async () => {
+    deleteCurrentUser.mockResolvedValue({
+      message: 'Account deleted successfully.',
+      deleted: true,
+    });
+    const req = { user: { userId: 'uuid-1' } };
+    const res = mockRes();
+
+    await deleteMe(req, res);
+
+    expect(deleteCurrentUser).toHaveBeenCalledWith('uuid-1');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ deleted: true }));
+  });
+
+  test('404 - user not found', async () => {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    deleteCurrentUser.mockRejectedValue(error);
+    const req = { user: { userId: 'uuid-1' } };
+    const res = mockRes();
+
+    await deleteMe(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'USER_NOT_FOUND',
+      }),
+    );
+  });
+
+  test('500 - internal error', async () => {
+    deleteCurrentUser.mockRejectedValue(new Error('unexpected'));
+    const req = { user: { userId: 'uuid-1' } };
+    const res = mockRes();
+
+    await deleteMe(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'INTERNAL_ERROR',
+      }),
+    );
   });
 });

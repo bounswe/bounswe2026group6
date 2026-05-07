@@ -4,6 +4,36 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
+const migrationFileNamePattern = /^\d{8}_\d{6}__[a-z0-9_]+\.sql$/;
+
+function listSqlFilesRecursive(baseDir) {
+  if (!fs.existsSync(baseDir)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(baseDir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...listSqlFilesRecursive(fullPath));
+      continue;
+    }
+
+    if (entry.isFile() && fullPath.endsWith('.sql')) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+function isMigrationFile(filePath) {
+  return migrationFileNamePattern.test(path.basename(filePath));
+}
+
 function quoteIdentifier(identifier) {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
     throw new Error(
@@ -69,6 +99,16 @@ module.exports = async function globalSetup() {
 
   try {
     await testClient.query(initSql);
+
+    const migrationsDir = path.resolve(__dirname, '../../migrations');
+    const migrationFiles = listSqlFilesRecursive(migrationsDir)
+      .filter(isMigrationFile)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const migrationFile of migrationFiles) {
+      const migrationSql = fs.readFileSync(migrationFile, 'utf-8');
+      await testClient.query(migrationSql);
+    }
   } finally {
     await testClient.end();
   }

@@ -9,7 +9,7 @@ export function HelperText({
     ...props
 }: HelperTextProps) {
     return (
-        <p className={cn("text-xs text-[#737380]", className)} {...props}>
+        <p className={cn("text-xs text-[color:var(--text-secondary)]", className)} {...props}>
             {children}
         </p>
     );

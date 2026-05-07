@@ -49,8 +49,12 @@ android/.gradle/
 android/**/build/
 android/local.properties
 android/keystore.properties
+android/app/google-services.json
 *.keystore
 *.jks
+
+# Firebase secrets
+backend/secrets/
 
 # Test artifacts
 playwright-report/
@@ -64,3 +68,8 @@ test-results/
 # Agent files
 .sisyphus
 mvp354/
+.omx/
+
+# Firebase secrets
+android/app/src/debug/google-services.json
+android/app/src/e2e/google-services.json

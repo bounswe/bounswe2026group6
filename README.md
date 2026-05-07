@@ -169,6 +169,39 @@ Notes:
 - the backend waits for PostgreSQL to become healthy before starting
 - the web container is configured to talk to the backend in the local Docker setup
 
+### Demo data seed
+
+After migrations have run, you can populate the app with clearly marked demo data for presentations and evaluation. The seed is idempotent, so running it again skips existing demo records instead of creating duplicates.
+
+For the Docker Compose setup, including EC2 deployments that run this repository with Compose:
+
+```bash
+docker compose exec -e ENABLE_DEMO_SEED=true backend node scripts/seed-demo-data.js
+```
+
+For a backend process running directly on the host:
+
+```bash
+cd backend
+ENABLE_DEMO_SEED=true node scripts/seed-demo-data.js
+```
+
+Demo login password for `*@neph.test` users:
+
+```text
+DemoPass123!
+```
+
+Demo accounts:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin_demo@neph.test` | `DemoPass123!` |
+| Requester | `requester_ayse@neph.test` | `DemoPass123!` |
+| Requester | `requester_mert@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_elif@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_can@neph.test` | `DemoPass123!` |
+
 ### Optional non-Docker development
 
 If you want to run modules directly on your machine instead of Docker Compose, use the module-specific setup inside each folder:
@@ -218,4 +251,25 @@ This README focuses on local development and evaluation. Deployment- and release
 
 - keep documentation and env examples in sync with the actual setup
 - prefer the root Docker flow for quick end-to-end verification
+
+## End-to-end tests
+
+The repository now includes browser-based end-to-end coverage for the main web + backend user journeys:
+
+- guest navigation and protected-route redirects
+- signup, email verification, and profile completion
+- profile/privacy updates after login
+- forgot-password and reset-password flows
+
+Run them from `web/`:
+
+```bash
+npm run test:e2e
+```
+
+Notes:
+
+- Playwright global setup starts the backend and web app automatically for the test run.
+- The suite expects a PostgreSQL server reachable through `TEST_POSTGRES_*` variables. In CI this is provided by a service container; locally you can use your own PostgreSQL instance or Docker.
+- The backend runs in `NODE_ENV=test` during E2E, so auth emails are stubbed instead of being sent to a real SMTP provider.
 - keep local configuration out of version control

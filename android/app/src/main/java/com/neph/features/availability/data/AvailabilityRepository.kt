@@ -2,13 +2,56 @@ package com.neph.features.availability.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.neph.BuildConfig
+import com.neph.core.NephAppContext
+import com.neph.core.database.AvailabilityEntity
+import com.neph.core.database.NephDatabaseProvider
+import com.neph.core.database.SyncOperationEntity
 import com.neph.core.network.JsonHttpClient
+import com.neph.core.sync.OfflineSyncScheduler
+import com.neph.core.sync.SyncEntityType
+import com.neph.core.sync.SyncOperationType
+import com.neph.core.sync.SyncStatus
+import com.neph.features.profile.data.CurrentDeviceLocation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class AvailabilityState(
     val isAvailable: Boolean = false,
-    val assignmentId: String? = null
-)
+    val isAssignable: Boolean = false,
+    val assignmentId: String? = null,
+    val availableUntil: String? = null,
+    val locationUpdatedAt: String? = null,
+    val pauseReason: String = AvailabilityPauseReason.NONE.name,
+    val syncStatus: String = SyncStatus.SYNCED,
+    val pendingError: String? = null,
+    val lastSyncedAtEpochMillis: Long? = null
+) {
+    val isPendingSync: Boolean
+        get() = syncStatus == SyncStatus.PENDING_UPDATE
+
+    val isFailedSync: Boolean
+        get() = syncStatus == SyncStatus.FAILED || syncStatus == SyncStatus.CONFLICTED
+}
+
+enum class AvailabilityPauseReason {
+    LOCATION_STALE,
+    AVAILABILITY_EXPIRED,
+    LOCATION_MISSING,
+    NONE;
+
+    companion object {
+        fun fromBackend(value: String?): AvailabilityPauseReason {
+            return values().firstOrNull { it.name == value } ?: NONE
+        }
+    }
+}
 
 object AvailabilityAccessPolicy {
     // Logged-in users only.
@@ -26,14 +69,44 @@ object AvailabilityRepository {
 
     private lateinit var prefs: SharedPreferences
     private var cachedState = AvailabilityState()
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val database get() = NephDatabaseProvider.requireInstance()
 
     fun initialize(context: Context) {
         if (!::prefs.isInitialized) {
-            prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
+            val appContext = context.applicationContext
+            NephAppContext.initialize(appContext)
+            NephDatabaseProvider.initialize(appContext)
+            prefs = appContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
             cachedState = AvailabilityState(
                 isAvailable = prefs.getBoolean(AvailabilityKey, false),
                 assignmentId = prefs.getString(AssignmentIdKey, null)
             )
+            repositoryScope.launch {
+                val current = database.availabilityDao().get()
+                if (current != null) {
+                    cachedState = current.toState()
+                } else {
+                    val migrated = AvailabilityEntity(
+                        isAvailable = cachedState.isAvailable,
+                        assignmentId = cachedState.assignmentId,
+                        updatedAtEpochMillis = System.currentTimeMillis(),
+                        lastSyncedAtEpochMillis = null
+                    )
+                    database.availabilityDao().upsert(migrated)
+                    cachedState = migrated.toState()
+                }
+            }
+        }
+    }
+
+    fun observeAvailabilityState(): Flow<AvailabilityState> {
+        ensureInitialized()
+        return database.availabilityDao().observe().map { entity ->
+            val next = entity?.toState() ?: cachedState
+            cachedState = next
+            next
         }
     }
 
@@ -42,9 +115,34 @@ object AvailabilityRepository {
         return cachedState
     }
 
-    fun setAvailabilityStateForUi(state: AvailabilityState) {
+    fun resetForTesting() {
+        requireDebugBuildForTestingReset()
+
+        cachedState = AvailabilityState()
+        if (::prefs.isInitialized) {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    suspend fun clearLocalCache() {
+        NephAppContext.getOrNull()?.let(::initialize)
+        cachedState = AvailabilityState()
+        if (::prefs.isInitialized) {
+            prefs.edit().clear().apply()
+        }
+        database.availabilityDao().clear()
+        database.syncOperationDao().deleteByEntityType(SyncEntityType.AVAILABILITY)
+    }
+
+    private fun requireDebugBuildForTestingReset() {
+        check(BuildConfig.DEBUG) {
+            "AvailabilityRepository.resetForTesting() is only available in debug/e2e test builds."
+        }
+    }
+
+    suspend fun setAvailabilityStateForUi(state: AvailabilityState) {
         ensureInitialized()
-        saveAvailabilityState(state)
+        saveAvailabilityState(state.toEntity(syncStatus = state.syncStatus))
     }
 
     suspend fun refreshAssignmentState(token: String): AvailabilityState {
@@ -56,50 +154,270 @@ object AvailabilityRepository {
         )
 
         val assignment = response.optJSONObject("assignment")
+        val pauseReason = AvailabilityPauseReason.fromBackend(response.optString("pauseReason"))
         val nextState = AvailabilityState(
             isAvailable = response.optBoolean("isAvailable", false),
-            assignmentId = assignment?.optString("assignment_id")?.takeIf { it.isNotBlank() }
+            isAssignable = response.optBoolean(
+                "isAssignable",
+                response.optBoolean("effectiveIsAvailable", false)
+            ),
+            assignmentId = assignment?.optString("assignment_id")?.takeIf { it.isNotBlank() },
+            availableUntil = response.optString("availableUntil").takeIf { it.isNotBlank() },
+            locationUpdatedAt = response.optString("locationUpdatedAt").takeIf { it.isNotBlank() },
+            pauseReason = pauseReason.name,
+            syncStatus = SyncStatus.SYNCED,
+            pendingError = null,
+            lastSyncedAtEpochMillis = System.currentTimeMillis()
         )
 
-        saveAvailabilityState(nextState)
+        saveAvailabilityState(nextState.toEntity(syncStatus = SyncStatus.SYNCED))
         return nextState
     }
 
     suspend fun setAvailability(
         isAvailable: Boolean,
-        token: String?
+        token: String?,
+        currentDeviceLocation: CurrentDeviceLocation? = null
     ): AvailabilityState {
         ensureInitialized()
+        val now = System.currentTimeMillis()
+        val nextState = AvailabilityState(
+            isAvailable = isAvailable,
+            isAssignable = false,
+            assignmentId = cachedState.assignmentId,
+            availableUntil = cachedState.availableUntil,
+            locationUpdatedAt = cachedState.locationUpdatedAt,
+            pauseReason = if (isAvailable) cachedState.pauseReason else AvailabilityPauseReason.NONE.name,
+            syncStatus = SyncStatus.PENDING_UPDATE,
+            pendingError = null,
+            lastSyncedAtEpochMillis = cachedState.lastSyncedAtEpochMillis
+        )
+
+        saveAvailabilityState(nextState.toEntity(syncStatus = SyncStatus.PENDING_UPDATE, now = now))
+        database.syncOperationDao().upsert(
+            SyncOperationEntity(
+                entityType = SyncEntityType.AVAILABILITY,
+                entityId = AvailabilityEntity.CURRENT_KEY,
+                operationType = SyncOperationType.SET_AVAILABILITY,
+                payloadJson = buildAvailabilityOperationPayload(
+                    isAvailable = isAvailable,
+                    timestamp = now,
+                    currentDeviceLocation = currentDeviceLocation.takeIf { isAvailable }
+                ).toString(),
+                createdAtEpochMillis = now
+            )
+        )
+        OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "availability-updated")
+        return nextState
+    }
+
+    suspend fun rollbackAvailabilityAfterFailedSync(
+        previousState: AvailabilityState,
+        message: String
+    ) {
+        ensureInitialized()
+        database.syncOperationDao().deleteOperations(
+            entityType = SyncEntityType.AVAILABILITY,
+            entityId = AvailabilityEntity.CURRENT_KEY,
+            operationType = SyncOperationType.SET_AVAILABILITY
+        )
+        saveAvailabilityState(
+            previousState.copy(
+                syncStatus = SyncStatus.FAILED,
+                pendingError = message
+            ).toEntity(syncStatus = SyncStatus.FAILED)
+        )
+    }
+
+    suspend fun syncPendingAvailabilityNow(token: String?) {
+        ensureInitialized()
+        val operations = database.syncOperationDao()
+            .getPendingOperations()
+            .filter { it.operationType == SyncOperationType.SET_AVAILABILITY }
+
+        if (operations.isEmpty()) {
+            return
+        }
+
+        pushAvailabilityOperations(operations, token)
+    }
+
+    internal suspend fun pushAvailabilityOperations(
+        operations: List<SyncOperationEntity>,
+        token: String?
+    ) {
+        if (operations.isEmpty() || token.isNullOrBlank()) return
+
+        val records = JSONArray().apply {
+            operations.sortedBy { it.createdAtEpochMillis }.forEach { operation ->
+                val payload = JSONObject(operation.payloadJson)
+                put(
+                    buildAvailabilitySyncRecord(payload)
+                )
+            }
+        }
 
         val response = JsonHttpClient.request(
-            path = "/availability/toggle",
+            path = "/availability/sync",
             method = "POST",
-            token = token?.takeIf { it.isNotBlank() },
-            body = JSONObject().put("isAvailable", isAvailable)
+            token = token,
+            body = JSONObject().put("records", records)
         )
 
         val volunteer = response.optJSONObject("volunteer")
         val assignment = response.optJSONObject("assignment")
-
-        val nextState = AvailabilityState(
-            isAvailable = volunteer?.optBoolean("is_available") ?: isAvailable,
-            assignmentId = assignment?.optString("assignment_id")?.takeIf { it.isNotBlank() }
+        val now = System.currentTimeMillis()
+        saveAvailabilityState(
+            AvailabilityEntity(
+                isAvailable = volunteer?.optBoolean("is_available") ?: cachedState.isAvailable,
+                isAssignable = cachedState.isAssignable,
+                assignmentId = assignment?.optString("assignment_id")?.takeIf { it.isNotBlank() },
+                availableUntil = cachedState.availableUntil,
+                locationUpdatedAt = cachedState.locationUpdatedAt,
+                pauseReason = cachedState.pauseReason,
+                syncStatus = SyncStatus.SYNCED,
+                pendingError = null,
+                updatedAtEpochMillis = now,
+                lastSyncedAtEpochMillis = now
+            )
         )
 
-        saveAvailabilityState(nextState)
-        return nextState
+        operations.forEach { database.syncOperationDao().delete(it.operationId) }
     }
 
-    private fun saveAvailabilityState(state: AvailabilityState) {
-        cachedState = state
+
+    internal suspend fun markSyncDeferred(message: String?) {
+        val now = System.currentTimeMillis()
+        saveAvailabilityState(
+            (database.availabilityDao().get() ?: AvailabilityEntity(
+                isAvailable = cachedState.isAvailable,
+                isAssignable = cachedState.isAssignable,
+                assignmentId = cachedState.assignmentId,
+                availableUntil = cachedState.availableUntil,
+                locationUpdatedAt = cachedState.locationUpdatedAt,
+                pauseReason = cachedState.pauseReason,
+                updatedAtEpochMillis = now
+            )).copy(
+                syncStatus = SyncStatus.PENDING_UPDATE,
+                pendingError = message,
+                updatedAtEpochMillis = now
+            )
+        )
+    }
+
+    internal suspend fun markSyncFailed(message: String?) {
+        val now = System.currentTimeMillis()
+        saveAvailabilityState(
+            (database.availabilityDao().get() ?: AvailabilityEntity(
+                isAvailable = false,
+                isAssignable = false,
+                assignmentId = null,
+                availableUntil = null,
+                locationUpdatedAt = null,
+                pauseReason = AvailabilityPauseReason.NONE.name,
+                updatedAtEpochMillis = now
+            )).copy(
+                syncStatus = SyncStatus.FAILED,
+                pendingError = message,
+                updatedAtEpochMillis = now
+            )
+        )
+    }
+
+    private suspend fun saveAvailabilityState(entity: AvailabilityEntity) {
+        cachedState = entity.toState()
+        database.availabilityDao().upsert(entity)
         prefs.edit().apply {
-            putBoolean(AvailabilityKey, state.isAvailable)
-            if (state.assignmentId.isNullOrBlank()) {
+            putBoolean(AvailabilityKey, entity.isAvailable)
+            if (entity.assignmentId.isNullOrBlank()) {
                 remove(AssignmentIdKey)
             } else {
-                putString(AssignmentIdKey, state.assignmentId)
+                putString(AssignmentIdKey, entity.assignmentId)
             }
         }.apply()
+    }
+
+    private fun AvailabilityState.toEntity(
+        syncStatus: String,
+        now: Long = System.currentTimeMillis()
+    ): AvailabilityEntity {
+        return AvailabilityEntity(
+            isAvailable = isAvailable,
+            isAssignable = isAssignable,
+            assignmentId = assignmentId,
+            availableUntil = availableUntil,
+            locationUpdatedAt = locationUpdatedAt,
+            pauseReason = pauseReason,
+            syncStatus = syncStatus,
+            pendingError = pendingError,
+            updatedAtEpochMillis = now,
+            lastSyncedAtEpochMillis = lastSyncedAtEpochMillis
+        )
+    }
+
+    private fun AvailabilityEntity.toState(): AvailabilityState {
+        return AvailabilityState(
+            isAvailable = isAvailable,
+            isAssignable = isAssignable,
+            assignmentId = assignmentId,
+            availableUntil = availableUntil,
+            locationUpdatedAt = locationUpdatedAt,
+            pauseReason = pauseReason,
+            syncStatus = syncStatus,
+            pendingError = pendingError,
+            lastSyncedAtEpochMillis = lastSyncedAtEpochMillis
+        )
+    }
+
+    private fun Long.toIsoLikeString(): String {
+        // Backend only requires a parsable timestamp and sorts by Date(timestamp).
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+        formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return formatter.format(java.util.Date(this))
+    }
+
+    internal fun buildAvailabilityOperationPayload(
+        isAvailable: Boolean,
+        timestamp: Long,
+        currentDeviceLocation: CurrentDeviceLocation? = null
+    ): JSONObject {
+        return JSONObject()
+            .put("isAvailable", isAvailable)
+            .put("timestamp", timestamp)
+            .apply {
+                if (isAvailable && currentDeviceLocation != null) {
+                    put("latitude", currentDeviceLocation.latitude)
+                    put("longitude", currentDeviceLocation.longitude)
+                    put("accuracyMeters", currentDeviceLocation.accuracyMeters)
+                    put("source", currentDeviceLocation.source)
+                    put("capturedAt", currentDeviceLocation.capturedAt)
+                }
+            }
+    }
+
+    internal fun buildAvailabilitySyncRecord(payload: JSONObject): JSONObject {
+        return JSONObject()
+            .put("isAvailable", payload.optBoolean("isAvailable"))
+            .put("timestamp", payload.optLong("timestamp").toIsoLikeString())
+            .apply {
+                if (payload.has("latitude") && payload.has("longitude")) {
+                    put("latitude", payload.getDouble("latitude"))
+                    put("longitude", payload.getDouble("longitude"))
+                    if (payload.has("accuracyMeters") && !payload.isNull("accuracyMeters")) {
+                        put("accuracyMeters", payload.getDouble("accuracyMeters"))
+                    }
+                    if (payload.has("source") && !payload.isNull("source")) {
+                        put("source", payload.getString("source"))
+                    } else if (payload.has("locationSource") && !payload.isNull("locationSource")) {
+                        put("source", payload.getString("locationSource"))
+                    }
+                    if (payload.has("capturedAt") && !payload.isNull("capturedAt")) {
+                        put("capturedAt", payload.getString("capturedAt"))
+                    } else if (payload.has("locationCapturedAt") && !payload.isNull("locationCapturedAt")) {
+                        put("capturedAt", payload.getString("locationCapturedAt"))
+                    }
+                }
+            }
     }
 
     private fun ensureInitialized() {

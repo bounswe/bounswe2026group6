@@ -1,39 +1,65 @@
 package com.neph.features.home.presentation
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.neph.core.network.ApiException
+import com.neph.core.sync.SyncStatus
+import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.availability.data.AvailabilityAccessPolicy
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
+import com.neph.features.availability.presentation.AvailabilitySyncIndicator
+import com.neph.features.operationallocation.data.OperationalLocationRepository
+import com.neph.features.profile.data.CurrentDeviceLocation
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
+import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
+import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
+import com.neph.features.safetystatus.data.SafetyStatusRepository
+import com.neph.features.safetystatus.data.SafetyStatusState
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
+import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.display.SectionCard
+import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
-    onRequestHelp: () -> Unit,
+    onRequestHelp: (String?) -> Unit,
     onOpenAssignedRequest: () -> Unit,
     onOpenMyHelpRequests: () -> Unit,
     onNavigateToRoute: (String) -> Unit,
@@ -46,110 +72,401 @@ fun HomeScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val sessionToken = AuthSessionStore.getAccessToken()
 
-    var availabilityState by remember {
-        mutableStateOf(AvailabilityRepository.getAvailabilityState())
-    }
+    val availabilityState by AvailabilityRepository.observeAvailabilityState()
+        .collectAsState(initial = AvailabilityRepository.getAvailabilityState())
+    val safetyStatusState by SafetyStatusRepository.observeSafetyStatusState()
+        .collectAsState(initial = SafetyStatusState())
     var availabilityLoading by remember { mutableStateOf(false) }
     var availabilityError by remember { mutableStateOf("") }
     var availabilityInfo by remember { mutableStateOf("") }
+    var availabilitySyncIndicator by remember { mutableStateOf(AvailabilitySyncIndicator.NONE) }
     var requestHelpLoading by remember { mutableStateOf(false) }
     var requestHelpError by remember { mutableStateOf("") }
+    var markSafeLoading by remember { mutableStateOf(false) }
+    var showMarkSafeLocationConsentDialog by remember { mutableStateOf(false) }
+    var emergencyInfo by remember { mutableStateOf("") }
+    var emergencyError by remember { mutableStateOf("") }
+    var locationPermissionInfo by remember { mutableStateOf("") }
+    var locationPermissionGranted by remember {
+        mutableStateOf(DeviceLocationProvider.hasLocationPermission(context))
+    }
+    var pendingLocationPermissionAction by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
 
-    LaunchedEffect(isAuthenticated, sessionToken) {
-        if (!isAuthenticated || sessionToken.isNullOrBlank()) {
-            return@LaunchedEffect
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        locationPermissionGranted = result.granted
+        val action = pendingLocationPermissionAction
+        pendingLocationPermissionAction = null
+        action?.invoke(result.granted)
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                locationPermissionGranted = DeviceLocationProvider.hasLocationPermission(context)
+            }
         }
-
-        try {
-            availabilityState = AvailabilityRepository.refreshAssignmentState(sessionToken)
-        } catch (_: Exception) {
-            // Keep the cached state if the refresh attempt fails.
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
-    fun handleAvailabilityChange(nextValue: Boolean) {
+    fun syncAvailabilityChange(
+        nextValue: Boolean,
+        currentDeviceLocation: CurrentDeviceLocation? = null
+    ) {
         availabilityError = ""
         availabilityInfo = ""
+        availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
 
         if (!AvailabilityAccessPolicy.canAccess(sessionToken)) {
             availabilityError = "Please log in to manage your availability."
+            availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
             if (AvailabilityAccessPolicy.shouldRedirectToLogin()) {
                 onNavigateToLogin()
             }
             return
         }
 
-        val previousState = availabilityState
-        availabilityState = previousState.copy(isAvailable = nextValue)
         availabilityLoading = true
 
         scope.launch {
+            val previousState = availabilityState
             try {
-                availabilityState = AvailabilityRepository.setAvailability(
+                availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCING
+                AvailabilityRepository.setAvailability(
                     isAvailable = nextValue,
-                    token = sessionToken
+                    token = sessionToken,
+                    currentDeviceLocation = currentDeviceLocation
                 )
-                availabilityInfo = if (availabilityState.isAvailable) {
-                    if (availabilityState.assignmentId != null) {
-                        onOpenAssignedRequest()
-                        "You are now available to help. A request has been assigned to you."
-                    } else {
-                        "You are now available to help."
-                    }
-                } else {
-                    "You are no longer available."
+                AvailabilityRepository.syncPendingAvailabilityNow(sessionToken)
+                if (!sessionToken.isNullOrBlank()) {
+                    AvailabilityRepository.refreshAssignmentState(sessionToken)
                 }
+                availabilitySyncIndicator = AvailabilitySyncIndicator.SYNCED
+                delay(1400)
+                availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
             } catch (cancellationException: CancellationException) {
-                availabilityState = previousState
                 throw cancellationException
             } catch (error: ApiException) {
-                availabilityState = previousState
-                availabilityError = when {
-                    error.status == 401 && !sessionToken.isNullOrBlank() && AvailabilityAccessPolicy.shouldRedirectToLogin() -> {
-                        onNavigateToLogin()
-                        "Your session expired. Please log in again."
-                    }
-                    error.status == 401 -> {
-                        "The backend currently requires login to update availability."
-                    }
-                    else -> error.message.ifBlank { "Could not update your availability." }
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    availabilityError = "Session expired. Please log in again."
+                    onNavigateToLogin()
+                } else {
+                    availabilityError = "Could not sync. Check internet."
+                    AvailabilityRepository.rollbackAvailabilityAfterFailedSync(previousState, availabilityError)
                 }
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
             } catch (_: Exception) {
-                availabilityState = previousState
-                availabilityError = "Something went wrong while updating your availability."
+                availabilityError = "Could not sync. Check internet."
+                AvailabilityRepository.rollbackAvailabilityAfterFailedSync(previousState, availabilityError)
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
             } finally {
                 availabilityLoading = false
             }
         }
     }
 
+    fun enableAvailabilityWithCurrentLocation() {
+        availabilityError = ""
+        availabilityInfo = ""
+        availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
+        availabilityLoading = true
+
+        scope.launch {
+            try {
+                val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                if (locationAttempt.location == null) {
+                    availabilityError = when (locationAttempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission is required before you can become available to help."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. Availability was not enabled."
+                    }
+                    availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+                    availabilityLoading = false
+                    return@launch
+                }
+
+                OperationalLocationRepository.saveAndSyncIfAuthenticated(locationAttempt.location)
+                availabilityLoading = false
+                syncAvailabilityChange(
+                    nextValue = true,
+                    currentDeviceLocation = locationAttempt.location
+                )
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                availabilityError = "Current location is unavailable. Availability was not enabled."
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+                availabilityLoading = false
+            }
+        }
+    }
+
+    fun handleAvailabilityChange(nextValue: Boolean) {
+        if (!nextValue) {
+            syncAvailabilityChange(false)
+            return
+        }
+
+        availabilityError = ""
+        availabilityInfo = ""
+        availabilitySyncIndicator = AvailabilitySyncIndicator.NONE
+
+        if (!AvailabilityAccessPolicy.canAccess(sessionToken)) {
+            availabilityError = "Please log in to manage your availability."
+            availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+            if (AvailabilityAccessPolicy.shouldRedirectToLogin()) {
+                onNavigateToLogin()
+            }
+            return
+        }
+
+        pendingLocationPermissionAction = { granted ->
+            if (granted) {
+                enableAvailabilityWithCurrentLocation()
+            } else {
+                availabilityError = "Location permission is required before you can become available to help."
+                availabilitySyncIndicator = AvailabilitySyncIndicator.FAILED
+            }
+        }
+
+        if (locationPermissionRequester.refreshPermissionState()) {
+            val action = pendingLocationPermissionAction
+            pendingLocationPermissionAction = null
+            action?.invoke(true)
+        } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
+    fun RequestHelpReverseLocation?.hasCompleteEmergencyAdministrativeLocation(): Boolean {
+        return this != null &&
+            !country.isNullOrBlank() &&
+            !city.isNullOrBlank() &&
+            !district.isNullOrBlank() &&
+            !neighborhood.isNullOrBlank()
+    }
+
     fun handleRequestHelp() {
         availabilityError = ""
         availabilityInfo = ""
         requestHelpError = ""
-
-        if (!isAuthenticated || sessionToken.isNullOrBlank()) {
-            onRequestHelp()
-            return
-        }
+        emergencyError = ""
+        emergencyInfo = ""
 
         scope.launch {
             requestHelpLoading = true
             try {
-                val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                val hasActiveRequest = try {
+                    if (!sessionToken.isNullOrBlank()) {
+                        RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                    } else {
+                        false
+                    }
+                } catch (error: ApiException) {
+                    if (error.status == 401) throw error else false
+                } catch (_: Exception) {
+                    false
+                }
                 if (hasActiveRequest) {
                     onOpenMyHelpRequests()
+                } else if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+                    onRequestHelp(null)
                 } else {
-                    onRequestHelp()
+                    if (!DeviceLocationProvider.hasLocationPermission(context)) {
+                        requestHelpLoading = false
+                        pendingLocationPermissionAction = { granted ->
+                            if (granted) {
+                                handleRequestHelp()
+                            } else {
+                                onRequestHelp(null)
+                            }
+                        }
+                        locationPermissionRequester.requestPermission()
+                        return@launch
+                    }
+                    val locationAttempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                        context = context,
+                        sharingEnabled = true
+                    )
+                    val currentLocation = locationAttempt.location
+                    if (currentLocation != null) {
+                        runCatching {
+                            OperationalLocationRepository.saveAndSyncIfAuthenticated(currentLocation)
+                        }
+                    }
+                    val reverseLocation = if (currentLocation != null) {
+                        RequestHelpRepository.reverseGeocodeCurrentLocation(
+                            latitude = currentLocation.latitude,
+                            longitude = currentLocation.longitude
+                        )
+                    } else {
+                        null
+                    }
+                    if (currentLocation != null && !reverseLocation.hasCompleteEmergencyAdministrativeLocation()) {
+                        RequestHelpRepository.storePendingCoordinateSnapshot(currentLocation)
+                        onRequestHelp(null)
+                        return@launch
+                    }
+                    val draft = RequestHelpRepository.createEmergencyDraft(
+                        token = sessionToken,
+                        profile = ProfileRepository.getProfile(),
+                        currentLocation = currentLocation,
+                        reverseLocation = reverseLocation
+                    )
+                    onRequestHelp(draft.requestId)
                 }
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    requestHelpError = "Your session expired. Please log in again before requesting help."
+                    onNavigateToLogin()
+                } else {
+                    requestHelpError = "We could not verify your current help request status. Please try again."
+                }
+            } catch (_: EmergencyDraftRequirementsException) {
+                onRequestHelp(null)
             } catch (_: Exception) {
                 requestHelpError = "We could not verify your current help request status. Please try again."
             } finally {
                 requestHelpLoading = false
             }
         }
+    }
+
+    fun requestMarkSafeConfirmation() {
+        availabilityError = ""
+        availabilityInfo = ""
+        requestHelpError = ""
+        emergencyError = ""
+        emergencyInfo = ""
+
+        if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+            emergencyError = "Please log in before marking yourself safe."
+            onNavigateToLogin()
+            return
+        }
+
+        showMarkSafeLocationConsentDialog = true
+    }
+
+    fun handleMarkSafeWithOptionalLocation(
+        shareLocation: Boolean,
+        permissionDeniedBeforeCapture: Boolean = false
+    ) {
+        val safeSessionToken = sessionToken
+        if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
+            showMarkSafeLocationConsentDialog = false
+            emergencyError = "Please log in before marking yourself safe."
+            onNavigateToLogin()
+            return
+        }
+
+        showMarkSafeLocationConsentDialog = false
+        markSafeLoading = true
+        scope.launch {
+            try {
+                val locationAttempt = if (shareLocation && !permissionDeniedBeforeCapture) {
+                    DeviceLocationProvider.captureCurrentLocationForSharing(
+                        context = context,
+                        sharingEnabled = true
+                    )
+                } else {
+                    null
+                }
+                val sharedLocation = locationAttempt?.location
+                if (sharedLocation != null) {
+                    runCatching {
+                        OperationalLocationRepository.saveAndSyncIfAuthenticated(sharedLocation)
+                    }
+                }
+                val nextSafetyStatus = SafetyStatusRepository.markSafe(
+                    token = safeSessionToken,
+                    location = sharedLocation,
+                    shareLocationConsent = shareLocation && sharedLocation != null
+                )
+                emergencyError = ""
+                emergencyInfo = buildMarkSafeFeedback(
+                    safetyStatus = nextSafetyStatus,
+                    shareLocation = shareLocation,
+                    sharedLocation = sharedLocation,
+                    locationWarning = locationAttempt?.warning,
+                    permissionDeniedBeforeCapture = permissionDeniedBeforeCapture
+                )
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    emergencyError = "Your session expired. Please log in again before marking yourself safe."
+                    onNavigateToLogin()
+                } else {
+                    emergencyError = error.message.ifBlank { "Could not mark you safe. Please try again." }
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                emergencyError = "Could not mark you safe. Please try again."
+            } finally {
+                markSafeLoading = false
+            }
+        }
+    }
+
+    fun handleMarkSafe(shareLocation: Boolean) {
+        if (!shareLocation) {
+            handleMarkSafeWithOptionalLocation(shareLocation = false)
+            return
+        }
+
+        pendingLocationPermissionAction = { granted ->
+            handleMarkSafeWithOptionalLocation(
+                shareLocation = true,
+                permissionDeniedBeforeCapture = !granted
+            )
+        }
+
+        if (locationPermissionRequester.refreshPermissionState()) {
+            val action = pendingLocationPermissionAction
+            pendingLocationPermissionAction = null
+            action?.invoke(true)
+        } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
+    if (showMarkSafeLocationConsentDialog) {
+        AlertDialog(
+            onDismissRequest = { showMarkSafeLocationConsentDialog = false },
+            title = {
+                Text(text = "Share location with your safe status?")
+            },
+            text = {
+                Text(
+                    text = "Marking yourself safe does not need your location. Share it only if you want people allowed by your privacy settings, and admins, to see where this safety update came from."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { handleMarkSafe(shareLocation = true) }) {
+                    Text("Share location")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { handleMarkSafe(shareLocation = false) }) {
+                    Text("Mark safe without location")
+                }
+            }
+        )
     }
 
     AppDrawerScaffold(
@@ -174,22 +491,105 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(spacing.md)
         ) {
+            if (!locationPermissionGranted) {
+                SectionCard(
+                    modifier = Modifier.clickable {
+                        pendingLocationPermissionAction = { granted ->
+                            locationPermissionGranted = granted
+                            locationPermissionInfo = if (granted) {
+                                ""
+                            } else {
+                                "Location permission was not enabled. You can still use NEPH with manual location entry."
+                            }
+                        }
+                        locationPermissionRequester.requestPermission()
+                    }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                        SectionHeader(
+                            title = "Enable location for faster emergency actions",
+                            subtitle = "Allow NEPH to use your location while the app is open so Request Help and volunteer matching can work faster."
+                        )
+                    }
+                }
+            }
+
+            if (locationPermissionInfo.isNotBlank()) {
+                Text(
+                    text = locationPermissionInfo,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+
             if (isAuthenticated) {
                 AvailableToHelpCard(
-                    isAvailable = availabilityState.isAvailable,
+                    availabilityState = availabilityState,
                     loading = availabilityLoading,
-                    errorMessage = availabilityError,
+                    errorMessage = availabilityError.ifBlank { availabilityState.pendingError.orEmpty() },
                     infoMessage = availabilityInfo,
+                    syncMessage = when {
+                        availabilityState.isPendingSync -> ""
+                        availabilityState.isFailedSync -> availabilityState.pendingError.orEmpty()
+                        else -> ""
+                    },
+                    syncIndicator = availabilitySyncIndicator,
+                    onRefreshLocationAndBecomeAvailable = { handleAvailabilityChange(true) },
                     onAvailabilityChange = ::handleAvailabilityChange
                 )
             }
 
-            PrimaryButton(
-                text = "Request Help",
-                onClick = ::handleRequestHelp,
-                loading = requestHelpLoading,
-                enabled = !availabilityLoading
-            )
+            SectionCard {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm)
+                ) {
+                    SectionHeader(
+                        title = "Emergency Mode",
+                        subtitle = "Choose the critical action first."
+                    )
+
+                    PrimaryButton(
+                        text = "I need help",
+                        onClick = ::handleRequestHelp,
+                        modifier = Modifier.heightIn(min = 72.dp),
+                        loading = requestHelpLoading,
+                        enabled = !availabilityLoading && !markSafeLoading
+                    )
+
+                    SecondaryButton(
+                        text = "I am safe",
+                        onClick = ::requestMarkSafeConfirmation,
+                        enabled = !availabilityLoading && !requestHelpLoading && !markSafeLoading
+                    )
+
+                    if (markSafeLoading) {
+                        Text(
+                            text = "Saving your safety status...",
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    val safetyStatusSyncMessage = buildSafetyStatusSyncMessage(safetyStatusState)
+                    if (!markSafeLoading && safetyStatusSyncMessage.isNotBlank()) {
+                        Text(
+                            text = safetyStatusSyncMessage,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (safetyStatusState.isFailedSync) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
 
             if (requestHelpError.isNotBlank()) {
                 Text(
@@ -201,8 +601,28 @@ fun HomeScreen(
                 )
             }
 
+            if (emergencyError.isNotBlank()) {
+                Text(
+                    text = emergencyError,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            if (emergencyInfo.isNotBlank()) {
+                Text(
+                    text = emergencyInfo,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center
+                )
+            }
+
             Text(
-                text = "Create an emergency help request and share your situation.",
+                text = "Use Emergency Mode to request help or check in safe from your phone.",
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -210,6 +630,49 @@ fun HomeScreen(
             )
         }
     }
+}
+
+private fun buildMarkSafeFeedback(
+    safetyStatus: SafetyStatusState,
+    shareLocation: Boolean,
+    sharedLocation: CurrentDeviceLocation?,
+    locationWarning: CurrentLocationShareWarning?,
+    permissionDeniedBeforeCapture: Boolean
+): String {
+    val locationMessage = when {
+        sharedLocation != null -> "with location."
+        shareLocation && (permissionDeniedBeforeCapture || locationWarning == CurrentLocationShareWarning.PERMISSION_DENIED) ->
+            "without location because permission was denied."
+        shareLocation -> "without location because current location was unavailable."
+        else -> "without location."
+    }
+
+    return when {
+        safetyStatus.isFailedSync -> "Your safe status was saved on this device $locationMessage Sync failed; try again when you have connection."
+        safetyStatus.isPendingSync && safetyStatus.pendingError.requiresLoginForSync() ->
+            "Your safe status was saved on this device $locationMessage It will sync after you log in again."
+        safetyStatus.isPendingSync -> "Your safe status is queued $locationMessage It will sync when connection returns."
+        safetyStatus.syncStatus == SyncStatus.SYNCED -> "Safe status synced $locationMessage"
+        else -> "Your safe status was saved $locationMessage"
+    }
+}
+
+private fun buildSafetyStatusSyncMessage(safetyStatus: SafetyStatusState): String {
+    return when {
+        safetyStatus.isFailedSync -> safetyStatus.pendingError
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "Safe status sync failed: $it" }
+            ?: "Safe status sync failed. Try again when you have connection."
+        safetyStatus.isPendingSync && safetyStatus.pendingError.requiresLoginForSync() ->
+            "Safe status saved locally. It will sync after you log in again."
+        safetyStatus.isPendingSync -> "Safe status saved locally and waiting to sync."
+        else -> ""
+    }
+}
+
+private fun String?.requiresLoginForSync(): Boolean {
+    val message = this?.lowercase().orEmpty()
+    return "login" in message || "session expired" in message
 }
 
 @Preview(showBackground = true, showSystemUi = true)

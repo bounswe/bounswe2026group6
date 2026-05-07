@@ -6,13 +6,16 @@ val professionOptions = listOf(
     DropdownOption("Doctor", "Doctor"),
     DropdownOption("Firefighter", "Firefighter"),
     DropdownOption("Nurse", "Nurse"),
-    DropdownOption("Engineer", "Engineer"),
-    DropdownOption("Volunteer", "Volunteer")
+    DropdownOption("Engineer", "Engineer")
 )
 
 fun professionOptionsFor(currentProfession: String?): List<DropdownOption> {
     val normalized = currentProfession?.trim().orEmpty()
     if (normalized.isBlank()) {
+        return professionOptions
+    }
+
+    if (normalized.equals("Volunteer", ignoreCase = true)) {
         return professionOptions
     }
 

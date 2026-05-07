@@ -34,6 +34,36 @@ describe('profiles validators', () => {
 			expect(result.ok).toBe(true);
 		});
 
+		test('accepts dateOfBirth and auto-derives age when omitted', () => {
+			const result = validatePhysicalPatch({ dateOfBirth: '2000-05-15' });
+
+			expect(result.ok).toBe(true);
+			expect(result.data.dateOfBirth).toBe('2000-05-15');
+			expect(typeof result.data.age).toBe('number');
+			expect(result.data.age).toBeGreaterThanOrEqual(0);
+		});
+
+		test('rejects future dateOfBirth', () => {
+			const result = validatePhysicalPatch({ dateOfBirth: '2999-01-01' });
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('dateOfBirth cannot be in the future');
+		});
+
+		test('rejects invalid calendar day in dateOfBirth', () => {
+			const result = validatePhysicalPatch({ dateOfBirth: '2024-02-30' });
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('dateOfBirth must be a valid date in YYYY-MM-DD format');
+		});
+
+		test('rejects non-ISO dateOfBirth format', () => {
+			const result = validatePhysicalPatch({ dateOfBirth: '15-05-2000' });
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('dateOfBirth must be a valid date in YYYY-MM-DD format');
+		});
+
 		test('rejects negative age', () => {
 			const result = validatePhysicalPatch({ age: -1 });
 
@@ -77,6 +107,79 @@ describe('profiles validators', () => {
 
 			expect(result.ok).toBe(true);
 			expect(result.data).toEqual({ latitude: 41.0082, longitude: 28.9784 });
+		});
+
+		test('accepts hybrid payload with administrative and coordinate objects', () => {
+			const result = validateLocationPatch({
+				displayAddress: 'Levazim, Besiktas, Istanbul',
+				administrative: {
+					countryCode: 'TR',
+					country: 'Turkey',
+					city: 'Istanbul',
+					district: 'Besiktas',
+					neighborhood: 'Levazim',
+					extraAddress: 'Bina B',
+					postalCode: '34340',
+				},
+				coordinate: {
+					latitude: 41.043,
+					longitude: 29.009,
+					accuracyMeters: 12.5,
+					source: 'MANUAL_MAP_PIN',
+					capturedAt: '2026-04-18T11:20:00.000Z',
+				},
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data.administrative.city).toBe('Istanbul');
+			expect(result.data.coordinate.latitude).toBeCloseTo(41.043, 6);
+		});
+
+		test('rejects coordinate object when latitude/longitude are not paired', () => {
+			const result = validateLocationPatch({
+				coordinate: {
+					latitude: 41.043,
+				},
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('coordinate.latitude and coordinate.longitude must be provided together');
+		});
+
+		test('rejects conflicting flat and nested latitude values', () => {
+			const result = validateLocationPatch({
+				latitude: 41.1,
+				longitude: 29.0,
+				coordinate: {
+					latitude: 41.2,
+					longitude: 29.0,
+				},
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('latitude conflicts with coordinate.latitude');
+		});
+
+		test('normalizes administrative countryCode to uppercase ISO alpha-2', () => {
+			const result = validateLocationPatch({
+				administrative: {
+					countryCode: 'tr',
+				},
+			});
+
+			expect(result.ok).toBe(true);
+			expect(result.data.administrative.countryCode).toBe('TR');
+		});
+
+		test('rejects administrative countryCode when it is not ISO alpha-2', () => {
+			const result = validateLocationPatch({
+				administrative: {
+					countryCode: 'TURKEY',
+				},
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.message).toBe('administrative.countryCode must be a 2-letter ISO code');
 		});
 	});
 

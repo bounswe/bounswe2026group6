@@ -44,6 +44,14 @@ type ResetPasswordResponse = {
 
 type CurrentUserResponse = AuthUser;
 
+type DeleteAccountResponse = {
+    message: string;
+    deleted: boolean;
+    cancelledRequestCount: number;
+    cancelledAssignmentRequestCount: number;
+    availabilityCancelled: boolean;
+};
+
 type SetAccessTokenOptions = {
     rememberMe?: boolean;
 };
@@ -163,6 +171,13 @@ export async function resetPassword(payload: {
 
 export async function fetchCurrentUser(token: string) {
     return apiRequest<CurrentUserResponse>("/auth/me", {
+        token: token.trim(),
+    });
+}
+
+export async function deleteCurrentAccount(token: string) {
+    return apiRequest<DeleteAccountResponse>("/auth/me", {
+        method: "DELETE",
         token: token.trim(),
     });
 }

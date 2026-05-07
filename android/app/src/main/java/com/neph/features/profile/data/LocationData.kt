@@ -6,8 +6,7 @@ data class City(val label: String, val districts: Map<String, District>)
 data class Country(val label: String, val cities: Map<String, City>)
 typealias LocationData = Map<String, Country>
 
-
-val locationData: LocationData = mapOf(
+private val defaultLocationData: LocationData = mapOf(
     "tr" to Country(
         label = "Turkey",
         cities = mapOf(
@@ -42,3 +41,22 @@ val locationData: LocationData = mapOf(
         )
     )
 )
+
+@Volatile
+private var currentLocationData: LocationData = defaultLocationData
+
+val locationData: LocationData
+    get() = currentLocationData
+
+fun updateLocationData(newData: LocationData) {
+    if (newData.isEmpty()) {
+        return
+    }
+
+    currentLocationData = newData.toMap()
+}
+
+fun resetLocationDataForTesting() {
+    currentLocationData = defaultLocationData
+    LocationTreeRepository.resetCacheMetadataForTesting()
+}

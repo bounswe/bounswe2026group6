@@ -7,11 +7,8 @@ const {
   markEmailVerified,
   findUserById,
   findAdminByUserId,
-  listUsers,
-  listHelpRequests,
-  listAnnouncements,
-  getBasicStats,
   updateUserPassword,
+  softDeleteUserAccount,
 } = require('./repository');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../../config/mailer');
 
@@ -120,6 +117,12 @@ async function loginUser({ email, password }) {
     throw error;
   }
 
+  if (user.is_banned) {
+    const error = new Error('Your account is banned. Please contact support.');
+    error.code = 'USER_BANNED';
+    throw error;
+  }
+
   if (!user.is_email_verified) {
     const error = new Error('Email is not verified');
     error.code = 'EMAIL_NOT_VERIFIED';
@@ -160,6 +163,19 @@ async function verifyUserEmail(token) {
     throw error;
   }
 
+  const user = await findUserById(decoded.userId);
+  if (!user || user.is_deleted) {
+    const error = new Error('Invalid verification token');
+    error.code = 'INVALID_VERIFICATION_TOKEN';
+    throw error;
+  }
+
+  if (user.is_banned) {
+    const error = new Error('Your account is banned. Please contact support.');
+    error.code = 'USER_BANNED';
+    throw error;
+  }
+
   const updatedUser = await markEmailVerified(decoded.userId);
   const adminRecord = await findAdminByUserId(updatedUser.user_id);
   const tokenPayload = buildAccessTokenPayload(updatedUser, adminRecord);
@@ -197,22 +213,6 @@ async function getCurrentUser(userId) {
     isAdmin: Boolean(adminRecord),
     adminRole: adminRecord ? adminRecord.role : null,
   };
-}
-
-async function getUsersForAdmin() {
-  return listUsers();
-}
-
-async function getHelpRequestsForAdmin() {
-  return listHelpRequests();
-}
-
-async function getAnnouncementsForAdmin() {
-  return listAnnouncements();
-}
-
-async function getStatsForAdmin() {
-  return getBasicStats();
 }
 
 async function resendVerificationEmail(email) {
@@ -294,17 +294,32 @@ async function logoutUser() {
   };
 }
 
+async function deleteCurrentUser(userId) {
+  const result = await softDeleteUserAccount(userId);
+
+  if (!result) {
+    const error = new Error('User not found');
+    error.code = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  return {
+    message: 'Account deleted successfully.',
+    deleted: true,
+    cancelledRequestCount: result.cancelledRequestCount,
+    cancelledAssignmentRequestCount: result.cancelledAssignmentRequestCount,
+    availabilityCancelled: result.availabilityCancelled,
+  };
+}
+
 module.exports = {
   signupUser,
   loginUser,
   verifyUserEmail,
   getCurrentUser,
-  getUsersForAdmin,
-  getHelpRequestsForAdmin,
-  getAnnouncementsForAdmin,
-  getStatsForAdmin,
   resendVerificationEmail,
   requestPasswordReset,
   resetPassword,
   logoutUser,
+  deleteCurrentUser,
 };

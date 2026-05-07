@@ -9,7 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.neph.ui.components.buttons.TextActionButton
+import com.neph.ui.components.theme.ThemeIconButton
 import com.neph.ui.theme.LocalNephSpacing
 
 @Composable
@@ -44,6 +44,10 @@ fun AppScaffold(
             ScreenContainer(
                 modifier = Modifier.weight(1f)
             ) {
+                ThemeIconButton(
+                    modifier = Modifier.align(Alignment.TopEnd)
+                )
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -52,19 +56,21 @@ fun AppScaffold(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(spacing.xl)
                 ) {
-                    if (topBar == null && onNavigateBack != null) {
-                        TextActionButton(
-                            text = "Back",
-                            onClick = onNavigateBack,
-                            modifier = Modifier.align(Alignment.Start)
+                    if (topBar == null) {
+                        if (onNavigateBack != null) {
+                            TextActionButton(
+                                text = "Back",
+                                onClick = onNavigateBack,
+                                modifier = Modifier.align(Alignment.Start)
+                            )
+                        }
+
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
-
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
 
                     content()
                 }

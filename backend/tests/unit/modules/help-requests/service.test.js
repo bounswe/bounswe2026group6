@@ -13,6 +13,7 @@ jest.mock('../../../../src/modules/help-requests/repository', () => ({
 	markHelpRequestAsResolvedByRequestId: jest.fn(),
 	markHelpRequestAsCancelled: jest.fn(),
 	markHelpRequestAsCancelledByRequestId: jest.fn(),
+	listActiveHelpRequestsVisibility: jest.fn(),
 }));
 
 const repository = require('../../../../src/modules/help-requests/repository');
@@ -31,6 +32,7 @@ const {
 	getGuestHelpRequest,
 	updateMyHelpRequestStatus,
 	updateGuestHelpRequestStatus,
+	listActiveHelpRequestsForVisibility,
 } = require('../../../../src/modules/help-requests/service');
 
 describe('help-requests service', () => {
@@ -111,6 +113,28 @@ describe('help-requests service', () => {
 				.rejects
 				.toThrow('connection lost');
 		});
+
+		test('does not auto-assign guest-created requests and redacts helper fields', async () => {
+			const createdGuestRequest = {
+				id: 'req_guest_1',
+				userId: null,
+				status: 'SYNCED',
+				helper: { firstName: 'Test', phone: 5300000000 },
+				helpers: [{ firstName: 'Test', phone: 5300000000 }],
+			};
+			repository.createHelpRequest.mockResolvedValueOnce(createdGuestRequest);
+
+			const result = await createMyHelpRequest(null, { helpTypes: ['first_aid'] });
+
+			expect(availabilityService.tryToAssignRequest).not.toHaveBeenCalled();
+			expect(repository.findHelpRequestById).not.toHaveBeenCalled();
+			expect(result).toMatchObject({
+				id: 'req_guest_1',
+				userId: null,
+				helper: null,
+				helpers: [],
+			});
+		});
 	});
 
 	describe('listMyHelpRequests', () => {
@@ -163,7 +187,11 @@ describe('help-requests service', () => {
 			const result = await getGuestHelpRequest('req_guest_2', token);
 
 			expect(repository.findHelpRequestById).toHaveBeenCalledWith('req_guest_2');
-			expect(result).toEqual(requestRow);
+			expect(result).toEqual({
+				...requestRow,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('returns null when guest-token request does not exist', async () => {
@@ -241,7 +269,20 @@ describe('help-requests service', () => {
 			const result = await updateMyHelpRequestStatus('u1', 'req_1', 'RESOLVED');
 
 			expect(repository.markHelpRequestAsResolved).toHaveBeenCalledWith('u1', 'req_1');
+			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_1');
 			expect(result).toEqual(updated);
+		});
+
+		test('persists RESOLVED before freeing volunteers for authenticated requests', async () => {
+			const current = { id: 'req_1', internalStatus: 'ASSIGNED' };
+			const updated = { id: 'req_1', internalStatus: 'RESOLVED' };
+			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
+			repository.markHelpRequestAsResolved.mockResolvedValueOnce(updated);
+
+			await updateMyHelpRequestStatus('u1', 'req_1', 'RESOLVED');
+
+			expect(repository.markHelpRequestAsResolved.mock.invocationCallOrder[0])
+				.toBeLessThan(availabilityService.cancelAssignmentByRequestId.mock.invocationCallOrder[0]);
 		});
 
 		test('marks as cancelled when current status is not RESOLVED', async () => {
@@ -257,6 +298,18 @@ describe('help-requests service', () => {
 			expect(result).toEqual(updated);
 		});
 
+		test('persists CANCELLED before freeing volunteers for authenticated requests', async () => {
+			const current = { id: 'req_1', internalStatus: 'ASSIGNED' };
+			const updated = { id: 'req_1', internalStatus: 'CANCELLED' };
+			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
+			repository.markHelpRequestAsCancelled.mockResolvedValueOnce(updated);
+
+			await updateMyHelpRequestStatus('u1', 'req_1', 'CANCELLED');
+
+			expect(repository.markHelpRequestAsCancelled.mock.invocationCallOrder[0])
+				.toBeLessThan(availabilityService.cancelAssignmentByRequestId.mock.invocationCallOrder[0]);
+		});
+
 		test('returns current request idempotently when already RESOLVED', async () => {
 			const current = { id: 'req_1', internalStatus: 'RESOLVED' };
 			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
@@ -265,6 +318,15 @@ describe('help-requests service', () => {
 
 			expect(repository.markHelpRequestAsResolved).not.toHaveBeenCalled();
 			expect(result).toEqual(current);
+		});
+
+		test('throws INVALID_STATUS_TRANSITION when moving CANCELLED to RESOLVED', async () => {
+			const current = { id: 'req_1', internalStatus: 'CANCELLED' };
+			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
+
+			await expect(updateMyHelpRequestStatus('u1', 'req_1', 'RESOLVED'))
+				.rejects
+				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
 		});
 
 		test('throws INVALID_STATUS_TRANSITION for unsupported target status', async () => {
@@ -300,7 +362,11 @@ describe('help-requests service', () => {
 			const result = await updateGuestHelpRequestStatus('req_guest_sync', 'SYNCED', token);
 
 			expect(repository.markHelpRequestAsSyncedByRequestId).toHaveBeenCalledWith('req_guest_sync');
-			expect(result).toEqual(updated);
+			expect(result).toEqual({
+				...updated,
+				helper: null,
+				helpers: [],
+			});
 		});
 
 		test('marks guest request as resolved', async () => {
@@ -316,7 +382,30 @@ describe('help-requests service', () => {
 			const result = await updateGuestHelpRequestStatus('req_guest_resolve', 'RESOLVED', token);
 
 			expect(repository.markHelpRequestAsResolvedByRequestId).toHaveBeenCalledWith('req_guest_resolve');
-			expect(result).toEqual(updated);
+			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_guest_resolve');
+			expect(result).toEqual({
+				...updated,
+				helper: null,
+				helpers: [],
+			});
+		});
+
+		test('persists RESOLVED before freeing volunteers for guest requests', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_resolve_order');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_resolve_order',
+				userId: null,
+				internalStatus: 'ASSIGNED',
+			});
+			repository.markHelpRequestAsResolvedByRequestId.mockResolvedValueOnce({
+				id: 'req_guest_resolve_order',
+				internalStatus: 'RESOLVED',
+			});
+
+			await updateGuestHelpRequestStatus('req_guest_resolve_order', 'RESOLVED', token);
+
+			expect(repository.markHelpRequestAsResolvedByRequestId.mock.invocationCallOrder[0])
+				.toBeLessThan(availabilityService.cancelAssignmentByRequestId.mock.invocationCallOrder[0]);
 		});
 
 		test('marks guest request as cancelled', async () => {
@@ -333,7 +422,29 @@ describe('help-requests service', () => {
 
 			expect(availabilityService.cancelAssignmentByRequestId).toHaveBeenCalledWith('req_guest_cancel');
 			expect(repository.markHelpRequestAsCancelledByRequestId).toHaveBeenCalledWith('req_guest_cancel');
-			expect(result).toEqual(updated);
+			expect(result).toEqual({
+				...updated,
+				helper: null,
+				helpers: [],
+			});
+		});
+
+		test('persists CANCELLED before freeing volunteers for guest requests', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_cancel_order');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_cancel_order',
+				userId: null,
+				internalStatus: 'ASSIGNED',
+			});
+			repository.markHelpRequestAsCancelledByRequestId.mockResolvedValueOnce({
+				id: 'req_guest_cancel_order',
+				internalStatus: 'CANCELLED',
+			});
+
+			await updateGuestHelpRequestStatus('req_guest_cancel_order', 'CANCELLED', token);
+
+			expect(repository.markHelpRequestAsCancelledByRequestId.mock.invocationCallOrder[0])
+				.toBeLessThan(availabilityService.cancelAssignmentByRequestId.mock.invocationCallOrder[0]);
 		});
 
 		test('returns current request idempotently when guest request is already RESOLVED', async () => {
@@ -348,7 +459,24 @@ describe('help-requests service', () => {
 			const result = await updateGuestHelpRequestStatus('req_guest_done', 'RESOLVED', token);
 
 			expect(repository.markHelpRequestAsResolvedByRequestId).not.toHaveBeenCalled();
-			expect(result).toEqual(current);
+			expect(result).toEqual({
+				...current,
+				helper: null,
+				helpers: [],
+			});
+		});
+
+		test('throws INVALID_STATUS_TRANSITION when moving guest CANCELLED request to RESOLVED', async () => {
+			const token = issueGuestHelpRequestAccessToken('req_guest_cancelled');
+			repository.findHelpRequestById.mockResolvedValueOnce({
+				id: 'req_guest_cancelled',
+				userId: null,
+				internalStatus: 'CANCELLED',
+			});
+
+			await expect(updateGuestHelpRequestStatus('req_guest_cancelled', 'RESOLVED', token))
+				.rejects
+				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
 		});
 
 		test('throws INVALID_STATUS_TRANSITION when moving guest RESOLVED request to SYNCED', async () => {
@@ -362,6 +490,25 @@ describe('help-requests service', () => {
 			await expect(updateGuestHelpRequestStatus('req_guest_locked', 'SYNCED', token))
 				.rejects
 				.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
+		});
+	});
+
+	describe('listActiveHelpRequestsForVisibility', () => {
+		test('delegates visibility listing to repository', async () => {
+			const payload = {
+				typeFilters: ['first_aid'],
+				statusFilters: ['PENDING'],
+				limit: 10,
+				offset: 0,
+				isAdmin: false,
+			};
+			const expected = { items: [{ requestId: 'req_1' }], total: 1 };
+			repository.listActiveHelpRequestsVisibility.mockResolvedValueOnce(expected);
+
+			const result = await listActiveHelpRequestsForVisibility(payload);
+
+			expect(repository.listActiveHelpRequestsVisibility).toHaveBeenCalledWith(payload);
+			expect(result).toEqual(expected);
 		});
 	});
 });

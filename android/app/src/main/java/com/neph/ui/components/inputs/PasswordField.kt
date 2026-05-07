@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
@@ -30,6 +31,7 @@ fun PasswordField(
     modifier: Modifier = Modifier,
     placeholder: String? = null,
     enabled: Boolean = true,
+    testTag: String? = null,
     error: String? = null
 ) {
     val spacing = LocalNephSpacing.current
@@ -50,6 +52,13 @@ fun PasswordField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
+                .then(
+                    if (testTag.isNullOrBlank()) {
+                        Modifier
+                    } else {
+                        Modifier.testTag(testTag)
+                    }
+                )
                 .fillMaxWidth()
                 .heightIn(min = 56.dp),
             enabled = enabled,

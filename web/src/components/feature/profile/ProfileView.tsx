@@ -11,11 +11,33 @@ import { TextArea } from "@/components/ui/inputs/TextArea";
 import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
+import {
+    LocationPicker,
+    LocationPickerValue,
+    StreetAddressInput,
+} from "@/components/feature/location";
 import { bloodTypeOptions } from "@/lib/bloodTypes";
+import { countryCodeOptions } from "@/lib/countryCodes";
 import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
-import { clearAccessToken, fetchCurrentUser, getAccessToken } from "@/lib/auth";
+import {
+    clearAccessToken,
+    deleteCurrentAccount,
+    fetchCurrentUser,
+    getAccessToken,
+} from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { fetchLocationTree, searchLocations } from "@/lib/location";
+import {
+    findCityKeyByLabel,
+    findCountryKeyByLabel,
+    findDistrictKeyByLabel,
+    findNeighborhoodValueByLabel,
+    LocationTreeByCountry,
+    parseLocationAddress,
+    resolvePickerLocation,
+} from "@/lib/locationTree";
 import {
     BackendProfileResponse,
     EditableProfileData,
@@ -23,6 +45,7 @@ import {
     fetchMyProfile,
     mapBackendProfileToEditableProfile,
     parseListField,
+    patchMyProfile,
     patchMyHealth,
     patchMyLocation,
     patchMyPhysical,
@@ -31,207 +54,155 @@ import {
     validateExpertiseAreas,
     putMyExpertiseAreas,
 } from "@/lib/profile";
-
-type Neighborhood = { label: string; value: string };
-type District = { label: string; neighborhoods: Neighborhood[] };
-type City = { label: string; districts: Record<string, District> };
-type Country = { label: string; cities: Record<string, City> };
-type LocationData = Record<string, Country>;
-type UploadedFile = { name: string; data: string };
-type UploadField = "chronicDiseasesFiles" | "allergiesFiles";
 type EmptyStateAction = "login" | "complete-profile" | null;
+type ProfileData = EditableProfileData;
 
-type ProfileData = EditableProfileData & {
-    chronicDiseasesFiles: UploadedFile[];
-    chronicDiseasesVerified: boolean;
-    allergiesFiles: UploadedFile[];
-    allergiesVerified: boolean;
-};
+const FRESH_DEVICE_CAPTURE_MAX_AGE_MS = 5 * 60 * 1000;
 
-const locationData: LocationData = {
-    tr: {
-        label: "Turkey",
-        cities: {
-            istanbul: {
-                label: "Istanbul",
-                districts: {
-                    kadikoy: {
-                        label: "Kadıköy",
-                        neighborhoods: [
-                            { label: "Bostancı", value: "bostanci" },
-                            { label: "Erenköy", value: "erenkoy" },
-                        ],
-                    },
-                    besiktas: {
-                        label: "Beşiktaş",
-                        neighborhoods: [
-                            { label: "Balmumcu", value: "balmumcu" },
-                            { label: "Kuruçeşme", value: "kurucesme" },
-                        ],
-                    },
-                },
-            },
-            ankara: {
-                label: "Ankara",
-                districts: {
-                    cankaya: {
-                        label: "Çankaya",
-                        neighborhoods: [{ label: "Anıttepe", value: "anittepe" }],
-                    },
-                },
-            },
-        },
-    },
-};
+function isFreshCurrentDeviceSelection(value: LocationPickerValue | null) {
+    if (!value || value.source !== "current_device") {
+        return false;
+    }
 
-function findCountryKeyByLabel(label: string) {
-    return (
-        Object.entries(locationData).find(([, country]) => country.label === label)?.[0] ||
-        ""
-    );
+    if (!value.capturedAt) {
+        return false;
+    }
+
+    const capturedAtMs = Date.parse(value.capturedAt);
+    if (Number.isNaN(capturedAtMs)) {
+        return false;
+    }
+
+    return Date.now() - capturedAtMs <= FRESH_DEVICE_CAPTURE_MAX_AGE_MS;
 }
 
-function findCityKeyByLabel(countryKey: string, label: string) {
-    const country = locationData[countryKey];
-
-    if (!country) {
-        return "";
-    }
-
-    return (
-        Object.entries(country.cities).find(([, city]) => city.label === label)?.[0] ||
-        ""
-    );
-}
-
-function normalizeAddressPart(value: string) {
-    return value
-        .toLocaleLowerCase("tr")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim();
-}
-
-function parseLocationAddress(countryKey: string, cityKey: string, address: string) {
-    const tokens = address
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
-
-    if (!countryKey || !cityKey || tokens.length === 0) {
-        return {
-            district: "",
-            neighborhood: "",
-            extraAddress: address,
-        };
-    }
-
-    const city = locationData[countryKey]?.cities[cityKey];
-    if (!city) {
-        return {
-            district: "",
-            neighborhood: "",
-            extraAddress: address,
-        };
-    }
-
-    const remainingTokens = new Map(
-        tokens.map((token) => [normalizeAddressPart(token), token])
-    );
-
-    let district = "";
-    let neighborhood = "";
-
-    for (const [districtKey, districtValue] of Object.entries(city.districts)) {
-        const matchedDistrict = [districtKey, districtValue.label]
-            .map(normalizeAddressPart)
-            .find((candidate) => remainingTokens.has(candidate));
-
-        if (!matchedDistrict) {
-            continue;
-        }
-
-        district = districtKey;
-        remainingTokens.delete(matchedDistrict);
-
-        const matchedNeighborhood = districtValue.neighborhoods.find((item) =>
-            [item.value, item.label]
-                .map(normalizeAddressPart)
-                .some((candidate) => remainingTokens.has(candidate))
-        );
-
-        if (matchedNeighborhood) {
-            neighborhood = matchedNeighborhood.value;
-            for (const candidate of [matchedNeighborhood.value, matchedNeighborhood.label].map(
-                normalizeAddressPart
-            )) {
-                remainingTokens.delete(candidate);
-            }
-        }
-
-        break;
-    }
-
+function toPickerValueFromSearchItem(item: {
+    placeId: string;
+    displayName: string;
+    latitude: number;
+    longitude: number;
+    administrative: LocationPickerValue["administrative"];
+}): LocationPickerValue {
     return {
-        district,
-        neighborhood,
-        extraAddress: Array.from(remainingTokens.values()).join(", "),
+        placeId: item.placeId,
+        displayName: item.displayName,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        source: "dropdown_sync",
+        capturedAt: new Date().toISOString(),
+        accuracyMeters: null,
+        administrative: item.administrative,
     };
 }
 
+
 function toProfileData(
     backendProfile: BackendProfileResponse,
-    email: string
+    email: string,
+    locationTree: LocationTreeByCountry
 ): ProfileData {
     const mapped = mapBackendProfileToEditableProfile(backendProfile, email);
-    const countryKey = findCountryKeyByLabel(mapped.country);
-    const cityKey = countryKey ? findCityKeyByLabel(countryKey, mapped.city) : "";
-    const parsedAddress = parseLocationAddress(countryKey, cityKey, mapped.extraAddress);
+    const countryKey = findCountryKeyByLabel(locationTree, mapped.country);
+    const cityKey = countryKey
+        ? findCityKeyByLabel(locationTree, countryKey, mapped.city)
+        : "";
+    const parsedAddress = parseLocationAddress(
+        locationTree,
+        countryKey,
+        cityKey,
+        mapped.extraAddress
+    );
 
     return {
         ...mapped,
-        country: countryKey,
-        city: cityKey,
+        country: countryKey || mapped.country,
+        city: cityKey || mapped.city,
         district: parsedAddress.district,
         neighborhood: parsedAddress.neighborhood,
         extraAddress: parsedAddress.extraAddress,
-        chronicDiseasesFiles: [],
-        chronicDiseasesVerified: false,
-        allergiesFiles: [],
-        allergiesVerified: false,
     };
 }
 
 export default function ProfileView() {
     const router = useRouter();
     const [profile, setProfile] = React.useState<ProfileData | null>(null);
-    const [uploading, setUploading] = React.useState<string | null>(null);
-    const [progress] = React.useState<number>(100);
+    const [locationTree, setLocationTree] = React.useState<LocationTreeByCountry>({});
+    const [locationTreeError, setLocationTreeError] = React.useState("");
+    const [locationPickerValue, setLocationPickerValue] =
+        React.useState<LocationPickerValue | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
+    const [deletingAccount, setDeletingAccount] = React.useState(false);
     const [error, setError] = React.useState("");
     const [info, setInfo] = React.useState("");
+    const [initialShareLocation, setInitialShareLocation] =
+        React.useState(false);
     const [emptyStateAction, setEmptyStateAction] =
         React.useState<EmptyStateAction>(null);
+    const dropdownSyncRequestIdRef = React.useRef(0);
 
     const refreshProfileFromBackend = React.useCallback(
-        async (token: string) => {
+        async (token: string, activeLocationTree: LocationTreeByCountry) => {
             const [user, backendProfile] = await Promise.all([
                 fetchCurrentUser(token),
                 fetchMyProfile(token),
             ]);
 
+            setInitialShareLocation(
+                backendProfile.privacySettings.locationSharingEnabled
+            );
+
             setProfile((currentProfile) => {
-                const refreshedProfile = toProfileData(backendProfile, user.email);
+                const refreshedProfile = toProfileData(
+                    backendProfile,
+                    user.email,
+                    activeLocationTree
+                );
+
+                if (
+                    backendProfile.locationProfile.latitude !== null &&
+                    backendProfile.locationProfile.longitude !== null
+                ) {
+                    setLocationPickerValue({
+                        placeId:
+                            backendProfile.locationProfile.placeId ??
+                            "profile:location",
+                        displayName:
+                            backendProfile.locationProfile.displayAddress ??
+                            ([
+                                backendProfile.locationProfile.city,
+                                backendProfile.locationProfile.country,
+                            ]
+                                .filter(Boolean)
+                                .join(", ") || "Current profile location"),
+                        latitude: backendProfile.locationProfile.latitude,
+                        longitude: backendProfile.locationProfile.longitude,
+                        administrative: {
+                            country: backendProfile.locationProfile.country,
+                            city: backendProfile.locationProfile.city,
+                            district: refreshedProfile.district,
+                            neighborhood: refreshedProfile.neighborhood,
+                            extraAddress: refreshedProfile.extraAddress,
+                            postalCode:
+                                backendProfile.locationProfile.administrative?.postalCode ??
+                                null,
+                        },
+                        source:
+                            backendProfile.locationProfile.coordinate?.source ??
+                            "profile_saved",
+                        capturedAt:
+                            backendProfile.locationProfile.coordinate?.capturedAt ??
+                            backendProfile.locationProfile.lastUpdated,
+                        accuracyMeters:
+                            backendProfile.locationProfile.coordinate?.accuracyMeters ??
+                            null,
+                    });
+                }
 
                 return currentProfile
                     ? {
                         ...refreshedProfile,
-                        chronicDiseasesFiles: currentProfile.chronicDiseasesFiles,
-                        chronicDiseasesVerified:
-                            currentProfile.chronicDiseasesVerified,
-                        allergiesFiles: currentProfile.allergiesFiles,
-                        allergiesVerified: currentProfile.allergiesVerified,
                     }
                     : refreshedProfile;
             });
@@ -256,8 +227,78 @@ export default function ProfileView() {
                     fetchMyProfile(token),
                 ]);
 
-                setProfile(toProfileData(backendProfile, user.email));
+                const mappedProfile = toProfileData(
+                    backendProfile,
+                    user.email,
+                    {}
+                );
+
+                setProfile(mappedProfile);
+                setInitialShareLocation(
+                    backendProfile.privacySettings.locationSharingEnabled
+                );
+                if (
+                    backendProfile.locationProfile.latitude !== null &&
+                    backendProfile.locationProfile.longitude !== null
+                ) {
+                    setLocationPickerValue({
+                        placeId:
+                            backendProfile.locationProfile.placeId ??
+                            "profile:location",
+                        displayName:
+                            backendProfile.locationProfile.displayAddress ??
+                            ([
+                                backendProfile.locationProfile.city,
+                                backendProfile.locationProfile.country,
+                            ]
+                                .filter(Boolean)
+                                .join(", ") || "Current profile location"),
+                        latitude: backendProfile.locationProfile.latitude,
+                        longitude: backendProfile.locationProfile.longitude,
+                        administrative: {
+                            country: backendProfile.locationProfile.country,
+                            city: backendProfile.locationProfile.city,
+                            district: mappedProfile.district,
+                            neighborhood: mappedProfile.neighborhood,
+                            extraAddress: mappedProfile.extraAddress,
+                            postalCode:
+                                backendProfile.locationProfile.administrative?.postalCode ??
+                                null,
+                        },
+                        source:
+                            backendProfile.locationProfile.coordinate?.source ??
+                            "profile_saved",
+                        capturedAt:
+                            backendProfile.locationProfile.coordinate?.capturedAt ??
+                            backendProfile.locationProfile.lastUpdated,
+                        accuracyMeters:
+                            backendProfile.locationProfile.coordinate?.accuracyMeters ??
+                            null,
+                    });
+                }
+
                 setEmptyStateAction(null);
+
+                try {
+                    const treeResponse = await fetchLocationTree("TR");
+                    const nextLocationTree = {
+                        [treeResponse.countryCode.toLowerCase()]: treeResponse.tree,
+                    };
+
+                    setLocationTree(nextLocationTree);
+                    setLocationTreeError("");
+
+                    // Rehydrate picker+form location state after the tree is available
+                    // so district/neighborhood keys are resolved consistently.
+                    await refreshProfileFromBackend(token, nextLocationTree);
+                } catch (treeError) {
+                    setLocationTree({});
+                    setLocationTreeError(
+                        treeError instanceof Error
+                            ? treeError.message
+                            : "Could not load location tree."
+                    );
+                }
             } catch (err) {
                 if (err instanceof ApiError && err.status === 401) {
                     clearAccessToken();
@@ -281,18 +322,181 @@ export default function ProfileView() {
         }
 
         void loadProfile();
-    }, [refreshProfileFromBackend]);
+    }, []);
+
+    const applyPickerToProfile = React.useCallback(
+        (picker: LocationPickerValue) => {
+            if (!Object.keys(locationTree).length) {
+                return;
+            }
+
+            const resolved = resolvePickerLocation(
+                locationTree,
+                picker.administrative,
+                picker.displayName || ""
+            );
+
+            setProfile((currentProfile) => {
+                if (!currentProfile) {
+                    return currentProfile;
+                }
+
+                return {
+                    ...currentProfile,
+                    country: resolved.countryKey || currentProfile.country,
+                    city: resolved.cityKey || currentProfile.city,
+                    district: resolved.districtKey || currentProfile.district,
+                    neighborhood:
+                        resolved.neighborhoodValue || currentProfile.neighborhood,
+                    extraAddress: resolved.extraAddress || currentProfile.extraAddress,
+                };
+            });
+        },
+        [locationTree]
+    );
+
+    const handleLocationPickerChange = React.useCallback(
+        (next: LocationPickerValue | null) => {
+            setLocationPickerValue(next);
+
+            if (!next) {
+                return;
+            }
+
+            applyPickerToProfile(next);
+        },
+        [applyPickerToProfile]
+    );
+
+    const syncPickerFromProfile = React.useCallback(
+        (nextProfile: ProfileData) => {
+            const countryKey = findCountryKeyByLabel(locationTree, nextProfile.country);
+            const cityKey = findCityKeyByLabel(
+                locationTree,
+                countryKey,
+                nextProfile.city
+            );
+
+            if (!countryKey || !cityKey) {
+                return;
+            }
+
+            const selectedCountry = locationTree[countryKey];
+            const selectedCity = selectedCountry?.cities[cityKey];
+
+            if (!selectedCountry || !selectedCity) {
+                return;
+            }
+
+            const districtKey = findDistrictKeyByLabel(
+                locationTree,
+                countryKey,
+                cityKey,
+                nextProfile.district
+            );
+            const selectedDistrict = districtKey
+                ? selectedCity.districts[districtKey]
+                : undefined;
+            const selectedNeighborhood =
+                nextProfile.neighborhood && selectedDistrict
+                    ? selectedDistrict.neighborhoods.find(
+                        (item) => item.value === nextProfile.neighborhood
+                    )
+                    : undefined;
+
+            const query = [
+                selectedNeighborhood?.label,
+                selectedDistrict?.label,
+                selectedCity.label,
+                selectedCountry.label,
+            ]
+                .filter(Boolean)
+                .join(", ");
+
+            if (!query) {
+                return;
+            }
+
+            const currentRequestId = ++dropdownSyncRequestIdRef.current;
+
+            void (async () => {
+                try {
+                    const response = await searchLocations({
+                        q: query,
+                        countryCode: countryKey.toUpperCase() || "TR",
+                        limit: 1,
+                    });
+
+                    if (currentRequestId !== dropdownSyncRequestIdRef.current) {
+                        return;
+                    }
+
+                    const first = response.items[0];
+                    if (!first) {
+                        return;
+                    }
+
+                    setLocationPickerValue(toPickerValueFromSearchItem(first));
+                } catch {
+                    // Keep current picker; dropdown selection still wins on save.
+                }
+            })();
+        },
+        [locationTree]
+    );
+
+    const updateLocationField = React.useCallback(
+        (patch: Partial<ProfileData>) => {
+            setProfile((currentProfile) => {
+                if (!currentProfile) {
+                    return currentProfile;
+                }
+
+                const nextProfile = { ...currentProfile, ...patch };
+                syncPickerFromProfile(nextProfile);
+                return nextProfile;
+            });
+        },
+        [syncPickerFromProfile]
+    );
 
     const handleSave = async () => {
         if (!profile) {
             return;
         }
 
-        const expertiseAreas = profile.expertise;
+        const normalizedFirstName = profile.firstName.trim();
+        const normalizedLastName = profile.lastName.trim();
+        const normalizedPhone = profile.phone.trim().replace(/\D/g, "");
+
+        if (!normalizedFirstName) {
+            setError("Please enter your first name.");
+            return;
+        }
+
+        if (!normalizedLastName) {
+            setError("Please enter your last name.");
+            return;
+        }
+
+        const expertiseAreas = profile.expertise.filter((area) =>
+            expertiseOptions.includes(area)
+        );
         const expertiseValidationError = validateExpertiseAreas(expertiseAreas);
 
         if (expertiseValidationError) {
             setError(expertiseValidationError);
+            return;
+        }
+
+        if (
+            !initialShareLocation &&
+            profile.shareLocation &&
+            !isFreshCurrentDeviceSelection(locationPickerValue)
+        ) {
+            setError(
+                "To enable Share Current Location, click Use Current Location first so we can save a fresh device location."
+            );
             return;
         }
 
@@ -309,17 +513,68 @@ export default function ProfileView() {
             setError("");
             setInfo("");
 
+            await patchMyProfile(token, {
+                firstName: normalizedFirstName,
+                lastName: normalizedLastName,
+                phoneNumber: normalizedPhone
+                    ? `${(profile.countryCode || "").trim()}${normalizedPhone}`
+                    : null,
+            });
+
+            const saveCountryKey = findCountryKeyByLabel(locationTree, profile.country);
+            const saveCityKey = findCityKeyByLabel(
+                locationTree,
+                saveCountryKey,
+                profile.city
+            );
+            const saveDistrictKey = findDistrictKeyByLabel(
+                locationTree,
+                saveCountryKey,
+                saveCityKey,
+                profile.district
+            );
+
+            const countryData = saveCountryKey ? locationTree[saveCountryKey] : undefined;
             const districtLabel =
-                locationData[profile.country]?.cities[profile.city]?.districts[profile.district]
-                    ?.label || profile.district;
+                countryData?.cities[saveCityKey]?.districts[saveDistrictKey]?.label ||
+                locationPickerValue?.administrative.district ||
+                profile.district;
             const neighborhoodLabel =
-                locationData[profile.country]?.cities[profile.city]?.districts[
-                    profile.district
-                ]?.neighborhoods.find((item) => item.value === profile.neighborhood)
-                    ?.label || profile.neighborhood;
+                countryData?.cities[saveCityKey]?.districts[saveDistrictKey]?.neighborhoods.find(
+                    (item) => item.value === profile.neighborhood
+                )?.label ||
+                locationPickerValue?.administrative.neighborhood ||
+                profile.neighborhood;
+            const hasCoordinateSelection =
+                typeof locationPickerValue?.latitude === "number" &&
+                typeof locationPickerValue?.longitude === "number";
+            const resolvedCountryLabel =
+                countryData?.label ||
+                locationPickerValue?.administrative.country ||
+                profile.country ||
+                null;
+            const resolvedCityLabel =
+                countryData?.cities[saveCityKey]?.label ||
+                locationPickerValue?.administrative.city ||
+                profile.city ||
+                null;
+            const resolvedExtraAddress =
+                profile.extraAddress ||
+                locationPickerValue?.administrative.extraAddress ||
+                "";
+            const resolvedCountryCode =
+                (locationPickerValue?.administrative.countryCode || "").trim().toUpperCase() ||
+                (saveCountryKey || "").trim().toUpperCase() ||
+                null;
+            const resolvedAddress =
+                buildAddress({
+                    district: districtLabel,
+                    neighborhood: neighborhoodLabel,
+                    extraAddress: resolvedExtraAddress,
+                }) || null;
 
             await patchMyPhysical(token, {
-                age: profile.age ? Number(profile.age) : undefined,
+                dateOfBirth: profile.dateOfBirth || null,
                 gender: profile.gender || null,
                 height: profile.height ? Number(profile.height) : undefined,
                 weight: profile.weight ? Number(profile.weight) : undefined,
@@ -333,17 +588,37 @@ export default function ProfileView() {
             });
 
             await patchMyLocation(token, {
-                country: locationData[profile.country]?.label || profile.country || null,
-                city:
-                    locationData[profile.country]?.cities[profile.city]?.label ||
-                    profile.city ||
-                    null,
-                address:
-                    buildAddress({
-                        district: districtLabel,
-                        neighborhood: neighborhoodLabel,
-                        extraAddress: profile.extraAddress,
-                    }) || null,
+                country: resolvedCountryLabel,
+                city: resolvedCityLabel,
+                address: resolvedAddress,
+                latitude: hasCoordinateSelection
+                    ? locationPickerValue.latitude
+                    : undefined,
+                longitude: hasCoordinateSelection
+                    ? locationPickerValue.longitude
+                    : undefined,
+                displayAddress: locationPickerValue?.displayName ?? undefined,
+                placeId: locationPickerValue?.placeId ?? undefined,
+                administrative: {
+                    countryCode: resolvedCountryCode,
+                    country: resolvedCountryLabel,
+                    city: resolvedCityLabel,
+                    district: districtLabel || null,
+                    neighborhood: neighborhoodLabel || null,
+                    extraAddress: resolvedExtraAddress || null,
+                    postalCode: locationPickerValue?.administrative.postalCode ?? null,
+                },
+                coordinate: hasCoordinateSelection
+                    ? {
+                        latitude: locationPickerValue.latitude,
+                        longitude: locationPickerValue.longitude,
+                        accuracyMeters: locationPickerValue.accuracyMeters ?? null,
+                        source: locationPickerValue.source ?? "profile_form",
+                        capturedAt:
+                            locationPickerValue.capturedAt ??
+                            new Date().toISOString(),
+                    }
+                    : undefined,
             });
 
             await patchMyPrivacy(token, {
@@ -358,12 +633,12 @@ export default function ProfileView() {
                 expertiseAreas,
             });
 
-            await refreshProfileFromBackend(token);
+            await refreshProfileFromBackend(token, locationTree);
 
             setInfo("Profile updated successfully.");
         } catch (err) {
             try {
-                await refreshProfileFromBackend(token);
+                await refreshProfileFromBackend(token, locationTree);
             } catch {
             }
 
@@ -380,66 +655,49 @@ export default function ProfileView() {
         }
     };
 
-    const handleFileUpload = (field: UploadField, file: File) => {
-        setUploading(field);
+    const handleDeleteAccount = async () => {
+        const token = getAccessToken();
 
-        setProfile((prev) => {
-            if (!prev) {
-                return prev;
+        if (!token) {
+            clearAccessToken();
+            router.replace("/login");
+            return;
+        }
+
+        try {
+            setDeletingAccount(true);
+            setError("");
+            setInfo("");
+
+            await deleteCurrentAccount(token);
+            clearAccessToken();
+            router.replace("/");
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 401) {
+                clearAccessToken();
+                router.replace("/login");
+                return;
             }
 
-            if (field === "chronicDiseasesFiles") {
-                return {
-                    ...prev,
-                    chronicDiseasesFiles: [
-                        ...prev.chronicDiseasesFiles,
-                        { name: file.name, data: "" },
-                    ],
-                    chronicDiseasesVerified: false,
-                };
-            }
-
-            return {
-                ...prev,
-                allergiesFiles: [...prev.allergiesFiles, { name: file.name, data: "" }],
-                allergiesVerified: false,
-            };
-        });
-
-        setUploading(null);
-        setInfo(
-            "Document uploads are not connected yet because the backend upload endpoint is not available."
-        );
-    };
-
-    const removeFile = (field: UploadField, index: number) => {
-        setProfile((prev) => {
-            if (!prev) {
-                return prev;
-            }
-
-            if (field === "chronicDiseasesFiles") {
-                const updated = [...prev.chronicDiseasesFiles];
-                updated.splice(index, 1);
-
-                return { ...prev, chronicDiseasesFiles: updated };
-            }
-
-            const updated = [...prev.allergiesFiles];
-            updated.splice(index, 1);
-
-            return { ...prev, allergiesFiles: updated };
-        });
+            setError(
+                err instanceof Error && err.message
+                    ? err.message
+                    : "Could not delete your account. Please try again."
+            );
+            setDeleteModalOpen(false);
+        } finally {
+            setDeletingAccount(false);
+        }
     };
 
     if (loading) {
-        return <p className="text-sm text-gray-500">Loading...</p>;
+        return <p className="text-sm text-[color:var(--text-secondary)]">Loading...</p>;
     }
 
     if (!profile) {
         return (
             <div className="flex max-w-md flex-col gap-4">
-                <HelperText className="text-sm text-gray-500">
+                <HelperText className="text-sm text-[color:var(--text-secondary)]">
                     {error || "No profile data found."}
                 </HelperText>
 
@@ -458,9 +716,22 @@ export default function ProfileView() {
         );
     }
 
-    const countryData = profile.country ? locationData[profile.country] : undefined;
+    const resolvedCountryKey = findCountryKeyByLabel(locationTree, profile.country);
+    const resolvedCityKey = findCityKeyByLabel(
+        locationTree,
+        resolvedCountryKey,
+        profile.city
+    );
+    const resolvedDistrictKey = findDistrictKeyByLabel(
+        locationTree,
+        resolvedCountryKey,
+        resolvedCityKey,
+        profile.district
+    );
 
-    const countryOptions = Object.entries(locationData).map(([key, value]) => ({
+    const countryData = resolvedCountryKey ? locationTree[resolvedCountryKey] : undefined;
+
+    const countryOptions = Object.entries(locationTree).map(([key, value]) => ({
         label: value.label,
         value: key,
     }));
@@ -473,8 +744,8 @@ export default function ProfileView() {
         : [];
 
     const districtOptions =
-        profile.city && countryData?.cities[profile.city]
-            ? Object.entries(countryData.cities[profile.city].districts).map(
+        resolvedCityKey && countryData?.cities[resolvedCityKey]
+            ? Object.entries(countryData.cities[resolvedCityKey].districts).map(
                 ([key, value]) => ({
                     label: value.label,
                     value: key,
@@ -483,48 +754,138 @@ export default function ProfileView() {
             : [];
 
     const neighborhoodOptions =
-        profile.city &&
-            profile.district &&
-            countryData?.cities[profile.city]?.districts[profile.district]
-            ? countryData.cities[profile.city].districts[profile.district].neighborhoods
+        resolvedCityKey &&
+            resolvedDistrictKey &&
+            countryData?.cities[resolvedCityKey]?.districts[resolvedDistrictKey]
+            ? countryData.cities[resolvedCityKey].districts[resolvedDistrictKey].neighborhoods
             : [];
+
+    const resolvedNeighborhoodValue = findNeighborhoodValueByLabel(
+        neighborhoodOptions,
+        profile.neighborhood
+    );
 
     return (
         <div className="flex gap-10">
+            {deleteModalOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                            Delete account?
+                        </h3>
+                        <p className="mt-3 text-sm leading-6 text-gray-600">
+                            This will soft-delete your account, remove personal profile
+                            data, cancel your active help requests, and turn off active
+                            volunteer availability. This action cannot be undone.
+                        </p>
+                        <div className="mt-6 flex gap-3">
+                            <SecondaryButton
+                                type="button"
+                                onClick={() => setDeleteModalOpen(false)}
+                                disabled={deletingAccount}
+                                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                            >
+                                Keep Account
+                            </SecondaryButton>
+                            <PrimaryButton
+                                type="button"
+                                onClick={handleDeleteAccount}
+                                loading={deletingAccount}
+                            >
+                                Delete Account
+                            </PrimaryButton>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="flex w-64 flex-col items-center gap-4">
                 <Avatar size="lg" />
                 <div className="text-center">
-                    <h2 className="text-lg font-semibold">{profile.fullName || "User"}</h2>
-                    <p className="text-sm text-gray-500">{profile.email || "No email"}</p>
+                    <h2 className="text-lg font-semibold">
+                        {[profile.firstName, profile.lastName].filter(Boolean).join(" ") || "User"}
+                    </h2>
+                    <p className="text-sm text-[color:var(--text-secondary)]">{profile.email || "No email"}</p>
                 </div>
             </div>
 
             <div className="flex flex-1 flex-col gap-6">
                 <SectionCard>
                     <SectionHeader title="Account Information" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         Your contact details are used for account access and emergency
                         communication.
                     </p>
-                    <div className="flex flex-col gap-3 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-gray-500">Email</span>
-                            <span>{profile.email || "-"}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-500">Phone</span>
-                            <span>
-                                {[profile.countryCode, profile.phone]
-                                    .filter(Boolean)
-                                    .join(" ") || "-"}
-                            </span>
-                        </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <TextInput
+                            id="firstName"
+                            label="First Name"
+                            value={profile.firstName}
+                            onChange={(e) =>
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, firstName: e.target.value }
+                                        : currentProfile
+                                )
+                            }
+                        />
+                        <TextInput
+                            id="lastName"
+                            label="Last Name"
+                            value={profile.lastName}
+                            onChange={(e) =>
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, lastName: e.target.value }
+                                        : currentProfile
+                                )
+                            }
+                        />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-[120px_1fr] gap-3">
+                        <SelectInput
+                            id="profile-country-code"
+                            label="Code"
+                            value={profile.countryCode}
+                            onChange={(e) =>
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, countryCode: e.target.value }
+                                        : currentProfile
+                                )
+                            }
+                            options={countryCodeOptions}
+                        />
+
+                        <TextInput
+                            id="phone"
+                            label="Phone Number"
+                            type="tel"
+                            inputMode="numeric"
+                            value={profile.phone}
+                            onChange={(e) =>
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? {
+                                            ...currentProfile,
+                                            phone: e.target.value.replace(/\D/g, ""),
+                                        }
+                                        : currentProfile
+                                )
+                            }
+                        />
+                    </div>
+
+                    <div className="mt-4 flex justify-between text-sm">
+                        <span className="text-[color:var(--text-secondary)]">Email</span>
+                        <span>{profile.email || "-"}</span>
                     </div>
                 </SectionCard>
 
                 <SectionCard>
                     <SectionHeader title="Physical Information" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         This information helps responders assess your physical condition in
                         emergencies.
                     </p>
@@ -534,7 +895,11 @@ export default function ProfileView() {
                             label="Height (cm)"
                             value={profile.height}
                             onChange={(e) =>
-                                setProfile({ ...profile, height: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, height: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
                         <TextInput
@@ -542,7 +907,11 @@ export default function ProfileView() {
                             label="Weight (kg)"
                             value={profile.weight}
                             onChange={(e) =>
-                                setProfile({ ...profile, weight: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, weight: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
                         <SelectInput
@@ -550,7 +919,11 @@ export default function ProfileView() {
                             label="Gender"
                             value={profile.gender}
                             onChange={(e) =>
-                                setProfile({ ...profile, gender: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, gender: e.target.value }
+                                        : currentProfile
+                                )
                             }
                             options={[
                                 { label: "Select", value: "" },
@@ -561,16 +934,20 @@ export default function ProfileView() {
                         />
                         <div>
                             <TextInput
-                                id="age"
-                                label="Age"
-                                type="number"
-                                inputMode="numeric"
-                                value={profile.age}
+                                id="dateOfBirth"
+                                label="Date of Birth"
+                                type="date"
+                                max={new Date().toISOString().slice(0, 10)}
+                                value={profile.dateOfBirth}
                                 onChange={(e) =>
-                                    setProfile({
-                                        ...profile,
-                                        age: e.target.value.replace(/\D/g, "").slice(0, 3),
-                                    })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                dateOfBirth: e.target.value,
+                                            }
+                                            : currentProfile
+                                    )
                                 }
                             />
                         </div>
@@ -579,7 +956,7 @@ export default function ProfileView() {
 
                 <SectionCard>
                     <SectionHeader title="Profession" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         Your profession and expertise help with community coordination.
                     </p>
 
@@ -589,13 +966,17 @@ export default function ProfileView() {
                             label="Profession"
                             value={profile.profession}
                             onChange={(e) =>
-                                setProfile({ ...profile, profession: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, profession: e.target.value }
+                                        : currentProfile
+                                )
                             }
                             options={professionOptions}
                         />
 
                         <div className="flex flex-col gap-3">
-                            <p className="text-sm font-medium text-gray-800">
+                            <p className="text-sm font-medium text-[color:var(--text-primary)]">
                                 Expertise (optional)
                             </p>
                             {expertiseOptions.map((option) => (
@@ -605,14 +986,18 @@ export default function ProfileView() {
                                     label={option}
                                     checked={profile.expertise.includes(option)}
                                     onCheckedChange={(checked) =>
-                                        setProfile({
-                                            ...profile,
-                                            expertise: checked
-                                                ? [...profile.expertise, option]
-                                                : profile.expertise.filter(
-                                                    (item) => item !== option
-                                                ),
-                                        })
+                                        setProfile((currentProfile) =>
+                                            currentProfile
+                                                ? {
+                                                    ...currentProfile,
+                                                    expertise: checked
+                                                        ? [...currentProfile.expertise, option]
+                                                        : currentProfile.expertise.filter(
+                                                            (item) => item !== option
+                                                        ),
+                                                }
+                                                : currentProfile
+                                        )
                                     }
                                 />
                             ))}
@@ -622,7 +1007,7 @@ export default function ProfileView() {
 
                 <SectionCard>
                     <SectionHeader title="Medical Information" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         In emergency situations, this information may help responders make
                         faster and safer medical decisions.
                     </p>
@@ -634,7 +1019,11 @@ export default function ProfileView() {
                             value={profile.bloodType}
                             options={bloodTypeOptions}
                             onChange={(e) =>
-                                setProfile({ ...profile, bloodType: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, bloodType: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
 
@@ -643,158 +1032,77 @@ export default function ProfileView() {
                             label="Medical History"
                             value={profile.medicalHistory}
                             onChange={(e) =>
-                                setProfile({ ...profile, medicalHistory: e.target.value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, medicalHistory: e.target.value }
+                                        : currentProfile
+                                )
                             }
                         />
 
                         <div className="mt-4">
                             <div className="mb-1 flex justify-between">
                                 <span className="whitespace-nowrap">Chronic Diseases</span>
-                                <div className="flex items-center gap-2 text-xs">
-                                    <p className="text-xs text-gray-400">
-                                        Upload is shown in the UI, but backend document storage is
-                                        not available yet.
-                                    </p>
-                                    <input
-                                        type="file"
-                                        id="chronic-upload"
-                                        className="hidden"
-                                        onChange={(e) =>
-                                            e.target.files?.[0] &&
-                                            handleFileUpload(
-                                                "chronicDiseasesFiles",
-                                                e.target.files[0]
-                                            )
-                                        }
-                                    />
-                                    <label
-                                        htmlFor="chronic-upload"
-                                        className="cursor-pointer text-blue-600"
-                                    >
-                                        Upload
-                                    </label>
-                                </div>
                             </div>
 
                             <TextInput
                                 id="chronic"
                                 value={profile.chronicDiseases}
                                 onChange={(e) =>
-                                    setProfile({
-                                        ...profile,
-                                        chronicDiseases: e.target.value,
-                                    })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                chronicDiseases: e.target.value,
+                                            }
+                                            : currentProfile
+                                    )
                                 }
                             />
-
-                            {uploading === "chronicDiseasesFiles" ? (
-                                <div className="mt-2 text-xs">Uploading... {progress}%</div>
-                            ) : null}
-
-                            {profile.chronicDiseasesFiles.map((file, index) => (
-                                <div
-                                    key={`${file.name}-${index}`}
-                                    className="mt-2 flex justify-between text-xs text-gray-600"
-                                >
-                                    <div className="flex flex-col">
-                                        <span>📄 {file.name}</span>
-                                        <span className="mt-1 text-xs text-red-500">
-                                            Pending Verification
-                                        </span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            removeFile("chronicDiseasesFiles", index)
-                                        }
-                                        className="text-red-500"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                            ))}
                         </div>
 
                         <div className="mt-4">
                             <div className="mb-1 flex justify-between">
                                 <span>Allergies</span>
-                                <div className="flex items-center gap-2 text-xs">
-                                    <p className="text-xs text-gray-400">
-                                        Verification is not connected yet because the backend upload
-                                        flow is still missing.
-                                    </p>
-                                    <input
-                                        type="file"
-                                        id="allergy-upload"
-                                        className="hidden"
-                                        onChange={(e) =>
-                                            e.target.files?.[0] &&
-                                            handleFileUpload(
-                                                "allergiesFiles",
-                                                e.target.files[0]
-                                            )
-                                        }
-                                    />
-                                    <label
-                                        htmlFor="allergy-upload"
-                                        className="cursor-pointer text-blue-600"
-                                    >
-                                        Upload
-                                    </label>
-                                </div>
                             </div>
 
                             <TextInput
                                 id="allergy"
                                 value={profile.allergies}
                                 onChange={(e) =>
-                                    setProfile({ ...profile, allergies: e.target.value })
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? { ...currentProfile, allergies: e.target.value }
+                                            : currentProfile
+                                    )
                                 }
                             />
-
-                            {uploading === "allergiesFiles" ? (
-                                <div className="mt-2 text-xs">Uploading... {progress}%</div>
-                            ) : null}
-
-                            {profile.allergiesFiles.map((file, index) => (
-                                <div
-                                    key={`${file.name}-${index}`}
-                                    className="mt-2 flex justify-between text-xs text-gray-600"
-                                >
-                                    <div className="flex flex-col">
-                                        <span>📄 {file.name}</span>
-                                        <span className="mt-1 text-xs text-red-500">
-                                            Pending Verification
-                                        </span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => removeFile("allergiesFiles", index)}
-                                        className="text-red-500"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                            ))}
                         </div>
                     </div>
                 </SectionCard>
 
                 <SectionCard>
                     <SectionHeader title="Location" />
-                    <p className="mb-3 text-xs text-gray-400">
+                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
                         Your location may help emergency services reach you faster.
                     </p>
+
+                    <div className="mb-4">
+                        <LocationPicker
+                            value={locationPickerValue}
+                            onChange={handleLocationPickerChange}
+                            label="Select location from map or search"
+                        />
+                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <SelectInput
                             id="country"
                             label="Country"
-                            value={profile.country}
+                            value={resolvedCountryKey}
                             options={[{ label: "Select Country", value: "" }, ...countryOptions]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
+                                updateLocationField({
                                     country: e.target.value,
                                     city: "",
                                     district: "",
@@ -806,12 +1114,11 @@ export default function ProfileView() {
                         <SelectInput
                             id="city"
                             label="City"
-                            value={profile.city}
-                            disabled={!profile.country}
+                            value={resolvedCityKey}
+                            disabled={!resolvedCountryKey}
                             options={[{ label: "Select City", value: "" }, ...cityOptions]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
+                                updateLocationField({
                                     city: e.target.value,
                                     district: "",
                                     neighborhood: "",
@@ -822,15 +1129,14 @@ export default function ProfileView() {
                         <SelectInput
                             id="district"
                             label="District"
-                            value={profile.district}
-                            disabled={!profile.city}
+                            value={resolvedDistrictKey}
+                            disabled={!resolvedCityKey}
                             options={[
                                 { label: "Select District", value: "" },
                                 ...districtOptions,
                             ]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
+                                updateLocationField({
                                     district: e.target.value,
                                     neighborhood: "",
                                 })
@@ -840,51 +1146,84 @@ export default function ProfileView() {
                         <SelectInput
                             id="neighborhood"
                             label="Neighborhood"
-                            value={profile.neighborhood}
-                            disabled={!profile.district}
+                            value={resolvedNeighborhoodValue}
+                            disabled={!resolvedDistrictKey}
                             options={[
                                 { label: "Select Neighborhood", value: "" },
                                 ...neighborhoodOptions,
                             ]}
                             onChange={(e) =>
-                                setProfile({
-                                    ...profile,
+                                updateLocationField({
                                     neighborhood: e.target.value,
                                 })
                             }
                         />
 
                         <div className="col-span-2">
-                            <TextInput
+                            <StreetAddressInput
                                 id="extraAddress"
                                 label="Extra Address"
+                                placeholder="Start typing a street name"
                                 value={profile.extraAddress}
-                                onChange={(e) =>
-                                    setProfile({
-                                        ...profile,
-                                        extraAddress: e.target.value,
-                                    })
+                                countryCode={(resolvedCountryKey || "TR").toUpperCase()}
+                                scope={{
+                                    country: countryData?.label,
+                                    city: countryData?.cities[resolvedCityKey]?.label,
+                                    district:
+                                        countryData?.cities[resolvedCityKey]?.districts[
+                                            resolvedDistrictKey
+                                        ]?.label,
+                                    neighborhood: neighborhoodOptions.find(
+                                        (item) =>
+                                            item.value === resolvedNeighborhoodValue
+                                    )?.label,
+                                }}
+                                onChange={(next) =>
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                extraAddress: next,
+                                            }
+                                            : currentProfile
+                                    )
                                 }
+                                onSelectSuggestion={(item) => {
+                                    setLocationPickerValue(
+                                        toPickerValueFromSearchItem(item)
+                                    );
+                                }}
                             />
                             <HelperText>
-                                District and neighborhood are flattened into a single backend
-                                address field for now.
+                                Pick a spot on the map or start typing a street to see
+                                suggestions in your selected area. Selecting a
+                                suggestion moves the map pin.
                             </HelperText>
+                            {locationTreeError ? (
+                                <HelperText className="text-[color:var(--primary-500)]">
+                                    {locationTreeError}
+                                </HelperText>
+                            ) : null}
                         </div>
                     </div>
 
                     <div className="mt-4 flex items-center justify-between">
                         <span className="text-sm">Share Current Location</span>
                         <ToggleSwitch
+                            aria-label="Share Current Location"
                             checked={profile.shareLocation}
                             onCheckedChange={(value) =>
-                                setProfile({ ...profile, shareLocation: value })
+                                setProfile((currentProfile) =>
+                                    currentProfile
+                                        ? { ...currentProfile, shareLocation: value }
+                                        : currentProfile
+                                )
                             }
                         />
                     </div>
                 </SectionCard>
 
-                {error ? <HelperText className="text-red-500">{error}</HelperText> : null}
+                {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
                 {info ? <HelperText>{info}</HelperText> : null}
 
                 <div className="flex justify-end">
@@ -892,6 +1231,24 @@ export default function ProfileView() {
                         Save Changes
                     </PrimaryButton>
                 </div>
+
+                <SectionCard>
+                    <SectionHeader title="Delete Account" />
+                    <p className="mb-4 text-sm text-gray-500">
+                        Permanently remove personal account data from your profile and
+                        cancel active emergency participation before disabling login.
+                    </p>
+                    <SecondaryButton
+                        type="button"
+                        onClick={() => {
+                            setError("");
+                            setInfo("");
+                            setDeleteModalOpen(true);
+                        }}
+                    >
+                        Delete Account
+                    </SecondaryButton>
+                </SectionCard>
             </div>
         </div>
     );

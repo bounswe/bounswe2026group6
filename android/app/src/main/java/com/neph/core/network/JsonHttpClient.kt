@@ -18,7 +18,8 @@ object JsonHttpClient {
         path: String,
         method: String = "GET",
         body: JSONObject? = null,
-        token: String? = null
+        token: String? = null,
+        headers: Map<String, String> = emptyMap()
     ): JSONObject = withContext(Dispatchers.IO) {
         val connection = (URL(buildUrl(path)).openConnection() as HttpURLConnection).apply {
             requestMethod = method
@@ -29,6 +30,12 @@ object JsonHttpClient {
 
             if (!token.isNullOrBlank()) {
                 setRequestProperty("Authorization", "Bearer ${token.trim()}")
+            }
+
+            headers.forEach { (name, value) ->
+                if (name.isNotBlank() && value.isNotBlank()) {
+                    setRequestProperty(name, value)
+                }
             }
 
             if (body != null) {

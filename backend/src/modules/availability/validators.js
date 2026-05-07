@@ -1,3 +1,7 @@
+const { env } = require('../../config/env');
+
+const FUTURE_EVENT_CLOCK_SKEW_MINUTES = 5;
+
 const setAvailabilitySchema = {
   isAvailable: {
     type: 'boolean',
@@ -11,6 +15,14 @@ const setAvailabilitySchema = {
     type: 'number',
     required: false,
   },
+  accuracyMeters: {
+    type: 'number',
+    required: false,
+  },
+  source: {
+    type: 'string',
+    required: false,
+  },
 };
 
 const syncAvailabilitySchema = {
@@ -22,6 +34,11 @@ const syncAvailabilitySchema = {
       properties: {
         isAvailable: { type: 'boolean', required: true },
         timestamp: { type: 'string', required: true },
+        latitude: { type: 'number', required: false },
+        longitude: { type: 'number', required: false },
+        accuracyMeters: { type: 'number', required: false },
+        source: { type: 'string', required: false },
+        capturedAt: { type: 'string', required: false },
       },
     },
   },
@@ -33,6 +50,179 @@ const resolveRequestSchema = {
     required: true,
   },
 };
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function getConfiguredLocationMaxAgeMinutes() {
+  const configuredValue = Number(process.env.VOLUNTEER_LOCATION_MAX_AGE_MINUTES);
+
+  if (Number.isFinite(configuredValue) && configuredValue > 0) {
+    return Math.floor(configuredValue);
+  }
+
+  return env.volunteerMatching.locationMaxAgeMinutes;
+}
+
+function parseEventTimestamp(value) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function isStaleEventTimestamp(value) {
+  const parsed = parseEventTimestamp(value);
+
+  if (!parsed) {
+    return false;
+  }
+
+  return Date.now() - parsed.getTime() > getConfiguredLocationMaxAgeMinutes() * 60 * 1000;
+}
+
+function isFutureEventTimestamp(value) {
+  const parsed = parseEventTimestamp(value);
+
+  if (!parsed) {
+    return false;
+  }
+
+  return parsed.getTime() - Date.now() > FUTURE_EVENT_CLOCK_SKEW_MINUTES * 60 * 1000;
+}
+
+function validateTimestampValue(data, key, errors, prefix = '') {
+  if (!hasOwn(data, key) || data[key] === null) {
+    return;
+  }
+
+  if (typeof data[key] !== 'string' || !parseEventTimestamp(data[key])) {
+    errors.push(`${prefix ? `${prefix}.` : ''}${key} must be a valid ISO timestamp string`);
+    return;
+  }
+
+  if (isFutureEventTimestamp(data[key])) {
+    errors.push(`${prefix ? `${prefix}.` : ''}${key} must not be more than ${FUTURE_EVENT_CLOCK_SKEW_MINUTES} minutes in the future`);
+  }
+}
+
+function validateCoordinatePair(data, errors, prefix = '') {
+  const latitudeKey = prefix ? `${prefix}.latitude` : 'latitude';
+  const longitudeKey = prefix ? `${prefix}.longitude` : 'longitude';
+  const latitudeProvided = hasOwn(data, 'latitude');
+  const longitudeProvided = hasOwn(data, 'longitude');
+
+  if (latitudeProvided !== longitudeProvided) {
+    errors.push(`${latitudeKey} and ${longitudeKey} must be provided together`);
+    return;
+  }
+
+  if (!latitudeProvided) {
+    return;
+  }
+
+  if (typeof data.latitude !== 'number' || !Number.isFinite(data.latitude) || data.latitude < -90 || data.latitude > 90) {
+    errors.push(`${latitudeKey} must be a finite number between -90 and 90`);
+  }
+
+  if (typeof data.longitude !== 'number' || !Number.isFinite(data.longitude) || data.longitude < -180 || data.longitude > 180) {
+    errors.push(`${longitudeKey} must be a finite number between -180 and 180`);
+  }
+}
+
+function validateLocationMetadata(data, errors, prefix = '') {
+  const accuracyKey = prefix ? `${prefix}.accuracyMeters` : 'accuracyMeters';
+  const sourceKey = prefix ? `${prefix}.source` : 'source';
+
+  if (
+    hasOwn(data, 'accuracyMeters')
+    && data.accuracyMeters !== null
+    && (
+      typeof data.accuracyMeters !== 'number'
+      || !Number.isFinite(data.accuracyMeters)
+      || data.accuracyMeters < 0
+    )
+  ) {
+    errors.push(`${accuracyKey} must be a finite number greater than or equal to 0`);
+  }
+
+  if (
+    hasOwn(data, 'source')
+    && data.source !== null
+    && (typeof data.source !== 'string' || data.source.length > 100)
+  ) {
+    errors.push(`${sourceKey} must be a string of at most 100 characters`);
+  }
+}
+
+function validateSetAvailabilityPayload(data) {
+  const errors = validate(data, setAvailabilitySchema);
+  validateCoordinatePair(data || {}, errors);
+  validateLocationMetadata(data || {}, errors);
+  if (data && data.isAvailable === true && (!hasOwn(data, 'latitude') || !hasOwn(data, 'longitude'))) {
+    errors.push('latitude and longitude are required when isAvailable is true');
+  }
+  return errors;
+}
+
+function validateSyncAvailabilityPayload(data) {
+  const errors = [];
+
+  if (!isPlainObject(data)) {
+    return ['payload must be an object'];
+  }
+
+  if (!Array.isArray(data.records)) {
+    return ['records must be an array'];
+  }
+
+  data.records.forEach((record, index) => {
+    const prefix = `records[${index}]`;
+
+    if (!isPlainObject(record)) {
+      errors.push(`${prefix} must be an object`);
+      return;
+    }
+
+    if (!hasOwn(record, 'isAvailable') || record.isAvailable === null) {
+      errors.push(`${prefix}.isAvailable is required`);
+    } else if (typeof record.isAvailable !== 'boolean') {
+      errors.push(`${prefix}.isAvailable must be a boolean`);
+    }
+
+    if (!hasOwn(record, 'timestamp') || record.timestamp === null) {
+      errors.push(`${prefix}.timestamp is required`);
+    } else if (typeof record.timestamp !== 'string') {
+      errors.push(`${prefix}.timestamp must be a string`);
+    } else {
+      validateTimestampValue(record, 'timestamp', errors, prefix);
+    }
+
+    validateTimestampValue(record, 'capturedAt', errors, prefix);
+    validateCoordinatePair(record, errors, prefix);
+    validateLocationMetadata(record, errors, prefix);
+  });
+
+  if (errors.length === 0 && data.records.length > 0) {
+    const sortedRecords = [...data.records].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const latest = sortedRecords[sortedRecords.length - 1];
+    if (latest.isAvailable === true && (!hasOwn(latest, 'latitude') || !hasOwn(latest, 'longitude'))) {
+      errors.push('records latest available state requires latitude and longitude');
+    }
+    if (latest.isAvailable === true && isStaleEventTimestamp(latest.capturedAt || latest.timestamp)) {
+      errors.push('records latest available location is stale');
+    }
+  }
+
+  return errors;
+}
 
 // Simple validator function to match the project's style
 function validate(data, schema) {
@@ -66,4 +256,6 @@ module.exports = {
   syncAvailabilitySchema,
   resolveRequestSchema,
   validate,
+  validateSetAvailabilityPayload,
+  validateSyncAvailabilityPayload,
 };

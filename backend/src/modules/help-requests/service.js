@@ -6,18 +6,34 @@ const {
   listHelpRequestsByUserId,
   findHelpRequestById,
   findHelpRequestByIdForUser,
+  updateHelpRequestForUser,
+  updateHelpRequestByRequestId,
   markHelpRequestAsSynced,
   markHelpRequestAsResolved,
   markHelpRequestAsSyncedByRequestId,
   markHelpRequestAsResolvedByRequestId,
   markHelpRequestAsCancelled,
   markHelpRequestAsCancelledByRequestId,
+  listActiveHelpRequestsVisibility,
 } = require('./repository');
 const { tryToAssignRequest, cancelAssignmentByRequestId } = require('../availability/service');
+const { createNotification } = require('../notifications/service');
 
 const JWT_SECRET = env.jwt.secret;
 const GUEST_HELP_REQUEST_SCOPE = 'help_request_guest_read';
-const GUEST_HELP_REQUEST_TOKEN_TTL = '30d';
+const GUEST_HELP_REQUEST_TOKEN_TTL = env.helpRequests.guestTokenTtl;
+
+function redactGuestRequestDetails(helpRequest) {
+  if (!helpRequest) {
+    return helpRequest;
+  }
+
+  return {
+    ...helpRequest,
+    helper: null,
+    helpers: [],
+  };
+}
 
 async function createMyHelpRequest(userId, input) {
   try {
@@ -26,11 +42,35 @@ async function createMyHelpRequest(userId, input) {
       userId,
     });
 
-    // Try to auto-assign a volunteer
-    await tryToAssignRequest(helpRequest.id);
+    if (userId) {
+      try {
+        await createNotification({
+          recipientUserId: userId,
+          actorUserId: userId,
+          type: 'HELP_REQUEST_CREATED',
+          title: 'Help request created',
+          body: 'Your help request has been created successfully.',
+          entity: {
+            type: 'HELP_REQUEST',
+            id: helpRequest.id,
+          },
+          data: {
+            screen: 'my-help-requests',
+            requestId: helpRequest.id,
+          },
+        });
+      } catch (notificationError) {
+        console.error('help-requests.createMyHelpRequest notification failed', notificationError);
+      }
+    }
 
-    // Return the request (it might have been updated to ASSIGNED status)
-    return await findHelpRequestById(helpRequest.id);
+    // Only authenticated requests can trigger immediate matching.
+    if (userId) {
+      await tryToAssignRequest(helpRequest.id);
+      return await findHelpRequestById(helpRequest.id);
+    }
+
+    return redactGuestRequestDetails(helpRequest);
   } catch (error) {
     if (error.code === '23503') {
       const wrappedError = new Error('The provided user does not exist in the database yet.');
@@ -48,6 +88,35 @@ async function listMyHelpRequests(userId) {
 
 async function getMyHelpRequest(userId, requestId) {
   return findHelpRequestByIdForUser(userId, requestId);
+}
+
+function ensureEditableRequest(currentRequest) {
+  if (!currentRequest) {
+    return;
+  }
+
+  if (currentRequest.internalStatus === 'RESOLVED' || currentRequest.internalStatus === 'CANCELLED') {
+    const error = new Error('A resolved or cancelled request cannot be edited.');
+    error.code = 'REQUEST_NOT_EDITABLE';
+    throw error;
+  }
+}
+
+async function updateMyHelpRequest(userId, requestId, input) {
+  const currentRequest = await findHelpRequestByIdForUser(userId, requestId);
+  if (!currentRequest) {
+    return null;
+  }
+
+  ensureEditableRequest(currentRequest);
+  const updatedRequest = await updateHelpRequestForUser(userId, requestId, input);
+  if (!updatedRequest) {
+    ensureEditableRequest(await findHelpRequestById(requestId));
+    return null;
+  }
+
+  await tryToAssignRequest(updatedRequest.id);
+  return findHelpRequestById(updatedRequest.id);
 }
 
 function buildGuestAccessError(code, message) {
@@ -116,7 +185,23 @@ async function getGuestHelpRequest(requestId, guestAccessToken) {
     );
   }
 
-  return helpRequest;
+  return redactGuestRequestDetails(helpRequest);
+}
+
+async function updateGuestHelpRequest(requestId, input, guestAccessToken) {
+  const currentRequest = await getGuestHelpRequest(requestId, guestAccessToken);
+  if (!currentRequest) {
+    return null;
+  }
+
+  ensureEditableRequest(currentRequest);
+  const updatedRequest = await updateHelpRequestByRequestId(requestId, input);
+  if (!updatedRequest) {
+    ensureEditableRequest(await findHelpRequestById(requestId));
+    return null;
+  }
+
+  return redactGuestRequestDetails(updatedRequest);
 }
 
 function buildInvalidTransitionError(message) {
@@ -135,6 +220,10 @@ async function applyStatusTransition(currentRequest, nextStatus, handlers) {
   }
 
   if (nextStatus === 'RESOLVED') {
+    if (currentRequest.internalStatus === 'CANCELLED') {
+      throw buildInvalidTransitionError('A cancelled request cannot be resolved.');
+    }
+
     if (currentRequest.internalStatus === 'RESOLVED') {
       return currentRequest;
     }
@@ -164,14 +253,44 @@ async function updateMyHelpRequestStatus(userId, requestId, nextStatus) {
     return null;
   }
 
-  return applyStatusTransition(currentRequest, nextStatus, {
+  const updated = await applyStatusTransition(currentRequest, nextStatus, {
     sync: () => markHelpRequestAsSynced(userId, requestId),
-    resolve: () => markHelpRequestAsResolved(userId, requestId),
-    cancel: async () => {
+    resolve: async () => {
+      const resolvedRequest = await markHelpRequestAsResolved(userId, requestId);
       await cancelAssignmentByRequestId(requestId);
-      return markHelpRequestAsCancelled(userId, requestId);
+      return resolvedRequest;
+    },
+    cancel: async () => {
+      const cancelledRequest = await markHelpRequestAsCancelled(userId, requestId);
+      await cancelAssignmentByRequestId(requestId);
+      return cancelledRequest;
     },
   });
+
+  if (updated) {
+    try {
+      await createNotification({
+        recipientUserId: userId,
+        actorUserId: userId,
+        type: 'HELP_REQUEST_STATUS_CHANGED',
+        title: 'Help request status updated',
+        body: `Your help request status is now ${updated.status}.`,
+        entity: {
+          type: 'HELP_REQUEST',
+          id: updated.id,
+        },
+        data: {
+          screen: 'my-help-requests',
+          requestId: updated.id,
+          status: updated.status,
+        },
+      });
+    } catch (notificationError) {
+      console.error('help-requests.updateMyHelpRequestStatus notification failed', notificationError);
+    }
+  }
+
+  return updated;
 }
 
 async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessToken) {
@@ -181,22 +300,36 @@ async function updateGuestHelpRequestStatus(requestId, nextStatus, guestAccessTo
     return null;
   }
 
-  return applyStatusTransition(currentRequest, nextStatus, {
+  const updatedRequest = await applyStatusTransition(currentRequest, nextStatus, {
     sync: () => markHelpRequestAsSyncedByRequestId(requestId),
-    resolve: () => markHelpRequestAsResolvedByRequestId(requestId),
-    cancel: async () => {
+    resolve: async () => {
+      const resolvedRequest = await markHelpRequestAsResolvedByRequestId(requestId);
       await cancelAssignmentByRequestId(requestId);
-      return markHelpRequestAsCancelledByRequestId(requestId);
+      return resolvedRequest;
+    },
+    cancel: async () => {
+      const cancelledRequest = await markHelpRequestAsCancelledByRequestId(requestId);
+      await cancelAssignmentByRequestId(requestId);
+      return cancelledRequest;
     },
   });
+
+  return redactGuestRequestDetails(updatedRequest);
+}
+
+async function listActiveHelpRequestsForVisibility(options = {}) {
+  return listActiveHelpRequestsVisibility(options);
 }
 
 module.exports = {
   createMyHelpRequest,
   listMyHelpRequests,
   getMyHelpRequest,
+  updateMyHelpRequest,
   issueGuestHelpRequestAccessToken,
   getGuestHelpRequest,
+  updateGuestHelpRequest,
   updateMyHelpRequestStatus,
   updateGuestHelpRequestStatus,
+  listActiveHelpRequestsForVisibility,
 };

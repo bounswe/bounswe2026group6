@@ -75,7 +75,7 @@ export function VerificationCodeInput({
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
-                    className="h-12 w-12 rounded-[10px] border border-gray-200 bg-white text-center text-lg font-semibold text-gray-800 outline-none transition-colors focus:border-red-500"
+                    className="h-12 w-12 rounded-[10px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)] text-center text-lg font-semibold text-[color:var(--text-primary)] outline-none transition-colors focus:border-[color:var(--primary-500)]"
                 />
             ))}
         </div>
