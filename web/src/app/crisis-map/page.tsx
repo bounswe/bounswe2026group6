@@ -15,6 +15,21 @@ const DEFAULT_CENTER = {
 
 const FETCH_LIMIT = 300;
 type FetchState = "idle" | "loading" | "success" | "empty" | "error";
+const REQUEST_TYPE_ORDER: CrisisRequestType[] = [
+    "FIRST_AID",
+    "SHELTER",
+    "FOOD_WATER",
+    "SEARCH_AND_RESCUE",
+    "OTHER",
+];
+
+const REQUEST_TYPE_COLORS: Record<CrisisRequestType, string> = {
+    FIRST_AID: "#d94141",
+    SHELTER: "#3b66d8",
+    FOOD_WATER: "#2f9e67",
+    SEARCH_AND_RESCUE: "#f08c00",
+    OTHER: "#687280",
+};
 
 function normalizeType(type: string): CrisisRequestType {
     const value = type.trim().toLowerCase();
@@ -99,6 +114,7 @@ export default function CrisisMapPage() {
     const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
     const [fetchState, setFetchState] = React.useState<FetchState>("idle");
     const [error, setError] = React.useState("");
+    const [selectedTypes, setSelectedTypes] = React.useState<Set<CrisisRequestType>>(new Set());
     const requestIdRef = React.useRef(0);
 
     const loadActiveRequests = React.useCallback(async () => {
@@ -153,111 +169,197 @@ export default function CrisisMapPage() {
 
     const isLoading = fetchState === "loading";
     const isEmpty = fetchState === "empty";
+    const visibleRequests = React.useMemo(() => {
+        if (!selectedTypes.size) {
+            return requests;
+        }
+        return requests.filter((item) => selectedTypes.has(item.type));
+    }, [requests, selectedTypes]);
+    const hasActiveFilters = selectedTypes.size > 0;
+    const isFilterEmpty = !isLoading && requests.length > 0 && visibleRequests.length === 0;
+
+    React.useEffect(() => {
+        if (!selectedRequestId) {
+            return;
+        }
+        const stillVisible = visibleRequests.some((item) => item.featureKey === selectedRequestId);
+        if (!stillVisible) {
+            setSelectedRequestId(null);
+        }
+    }, [visibleRequests, selectedRequestId]);
+
+    const availableTypes = React.useMemo(() => {
+        const available = new Set(requests.map((item) => item.type));
+        return REQUEST_TYPE_ORDER.filter((type) => available.has(type));
+    }, [requests]);
+
     const selectedRequest =
-        requests.find((item) => item.featureKey === selectedRequestId) ||
-        (requests.length ? requests[0] : null);
+        visibleRequests.find((item) => item.featureKey === selectedRequestId) ||
+        (visibleRequests.length ? visibleRequests[0] : null);
 
     return (
         <AppShell title="Help Request Map" containerClassName="gathering-areas-page-container">
             <div className="gathering-areas-page-grid">
                 <SectionCard className="gathering-areas-main-card">
                     <div className="gathering-areas-map-wrap">
-                        <CrisisMap
-                            center={center}
-                            features={requests}
-                            selectedFeatureId={selectedRequestId}
-                            onSelectFeature={(featureId) => {
-                                setSelectedRequestId(featureId);
-                                setIsDetailsOpen(true);
-                            }}
-                            heightClassName="h-[380px] md:h-[500px]"
-                        />
+                        <div className="crisis-map-canvas-wrap">
+                            <CrisisMap
+                                center={center}
+                                features={visibleRequests}
+                                selectedFeatureId={selectedRequestId}
+                                onSelectFeature={(featureId) => {
+                                    setSelectedRequestId(featureId);
+                                    setIsDetailsOpen(true);
+                                }}
+                                heightClassName="h-[380px] md:h-[500px]"
+                            />
 
-                        <p className="gathering-areas-map-note">
-                            Showing waiting help requests by type and priority.
-                        </p>
+                            <p className="gathering-areas-map-note">
+                                Showing waiting help requests by type and priority.
+                            </p>
 
-                        <button
-                            type="button"
-                            aria-label="Refresh Help Request Map"
-                            title="Refresh Help Request Map"
-                            className="gathering-areas-map-retry"
-                            onClick={() => {
-                                void loadActiveRequests();
-                            }}
-                            disabled={isLoading}
-                        >
-                            <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                aria-hidden="true"
+                            <button
+                                type="button"
+                                aria-label="Refresh Help Request Map"
+                                title="Refresh Help Request Map"
+                                className="gathering-areas-map-retry"
+                                onClick={() => {
+                                    void loadActiveRequests();
+                                }}
+                                disabled={isLoading}
                             >
-                                <path
-                                    d="M20 11.5A8 8 0 1 0 17.66 17M20 11.5V6M20 11.5H14.5"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                />
-                            </svg>
-                        </button>
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M20 11.5A8 8 0 1 0 17.66 17M20 11.5V6M20 11.5H14.5"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
+                            </button>
 
-                        <button
-                            type="button"
-                            className="gathering-areas-overlay-toggle"
-                            onClick={() => setIsDetailsOpen((current) => !current)}
-                        >
-                            {isDetailsOpen ? "Hide Request Details" : "Show Request Details"}
-                        </button>
+                            <button
+                                type="button"
+                                className="gathering-areas-overlay-toggle"
+                                onClick={() => setIsDetailsOpen((current) => !current)}
+                            >
+                                {isDetailsOpen ? "Hide Request Details" : "Show Request Details"}
+                            </button>
 
-                        {isDetailsOpen ? (
-                            <aside className="gathering-areas-map-overlay">
-                                <p className="gathering-areas-overlay-title">Selected Request</p>
-                                {selectedRequest ? (
-                                    <article className="gathering-areas-selected-card">
-                                        <p className="gathering-areas-selected-name">{selectedRequest.typeLabel}</p>
-                                        <p className="gathering-areas-selected-meta">
-                                            Priority: {formatPriority(selectedRequest.priorityLevel)}
-                                        </p>
-                                        <p className="gathering-areas-selected-meta">
-                                            Location: {selectedRequest.district}, {selectedRequest.city}
-                                        </p>
-                                        <p className="gathering-areas-selected-meta">
-                                            Opened: {formatRelative(selectedRequest.createdAt)}
-                                        </p>
-                                    </article>
-                                ) : (
-                                    <p className="gathering-areas-empty-detail">
-                                        Select a request marker to view details.
-                                    </p>
-                                )}
-
-                                <p className="gathering-areas-overlay-title">Waiting Requests</p>
-                                <div className="gathering-areas-list">
-                                    {requests.length ? (
-                                        requests.map((item) => (
-                                            <button
-                                                key={item.featureKey}
-                                                type="button"
-                                                className={`gathering-areas-item${selectedRequest?.featureKey === item.featureKey ? " is-active" : ""}`}
-                                                onClick={() => setSelectedRequestId(item.featureKey)}
-                                            >
-                                                <p className="gathering-areas-item-name">{item.typeLabel}</p>
-                                                <p className="gathering-areas-item-meta">
-                                                    Priority: {formatPriority(item.priorityLevel)} | {item.district}
-                                                </p>
-                                            </button>
-                                        ))
+                            {isDetailsOpen ? (
+                                <aside className="gathering-areas-map-overlay">
+                                    <p className="gathering-areas-overlay-title">Selected Request</p>
+                                    {selectedRequest ? (
+                                        <article className="gathering-areas-selected-card">
+                                            <p className="gathering-areas-selected-name">{selectedRequest.typeLabel}</p>
+                                            <p className="gathering-areas-selected-meta">
+                                                Priority: {formatPriority(selectedRequest.priorityLevel)}
+                                            </p>
+                                            <p className="gathering-areas-selected-meta">
+                                                Location: {selectedRequest.district}, {selectedRequest.city}
+                                            </p>
+                                            <p className="gathering-areas-selected-meta">
+                                                Opened: {formatRelative(selectedRequest.createdAt)}
+                                            </p>
+                                        </article>
                                     ) : (
                                         <p className="gathering-areas-empty-detail">
-                                            No waiting requests in view.
+                                            Select a request marker to view details.
                                         </p>
                                     )}
+
+                                    <p className="gathering-areas-overlay-title">Waiting Requests</p>
+                                    <div className="gathering-areas-list">
+                                        {visibleRequests.length ? (
+                                            visibleRequests.map((item) => (
+                                                <button
+                                                    key={item.featureKey}
+                                                    type="button"
+                                                    className={`gathering-areas-item${selectedRequest?.featureKey === item.featureKey ? " is-active" : ""}`}
+                                                    onClick={() => setSelectedRequestId(item.featureKey)}
+                                                >
+                                                    <p className="gathering-areas-item-name">{item.typeLabel}</p>
+                                                    <p className="gathering-areas-item-meta">
+                                                        Priority: {formatPriority(item.priorityLevel)} | {item.district}
+                                                    </p>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <p className="gathering-areas-empty-detail">
+                                                No waiting requests in view.
+                                            </p>
+                                        )}
+                                    </div>
+                                </aside>
+                            ) : null}
+                        </div>
+
+                        {availableTypes.length ? (
+                            <div className="crisis-filters-panel">
+                                <div className="crisis-filters-header">
+                                    <p className="crisis-filters-title">Filter by Request Type</p>
+                                    <button
+                                        type="button"
+                                        className="crisis-filters-clear"
+                                        disabled={!hasActiveFilters}
+                                        onClick={() => setSelectedTypes(new Set())}
+                                    >
+                                        Clear
+                                    </button>
                                 </div>
-                            </aside>
+                                <div className="crisis-filters-grid">
+                                    {availableTypes.map((type) => {
+                                        const isActive = selectedTypes.has(type);
+                                        const swatchColor = REQUEST_TYPE_COLORS[type];
+                                        return (
+                                            <button
+                                                key={type}
+                                                type="button"
+                                                className={`crisis-filter-chip${isActive ? " is-active" : ""}`}
+                                                onClick={() => {
+                                                    setSelectedTypes((current) => {
+                                                        const next = new Set(current);
+                                                        if (next.has(type)) {
+                                                            next.delete(type);
+                                                        } else {
+                                                            next.add(type);
+                                                        }
+                                                        return next;
+                                                    });
+                                                }}
+                                                aria-pressed={isActive}
+                                            >
+                                                <span
+                                                    className="crisis-filter-swatch"
+                                                    style={{ backgroundColor: swatchColor }}
+                                                    aria-hidden="true"
+                                                />
+                                                <span>{typeLabel(type)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="crisis-legend">
+                                    {availableTypes.map((type) => (
+                                        <span key={`legend-${type}`} className="crisis-legend-item">
+                                            <span
+                                                className="crisis-legend-swatch"
+                                                style={{ backgroundColor: REQUEST_TYPE_COLORS[type] }}
+                                                aria-hidden="true"
+                                            />
+                                            <span>{typeLabel(type)}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
                         ) : null}
                     </div>
 
@@ -276,6 +378,11 @@ export default function CrisisMapPage() {
                     {isEmpty ? (
                         <div className="gathering-areas-status-box">
                             <p>No waiting help requests are available right now.</p>
+                        </div>
+                    ) : null}
+                    {isFilterEmpty ? (
+                        <div className="gathering-areas-status-box">
+                            <p>No help requests match the selected request type filters.</p>
                         </div>
                     ) : null}
                 </SectionCard>
