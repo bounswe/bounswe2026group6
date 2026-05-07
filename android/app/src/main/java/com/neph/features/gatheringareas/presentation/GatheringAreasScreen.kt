@@ -107,7 +107,9 @@ fun GatheringAreasScreen(
                 sourceLabel = normalizedLabel
                 lastCenterLatitude = result.centerLatitude
                 lastCenterLongitude = result.centerLongitude
-                selectedAreaId = result.areas.firstOrNull()?.id
+                selectedAreaId = selectedAreaId?.takeIf { selected ->
+                    result.areas.any { it.id == selected }
+                }
                 categoryFilters = resolveCategoryOptions(result).map { it.key }.toSet()
 
                 if (result.areas.isEmpty()) {
@@ -219,7 +221,7 @@ fun GatheringAreasScreen(
     val isFilterEmpty = currentResult != null && currentResult.areas.isNotEmpty() && visibleAreas.isEmpty()
 
     if (selectedAreaId != null && visibleAreas.none { it.id == selectedAreaId }) {
-        selectedAreaId = visibleAreas.firstOrNull()?.id
+        selectedAreaId = null
     }
 
     AppDrawerScaffold(
@@ -358,7 +360,6 @@ fun GatheringAreasScreen(
                 else -> {
                     val result = nearbyResult ?: return@AppDrawerScaffold
                     val selectedArea = visibleAreas.firstOrNull { it.id == selectedAreaId }
-                        ?: visibleAreas.firstOrNull()
 
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {

@@ -481,7 +481,7 @@ export default function GatheringAreasPage() {
                     );
                     setLastUpdated(savedAt);
                     setFetchState("fallback");
-                    setSelectedAreaId(fallbackAreas[0]?.featureKey || null);
+                    setSelectedAreaId(null);
                     return;
                 } else {
                     setDataNotice("");
@@ -502,7 +502,7 @@ export default function GatheringAreasPage() {
                         return current;
                     }
 
-                    return mapped[0].featureKey;
+                    return null;
                 });
             } catch (err) {
                 if (currentRequestId !== requestIdRef.current) {
@@ -533,7 +533,7 @@ export default function GatheringAreasPage() {
                     setAreas(cachedAreas);
                     setCategoryOptions(cachedCategoryOptions);
                     setSelectedCategoryKeys(cachedCategoryOptions.map((item) => item.key));
-                    setSelectedAreaId(cachedAreas[0].featureKey);
+                    setSelectedAreaId(null);
                     setError("");
                     setDataNoticeTitle("Using cached gathering areas");
                     setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing your last saved result.`);
@@ -550,7 +550,7 @@ export default function GatheringAreasPage() {
                 const fallbackCategoryOptions = deriveCategoryOptions(fallbackAreas);
                 setCategoryOptions(fallbackCategoryOptions);
                 setSelectedCategoryKeys(fallbackCategoryOptions.map((item) => item.key));
-                setSelectedAreaId(fallbackAreas[0]?.featureKey || null);
+                setSelectedAreaId(null);
                 setError("");
                 setDataNoticeTitle("Using demo gathering areas");
                 setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing demo Istanbul areas and guidance.`);
@@ -632,9 +632,9 @@ export default function GatheringAreasPage() {
         ? "Fallback content may not match your exact location; follow official guidance during a real emergency."
         : `Searching within ${SEARCH_RADIUS_KM} km of your current location.`;
 
-    const selectedArea =
-        filteredAreas.find((item) => item.featureKey === selectedAreaId) ||
-        (filteredAreas.length ? filteredAreas[0] : null);
+    const selectedArea = selectedAreaId
+        ? filteredAreas.find((item) => item.featureKey === selectedAreaId) || null
+        : null;
 
     const toggleCategoryFilter = React.useCallback((key: string) => {
         const normalized = normalizeCategoryKey(key);

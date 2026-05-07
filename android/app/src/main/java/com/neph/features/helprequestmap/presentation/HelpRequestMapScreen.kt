@@ -122,7 +122,7 @@ fun HelpRequestMapScreen(
                 selectedRequestId = when {
                     result.requests.isEmpty() -> null
                     selectedRequestId != null && result.requests.any { it.requestId == selectedRequestId } -> selectedRequestId
-                    else -> result.requests.first().requestId
+                    else -> null
                 }
 
                 if (result.requests.isEmpty()) {
@@ -182,7 +182,7 @@ fun HelpRequestMapScreen(
         selectedRequestId = reconcileSelectedRequestId(selectedRequestId, visibleRequests)
     }
 
-    val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId } ?: visibleRequests.firstOrNull()
+    val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId }
     val isFilterEmpty = !loading && requests.isNotEmpty() && visibleRequests.isEmpty()
 
     AppDrawerScaffold(

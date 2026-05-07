@@ -151,7 +151,7 @@ export default function CrisisMapPage() {
                 if (current && mapped.some((item) => item.featureKey === current)) {
                     return current;
                 }
-                return mapped[0].featureKey;
+                return null;
             });
         } catch (err) {
             if (currentRequestId !== requestIdRef.current) {
@@ -193,9 +193,9 @@ export default function CrisisMapPage() {
 
     const filterTypes = REQUEST_TYPE_ORDER;
 
-    const selectedRequest =
-        visibleRequests.find((item) => item.featureKey === selectedRequestId) ||
-        (visibleRequests.length ? visibleRequests[0] : null);
+    const selectedRequest = selectedRequestId
+        ? visibleRequests.find((item) => item.featureKey === selectedRequestId) || null
+        : null;
 
     const handleGetDirections = React.useCallback((request: CrisisMapFeature) => {
         const opened = openDirections(request.latitude, request.longitude, request.typeLabel);
