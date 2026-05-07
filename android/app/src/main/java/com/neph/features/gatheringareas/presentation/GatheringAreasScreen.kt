@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -199,8 +197,7 @@ fun GatheringAreasScreen(
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(spacing.lg),
-            modifier = Modifier.verticalScroll(rememberScrollState())
+            verticalArrangement = Arrangement.spacedBy(spacing.lg)
         ) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {

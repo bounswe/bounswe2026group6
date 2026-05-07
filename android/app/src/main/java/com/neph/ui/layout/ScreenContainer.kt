@@ -1,9 +1,10 @@
 package com.neph.ui.layout
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,6 +22,8 @@ fun ScreenContainer(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding()
             .padding(horizontal = spacing.xl, vertical = spacing.xl),
         contentAlignment = contentAlignment,
         content = content

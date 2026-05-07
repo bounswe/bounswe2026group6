@@ -3,6 +3,7 @@ package com.neph.features.notifications.presentation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -84,10 +85,17 @@ fun NotificationsScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        contentFillMaxSize = true,
+        contentScrollable = false
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
-            SectionCard {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg)
+        ) {
+            SectionCard(
+                modifier = Modifier.weight(1f)
+            ) {
                 SectionHeader(
                     title = "Notifications",
                     subtitle = if (isAuthenticated) {
@@ -157,7 +165,12 @@ fun NotificationsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm)
+                    ) {
                         items(notifications, key = { it.id }) { notification ->
                             Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
                                 Row(
