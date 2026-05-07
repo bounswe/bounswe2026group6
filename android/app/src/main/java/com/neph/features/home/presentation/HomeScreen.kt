@@ -1,11 +1,27 @@
 package com.neph.features.home.presentation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -19,9 +35,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -42,13 +59,10 @@ import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
 import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
+import com.neph.features.safetycircles.presentation.CircleStatusCard
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.features.safetystatus.data.SafetyStatusState
 import com.neph.navigation.Routes
-import com.neph.ui.components.buttons.PrimaryButton
-import com.neph.ui.components.buttons.SecondaryButton
-import com.neph.ui.components.display.SectionCard
-import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
@@ -74,6 +88,24 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val sessionToken = AuthSessionStore.getAccessToken()
+    val profile = ProfileRepository.getProfile()
+    val profileDisplayName = remember(
+        profile.firstName,
+        profile.fullName,
+        profileBadgeText
+    ) {
+        val firstName = profile.firstName?.trim()?.takeIf { it.isNotBlank() }
+        val firstNameFromFullName = profile.fullName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.substringBefore(' ')
+
+        when {
+            !firstName.isNullOrBlank() -> firstName
+            !firstNameFromFullName.isNullOrBlank() -> firstNameFromFullName
+            else -> profileBadgeText
+        }
+    }
 
     val availabilityState by AvailabilityRepository.observeAvailabilityState()
         .collectAsState(initial = AvailabilityRepository.getAvailabilityState())
@@ -478,22 +510,44 @@ fun HomeScreen(
         } else {
             Routes.guestDrawerItems
         },
+        bottomNavItems = if (isAuthenticated) {
+            Routes.authenticatedBottomNavItems
+        } else {
+            Routes.guestBottomNavItems
+        },
         modifier = modifier,
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
-        contentMaxWidth = 360.dp,
-        contentAlignment = Alignment.Center
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(spacing.md)
+            verticalArrangement = Arrangement.spacedBy(spacing.xl)
         ) {
+            HomeGreetingHero(
+                isAuthenticated = isAuthenticated,
+                displayName = profileDisplayName,
+                safetyStatus = safetyStatusState.status
+            )
+
+            EmergencyHelpAction(
+                loading = requestHelpLoading,
+                enabled = !availabilityLoading && !markSafeLoading,
+                onClick = ::handleRequestHelp
+            )
+
+            MarkSafeRow(
+                loading = markSafeLoading,
+                enabled = !availabilityLoading && !requestHelpLoading && !markSafeLoading,
+                statusMessage = buildSafetyStatusSyncMessage(safetyStatusState),
+                isError = safetyStatusState.isFailedSync,
+                onClick = ::requestMarkSafeConfirmation
+            )
+
             if (!locationPermissionGranted) {
-                SectionCard(
-                    modifier = Modifier.clickable {
+                LocationPermissionPrompt(
+                    onClick = {
                         pendingLocationPermissionAction = { granted ->
                             locationPermissionGranted = granted
                             locationPermissionInfo = if (granted) {
@@ -504,14 +558,7 @@ fun HomeScreen(
                         }
                         locationPermissionRequester.requestPermission()
                     }
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-                        SectionHeader(
-                            title = "Enable location for faster emergency actions",
-                            subtitle = "Allow NEPH to use your location while the app is open so Request Help and volunteer matching can work faster."
-                        )
-                    }
-                }
+                )
             }
 
             if (locationPermissionInfo.isNotBlank()) {
@@ -519,8 +566,7 @@ fun HomeScreen(
                     text = locationPermissionInfo,
                     modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -541,92 +587,274 @@ fun HomeScreen(
                 )
             }
 
-            SectionCard {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(spacing.sm)
-                ) {
-                    SectionHeader(
-                        title = "Emergency Mode",
-                        subtitle = "Choose the critical action first."
+            if (isAuthenticated) {
+                CircleStatusCard(
+                    onOpenSafetyCircles = { onNavigateToRoute(Routes.SafetyCircles.route) },
+                    onOpenLogin = onNavigateToLogin
+                )
+            }
+
+            val statusMessages = listOfNotNull(
+                requestHelpError.takeIf { it.isNotBlank() }?.let { it to true },
+                emergencyError.takeIf { it.isNotBlank() }?.let { it to true },
+                emergencyInfo.takeIf { it.isNotBlank() }?.let { it to false }
+            )
+            statusMessages.forEach { (message, isError) ->
+                Text(
+                    text = message,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeGreetingHero(
+    isAuthenticated: Boolean,
+    displayName: String,
+    safetyStatus: String
+) {
+    val spacing = LocalNephSpacing.current
+    val safetyTone = when (safetyStatus.lowercase()) {
+        "safe" -> Triple(MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.onTertiary, "You're marked safe")
+        "not_safe", "needs_help" -> Triple(MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.onError, "Help requested")
+        else -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Status unknown")
+    }
+    val greetingPrimary = if (isAuthenticated) "Hello" else "Welcome"
+    val greetingDetail = if (isAuthenticated) {
+        if (displayName.isNotBlank()) "Glad you're here, $displayName." else "Glad you're here."
+    } else {
+        "Neighbors helping neighbors."
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.surface
                     )
-
-                    PrimaryButton(
-                        text = "I need help",
-                        onClick = ::handleRequestHelp,
-                        modifier = Modifier.heightIn(min = 72.dp),
-                        loading = requestHelpLoading,
-                        enabled = !availabilityLoading && !markSafeLoading
+                ),
+                shape = RoundedCornerShape(28.dp)
+            )
+            .padding(horizontal = spacing.xl, vertical = spacing.xl)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+            Text(
+                text = greetingPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = greetingDetail,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(spacing.xs))
+            Row(
+                modifier = Modifier
+                    .background(
+                        color = safetyTone.first,
+                        shape = RoundedCornerShape(50)
                     )
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(safetyTone.second, CircleShape)
+                )
+                Text(
+                    text = safetyTone.third,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = safetyTone.second,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
 
-                    SecondaryButton(
-                        text = "I am safe",
-                        onClick = ::requestMarkSafeConfirmation,
-                        enabled = !availabilityLoading && !requestHelpLoading && !markSafeLoading
+@Composable
+private fun EmergencyHelpAction(
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val spacing = LocalNephSpacing.current
+    val effectiveEnabled = enabled && !loading
+    val gradient = Brush.linearGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.secondary
+        )
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 96.dp)
+            .background(brush = gradient, shape = RoundedCornerShape(24.dp))
+            .clickable(enabled = effectiveEnabled) { onClick() }
+            .padding(horizontal = spacing.xl, vertical = spacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing.lg)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.20f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "I need help now",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Tap to alert nearby neighbors and volunteers.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarkSafeRow(
+    loading: Boolean,
+    enabled: Boolean,
+    statusMessage: String,
+    isError: Boolean,
+    onClick: () -> Unit
+) {
+    val spacing = LocalNephSpacing.current
+    val effectiveEnabled = enabled && !loading
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .clickable(enabled = effectiveEnabled) { onClick() }
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.md)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        strokeWidth = 2.dp
                     )
-
-                    if (markSafeLoading) {
-                        Text(
-                            text = "Saving your safety status...",
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    val safetyStatusSyncMessage = buildSafetyStatusSyncMessage(safetyStatusState)
-                    if (!markSafeLoading && safetyStatusSyncMessage.isNotBlank()) {
-                        Text(
-                            text = safetyStatusSyncMessage,
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (safetyStatusState.isFailedSync) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
                 }
             }
-
-            if (requestHelpError.isNotBlank()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = requestHelpError,
-                    modifier = Modifier.fillMaxWidth(),
+                    text = "I'm safe",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Let your circle know you're okay.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            if (emergencyError.isNotBlank()) {
-                Text(
-                    text = emergencyError,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            if (emergencyInfo.isNotBlank()) {
-                Text(
-                    text = emergencyInfo,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center
-                )
-            }
-
+        }
+        if (statusMessage.isNotBlank()) {
             Text(
-                text = "Use Emergency Mode to request help or check in safe from your phone.",
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
+                text = statusMessage,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.sm),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocationPermissionPrompt(onClick: () -> Unit) {
+    val spacing = LocalNephSpacing.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.10f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(spacing.md)
+    ) {
+        Icon(
+            imageVector = Icons.Filled.LocationOn,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.tertiary
+        )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "Enable location",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Help us find responders nearby faster.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
