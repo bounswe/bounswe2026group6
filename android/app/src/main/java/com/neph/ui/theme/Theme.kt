@@ -27,7 +27,7 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
 
     surface = NephColors.SurfaceCard,
     onSurface = NephColors.TextPrimary,
-    surfaceVariant = NephColors.PrimaryLight,
+    surfaceVariant = NephColors.SurfaceMuted,
     onSurfaceVariant = NephColors.TextSecondary,
 
     error = NephColors.Error,

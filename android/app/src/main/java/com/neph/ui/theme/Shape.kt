@@ -5,10 +5,10 @@ import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
 object NephShapeTokens {
-    val Small = RoundedCornerShape(8.dp)
-    val Medium = RoundedCornerShape(10.dp)
-    val Large = RoundedCornerShape(14.dp)
-    val ExtraLarge = RoundedCornerShape(16.dp)
+    val Small = RoundedCornerShape(12.dp)
+    val Medium = RoundedCornerShape(16.dp)
+    val Large = RoundedCornerShape(22.dp)
+    val ExtraLarge = RoundedCornerShape(28.dp)
     val Pill = RoundedCornerShape(999.dp)
 }
 
@@ -16,6 +16,6 @@ val NephShapes = Shapes(
     extraSmall = NephShapeTokens.Small,
     small = NephShapeTokens.Medium,
     medium = NephShapeTokens.Large,
-    large = NephShapeTokens.ExtraLarge,
+    large = NephShapeTokens.Large,
     extraLarge = NephShapeTokens.ExtraLarge
 )
