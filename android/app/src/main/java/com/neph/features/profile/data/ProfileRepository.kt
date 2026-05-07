@@ -12,6 +12,7 @@ import java.util.Locale
 
 object ProfileRepository {
     private const val PrefsName = "neph_profile"
+    private const val PermissionPrefsName = "neph_profile_permission_privacy"
     private const val LocationPermissionPrivacyHintKey = "locationPermissionPrivacyHint"
     private const val PendingLocationPermissionPrivacyHintSyncKey = "pendingLocationPermissionPrivacyHintSync"
 
@@ -21,6 +22,7 @@ object ProfileRepository {
     internal const val LocationPermissionGrantedVisibility = "EMERGENCY_ONLY"
 
     private lateinit var prefs: SharedPreferences
+    private lateinit var permissionPrefs: SharedPreferences
     private var cachedProfile = ProfileData()
 
     internal const val LocationSharingInitializationMessage =
@@ -33,8 +35,20 @@ object ProfileRepository {
     fun initialize(context: Context) {
         if (!::prefs.isInitialized) {
             prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
+            permissionPrefs = context.applicationContext.getSharedPreferences(PermissionPrefsName, Context.MODE_PRIVATE)
             cachedProfile = readProfileFromPrefs()
         }
+    }
+
+    internal fun initializeForTesting(
+        profilePrefs: SharedPreferences,
+        permissionPrivacyPrefs: SharedPreferences
+    ) {
+        requireDebugBuildForTestingReset()
+
+        prefs = profilePrefs
+        permissionPrefs = permissionPrivacyPrefs
+        cachedProfile = readProfileFromPrefs()
     }
 
     fun saveProfile(new: ProfileData) {
@@ -56,23 +70,28 @@ object ProfileRepository {
 
     fun rememberLocationPermissionPrivacyHint(granted: Boolean) {
         ensureInitialized()
-        prefs.edit()
+        permissionPrefs.edit()
             .putBoolean(LocationPermissionPrivacyHintKey, granted)
             .apply()
     }
 
     fun defaultLocationVisibilityFromStoredPermission(): String {
-        if (!::prefs.isInitialized) {
+        if (!::permissionPrefs.isInitialized) {
             return DefaultLocationVisibility
         }
         return defaultLocationVisibilityForPermission(
-            prefs.getBoolean(LocationPermissionPrivacyHintKey, false)
+            permissionPrefs.getBoolean(LocationPermissionPrivacyHintKey, false)
         )
     }
 
     fun hasPendingLocationPermissionPrivacyHintSync(): Boolean {
         ensureInitialized()
-        return prefs.getBoolean(PendingLocationPermissionPrivacyHintSyncKey, false)
+        return permissionPrefs.getBoolean(PendingLocationPermissionPrivacyHintSyncKey, false)
+    }
+
+    internal fun rememberLocationPermissionPrivacyHintForPendingSync(granted: Boolean) {
+        rememberLocationPermissionPrivacyHint(granted)
+        markPendingLocationPermissionPrivacyHintSync()
     }
 
     fun resetForTesting() {
@@ -81,6 +100,9 @@ object ProfileRepository {
         cachedProfile = ProfileData()
         if (::prefs.isInitialized) {
             prefs.edit().clear().commit()
+        }
+        if (::permissionPrefs.isInitialized) {
+            permissionPrefs.edit().clear().commit()
         }
     }
 
@@ -326,13 +348,13 @@ object ProfileRepository {
 
     suspend fun syncPrivacyDefaultsForLocationPermission(locationPermissionGranted: Boolean): ProfileData? {
         ensureInitialized()
-        rememberLocationPermissionPrivacyHint(locationPermissionGranted)
 
         val token = AuthSessionStore.getAccessToken().orEmpty()
         if (token.isBlank()) {
-            markPendingLocationPermissionPrivacyHintSync()
+            rememberLocationPermissionPrivacyHintForPendingSync(locationPermissionGranted)
             return null
         }
+        rememberLocationPermissionPrivacyHint(locationPermissionGranted)
 
         val profile = try {
             fetchAndCacheRemoteProfile()
@@ -373,7 +395,7 @@ object ProfileRepository {
 
         return try {
             syncPrivacyDefaultsForLocationPermission(
-                prefs.getBoolean(LocationPermissionPrivacyHintKey, false)
+                permissionPrefs.getBoolean(LocationPermissionPrivacyHintKey, false)
             )
         } catch (cancellationException: CancellationException) {
             throw cancellationException
@@ -734,13 +756,13 @@ object ProfileRepository {
     }
 
     private fun markPendingLocationPermissionPrivacyHintSync() {
-        prefs.edit()
+        permissionPrefs.edit()
             .putBoolean(PendingLocationPermissionPrivacyHintSyncKey, true)
             .apply()
     }
 
     private fun clearPendingLocationPermissionPrivacyHintSync() {
-        prefs.edit()
+        permissionPrefs.edit()
             .remove(PendingLocationPermissionPrivacyHintSyncKey)
             .apply()
     }
@@ -863,7 +885,7 @@ object ProfileRepository {
     }
 
     private fun ensureInitialized() {
-        check(::prefs.isInitialized) {
+        check(::prefs.isInitialized && ::permissionPrefs.isInitialized) {
             "ProfileRepository must be initialized before use."
         }
     }

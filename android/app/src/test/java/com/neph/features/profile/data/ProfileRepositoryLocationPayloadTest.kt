@@ -1,5 +1,6 @@
 package com.neph.features.profile.data
 
+import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -63,6 +64,27 @@ class ProfileRepositoryLocationPayloadTest {
         )
 
         assertEquals("EMERGENCY_ONLY", result)
+    }
+
+    @Test
+    fun loggedOutPermissionHint_survivesNormalLoginProfileClearUntilPendingSync() {
+        ProfileRepository.initializeForTesting(
+            profilePrefs = FakeSharedPreferences(),
+            permissionPrivacyPrefs = FakeSharedPreferences()
+        )
+
+        try {
+            ProfileRepository.saveProfile(ProfileData(email = "cached@example.com"))
+            ProfileRepository.rememberLocationPermissionPrivacyHintForPendingSync(granted = true)
+
+            ProfileRepository.clearProfile()
+
+            assertEquals(ProfileData(), ProfileRepository.getProfile())
+            assertTrue(ProfileRepository.hasPendingLocationPermissionPrivacyHintSync())
+            assertEquals("EMERGENCY_ONLY", ProfileRepository.defaultLocationVisibilityFromStoredPermission())
+        } finally {
+            ProfileRepository.resetForTesting()
+        }
     }
 
     @Test
@@ -312,5 +334,103 @@ class ProfileRepositoryLocationPayloadTest {
         assertFalse(payload.has("latitude"))
         assertFalse(payload.has("longitude"))
         assertFalse(payload.has("coordinate"))
+    }
+}
+
+private class FakeSharedPreferences : SharedPreferences {
+    private val values = mutableMapOf<String, Any?>()
+
+    override fun getAll(): MutableMap<String, *> = values.toMutableMap()
+
+    override fun getString(key: String?, defValue: String?): String? {
+        return values[key] as? String ?: defValue
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? {
+        return values[key] as? MutableSet<String> ?: defValues
+    }
+
+    override fun getInt(key: String?, defValue: Int): Int {
+        return values[key] as? Int ?: defValue
+    }
+
+    override fun getLong(key: String?, defValue: Long): Long {
+        return values[key] as? Long ?: defValue
+    }
+
+    override fun getFloat(key: String?, defValue: Float): Float {
+        return values[key] as? Float ?: defValue
+    }
+
+    override fun getBoolean(key: String?, defValue: Boolean): Boolean {
+        return values[key] as? Boolean ?: defValue
+    }
+
+    override fun contains(key: String?): Boolean {
+        return values.containsKey(key)
+    }
+
+    override fun edit(): SharedPreferences.Editor {
+        return FakeEditor()
+    }
+
+    override fun registerOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?
+    ) = Unit
+
+    override fun unregisterOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?
+    ) = Unit
+
+    private inner class FakeEditor : SharedPreferences.Editor {
+        private val pendingValues = mutableMapOf<String, Any?>()
+        private val removals = mutableSetOf<String>()
+        private var clearRequested = false
+
+        override fun putString(key: String?, value: String?): SharedPreferences.Editor = apply {
+            key?.let { pendingValues[it] = value }
+        }
+
+        override fun putStringSet(key: String?, values: MutableSet<String>?): SharedPreferences.Editor = apply {
+            key?.let { pendingValues[it] = values }
+        }
+
+        override fun putInt(key: String?, value: Int): SharedPreferences.Editor = apply {
+            key?.let { pendingValues[it] = value }
+        }
+
+        override fun putLong(key: String?, value: Long): SharedPreferences.Editor = apply {
+            key?.let { pendingValues[it] = value }
+        }
+
+        override fun putFloat(key: String?, value: Float): SharedPreferences.Editor = apply {
+            key?.let { pendingValues[it] = value }
+        }
+
+        override fun putBoolean(key: String?, value: Boolean): SharedPreferences.Editor = apply {
+            key?.let { pendingValues[it] = value }
+        }
+
+        override fun remove(key: String?): SharedPreferences.Editor = apply {
+            key?.let { removals += it }
+        }
+
+        override fun clear(): SharedPreferences.Editor = apply {
+            clearRequested = true
+        }
+
+        override fun commit(): Boolean {
+            apply()
+            return true
+        }
+
+        override fun apply() {
+            if (clearRequested) {
+                values.clear()
+            }
+            removals.forEach(values::remove)
+            values.putAll(pendingValues)
+        }
     }
 }
