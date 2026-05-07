@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -61,6 +63,36 @@ import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private val RequestTypeFilterOrder = listOf(
+    CrisisRequestType.FIRST_AID,
+    CrisisRequestType.SHELTER,
+    CrisisRequestType.FOOD_WATER,
+    CrisisRequestType.SEARCH_AND_RESCUE,
+    CrisisRequestType.OTHER
+)
+
+internal fun filterVisibleRequests(
+    requests: List<ActiveHelpRequestMapItem>,
+    selectedTypes: Set<CrisisRequestType>
+): List<ActiveHelpRequestMapItem> {
+    if (selectedTypes.isEmpty()) {
+        return requests
+    }
+    return requests.filter { it.type in selectedTypes }
+}
+
+internal fun reconcileSelectedRequestId(
+    selectedRequestId: String?,
+    visibleRequests: List<ActiveHelpRequestMapItem>
+): String? {
+    if (selectedRequestId == null) {
+        return null
+    }
+    return selectedRequestId.takeIf { selected ->
+        visibleRequests.any { it.requestId == selected }
+    }
+}
+
 @Composable
 fun HelpRequestMapScreen(
     onNavigateToRoute: (String) -> Unit,
@@ -78,6 +110,7 @@ fun HelpRequestMapScreen(
     var infoMessage by remember { mutableStateOf("") }
     var requests by remember { mutableStateOf(emptyList<ActiveHelpRequestMapItem>()) }
     var selectedRequestId by remember { mutableStateOf<String?>(null) }
+    var selectedTypes by remember { mutableStateOf(setOf<CrisisRequestType>()) }
 
     fun loadWaitingRequests() {
         scope.launch {
@@ -133,7 +166,14 @@ fun HelpRequestMapScreen(
         loadWaitingRequests()
     }
 
-    val selectedRequest = requests.firstOrNull { it.requestId == selectedRequestId } ?: requests.firstOrNull()
+    val visibleRequests = filterVisibleRequests(requests, selectedTypes)
+
+    LaunchedEffect(visibleRequests, selectedRequestId) {
+        selectedRequestId = reconcileSelectedRequestId(selectedRequestId, visibleRequests)
+    }
+
+    val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId } ?: visibleRequests.firstOrNull()
+    val isFilterEmpty = !loading && requests.isNotEmpty() && visibleRequests.isEmpty()
 
     AppDrawerScaffold(
         title = "Help Request Map",
@@ -204,8 +244,22 @@ fun HelpRequestMapScreen(
 
                 else -> {
                     SectionCard {
+                        RequestTypeFiltersCard(
+                            selectedTypes = selectedTypes,
+                            onToggleType = { type ->
+                                selectedTypes = if (type in selectedTypes) {
+                                    selectedTypes - type
+                                } else {
+                                    selectedTypes + type
+                                }
+                            },
+                            onClear = { selectedTypes = emptySet() }
+                        )
+                    }
+
+                    SectionCard {
                         CrisisRequestMapPanel(
-                            requests = requests,
+                            requests = visibleRequests,
                             selectedRequestId = selectedRequest?.requestId,
                             onSelectRequest = { selectedRequestId = it }
                         )
@@ -238,7 +292,11 @@ fun HelpRequestMapScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
 
-                            requests.forEachIndexed { index, item ->
+                            if (visibleRequests.isEmpty()) {
+                                HelperText(text = "No waiting requests in view.")
+                            }
+
+                            visibleRequests.forEachIndexed { index, item ->
                                 RequestListItem(
                                     item = item,
                                     selected = item.requestId == selectedRequest?.requestId,
@@ -246,7 +304,7 @@ fun HelpRequestMapScreen(
                                     onOpenMap = { openRequestInMap(item) }
                                 )
 
-                                if (index < requests.lastIndex) {
+                                if (index < visibleRequests.lastIndex) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 }
                             }
@@ -255,9 +313,109 @@ fun HelpRequestMapScreen(
                 }
             }
 
+            if (isFilterEmpty) {
+                SectionCard {
+                    HelperText(text = "No help requests match the selected request type filters.")
+                }
+            }
+
             if (infoMessage.isNotBlank()) {
                 SectionCard {
                     HelperText(text = infoMessage)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RequestTypeFiltersCard(
+    selectedTypes: Set<CrisisRequestType>,
+    onToggleType: (CrisisRequestType) -> Unit,
+    onClear: () -> Unit
+) {
+    val spacing = LocalNephSpacing.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Filter by Request Type",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
+            )
+            TextActionButton(
+                text = "Clear",
+                enabled = selectedTypes.isNotEmpty(),
+                onClick = onClear
+            )
+        }
+
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm)
+        ) {
+            RequestTypeFilterOrder.forEach { type ->
+                val style = markerStyle(type)
+                val selected = type in selectedTypes
+                FilterChip(
+                    selected = selected,
+                    onClick = { onToggleType(type) },
+                    label = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(style.color)
+                            )
+                            Text(text = ActiveHelpRequestsRepository.labelForType(type))
+                        }
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
+
+        Text(
+            text = "Legend",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm)
+        ) {
+            RequestTypeFilterOrder.forEach { type ->
+                val style = markerStyle(type)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(style.color)
+                    )
+                    Text(
+                        text = ActiveHelpRequestsRepository.labelForType(type),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
