@@ -4,6 +4,8 @@ import * as React from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
+import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { getAccessToken } from "@/lib/auth";
 import {
     fetchNotificationPreferences,
@@ -14,6 +16,46 @@ import {
     type NotificationItem,
 } from "@/lib/notifications";
 
+function formatDateTime(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    });
+}
+
+function formatTypeLabel(value: string) {
+    const normalized = (value || "").trim().toLowerCase();
+    if (!normalized) return "Notification";
+    return normalized
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+function formatEntityLabel(item: NotificationItem) {
+    const entityType = item.entity?.type?.trim();
+    const entityId = item.entity?.id?.trim();
+
+    if (!entityType && !entityId) {
+        return "General update";
+    }
+
+    if (entityType && entityId) {
+        return `${formatTypeLabel(entityType)} #${entityId}`;
+    }
+
+    if (entityType) {
+        return formatTypeLabel(entityType);
+    }
+
+    return `Reference #${entityId}`;
+}
+
 export default function NotificationsPage() {
     const [token, setToken] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(false);
@@ -22,6 +64,9 @@ export default function NotificationsPage() {
     const [unreadCount, setUnreadCount] = React.useState(0);
     const [nextCursor, setNextCursor] = React.useState<string | null>(null);
     const [pushEnabled, setPushEnabled] = React.useState(true);
+    const [markingAllRead, setMarkingAllRead] = React.useState(false);
+    const [savingPushPreference, setSavingPushPreference] = React.useState(false);
+    const [markingItemId, setMarkingItemId] = React.useState<string | null>(null);
 
     const refresh = React.useCallback(async () => {
         if (!token) return;
@@ -76,72 +121,123 @@ export default function NotificationsPage() {
                 {!token ? (
                     <p className="text-muted">You need to log in first.</p>
                 ) : (
-                    <div style={{ display: "grid", gap: 12 }}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <button className="btn btn-secondary" onClick={() => void refresh()} disabled={isLoading}>
-                                Refresh
-                            </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={async () => {
-                                    if (!token) return;
-                                    await markAllNotificationsAsRead(token);
-                                    await refresh();
-                                }}
-                                disabled={isLoading}
-                            >
-                                Mark All Read
-                            </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={async () => {
-                                    if (!token) return;
-                                    const next = !pushEnabled;
-                                    await updateNotificationPreferences(token, next);
-                                    setPushEnabled(next);
-                                }}
-                                disabled={isLoading}
-                            >
-                                Push: {pushEnabled ? "ON" : "OFF"}
-                            </button>
+                    <div className="notifications-page-wrap">
+                        <div className="notifications-controls-card">
+                            <p className="notifications-controls-title">Notification controls</p>
+                            <p className="notifications-controls-subtitle">
+                                Push ON/OFF controls push delivery preference. Notifications are always listed here in-app.
+                            </p>
+                            <div className="notifications-toolbar">
+                                <SecondaryButton className="w-auto" onClick={() => void refresh()} disabled={isLoading || markingAllRead || savingPushPreference}>
+                                    Refresh
+                                </SecondaryButton>
+                                <SecondaryButton
+                                    className="w-auto"
+                                    onClick={async () => {
+                                        if (!token) return;
+                                        setMarkingAllRead(true);
+                                        try {
+                                            await markAllNotificationsAsRead(token);
+                                            await refresh();
+                                        } finally {
+                                            setMarkingAllRead(false);
+                                        }
+                                    }}
+                                    disabled={isLoading || markingAllRead || savingPushPreference || unreadCount === 0}
+                                >
+                                    {markingAllRead ? "Marking..." : "Mark All Read"}
+                                </SecondaryButton>
+                                <PrimaryButton
+                                    className="w-auto"
+                                    onClick={async () => {
+                                        if (!token) return;
+                                        const next = !pushEnabled;
+                                        setSavingPushPreference(true);
+                                        try {
+                                            await updateNotificationPreferences(token, next);
+                                            setPushEnabled(next);
+                                        } finally {
+                                            setSavingPushPreference(false);
+                                        }
+                                    }}
+                                    loading={savingPushPreference}
+                                    disabled={isLoading || markingAllRead}
+                                >
+                                    Push {pushEnabled ? "ON" : "OFF"}
+                                </PrimaryButton>
+                            </div>
                         </div>
 
                         {error ? <p className="admin-error-text">{error}</p> : null}
-                        {isLoading ? <p>Loading...</p> : null}
+                        {isLoading ? <p className="text-muted">Loading notifications...</p> : null}
 
                         {items.length === 0 && !isLoading ? (
-                            <p className="text-muted">No notifications yet.</p>
+                            <div className="notifications-empty-state">
+                                <p className="notifications-empty-title">No notifications yet</p>
+                                <p className="text-muted">You will see account and emergency updates here.</p>
+                            </div>
                         ) : (
-                            <div style={{ display: "grid", gap: 10 }}>
+                            <div className="notifications-list">
                                 {items.map((item) => (
-                                    <article key={item.id} className="news-item-card">
-                                        <div className="news-item-meta-row">
-                                            <span className="news-item-category-chip">{item.type}</span>
-                                            <span className="news-item-date">{item.createdAt}</span>
+                                    <article
+                                        key={item.id}
+                                        className={`notifications-item-card${item.isRead ? "" : " is-unread"}`}
+                                    >
+                                        <div className="notifications-item-meta-row">
+                                            <span className="notifications-item-type-chip">
+                                                {formatTypeLabel(item.type)}
+                                            </span>
+                                            <span className="news-item-date">{formatDateTime(item.createdAt)}</span>
                                         </div>
-                                        <h3 className="news-item-title">{item.title}</h3>
-                                        <p className="news-item-summary">{item.body}</p>
-                                        {!item.isRead ? (
-                                            <button
-                                                className="btn btn-secondary"
-                                                onClick={async () => {
-                                                    if (!token) return;
-                                                    await markNotificationAsRead(token, item.id);
-                                                    await refresh();
-                                                }}
-                                            >
-                                                Mark Read
-                                            </button>
-                                        ) : null}
+
+                                        <h3 className="notifications-item-title">
+                                            {item.title || "Notification update"}
+                                        </h3>
+
+                                        <p className="notifications-item-body">{item.body}</p>
+
+                                        <div className="notifications-item-context">
+                                            <p>
+                                                <strong>Related to:</strong> {formatEntityLabel(item)}
+                                            </p>
+                                            <p>
+                                                <strong>Status:</strong> {item.isRead ? "Read" : "Unread"}
+                                                {item.readAt ? ` - Read at ${formatDateTime(item.readAt)}` : ""}
+                                            </p>
+                                        </div>
+
+                                        <div className="notifications-item-actions">
+                                            {!item.isRead ? (
+                                                <PrimaryButton
+                                                    className="w-auto"
+                                                    loading={markingItemId === item.id}
+                                                    disabled={Boolean(markingItemId)}
+                                                    onClick={async () => {
+                                                        if (!token) return;
+                                                        setMarkingItemId(item.id);
+                                                        try {
+                                                            await markNotificationAsRead(token, item.id);
+                                                            await refresh();
+                                                        } finally {
+                                                            setMarkingItemId(null);
+                                                        }
+                                                    }}
+                                                >
+                                                    Mark as Read
+                                                </PrimaryButton>
+                                            ) : (
+                                                <span className="notifications-read-pill">Read</span>
+                                            )}
+                                        </div>
                                     </article>
                                 ))}
                             </div>
                         )}
 
                         {nextCursor ? (
-                            <button className="btn btn-secondary" onClick={() => void loadMore()} disabled={isLoading}>
+                            <SecondaryButton className="w-auto notifications-load-more" onClick={() => void loadMore()} disabled={isLoading}>
                                 Load More
-                            </button>
+                            </SecondaryButton>
                         ) : null}
                     </div>
                 )}

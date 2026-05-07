@@ -255,9 +255,7 @@ export function TopNavbar() {
                             />
                         </svg>
                         {isAuthenticated && unreadCount > 0 ? (
-                            <span className="top-navbar-notification-badge">
-                                {unreadCount > 99 ? "99+" : unreadCount}
-                            </span>
+                            <span className="top-navbar-notification-dot" aria-hidden="true" />
                         ) : null}
                     </Link>
 
