@@ -28,7 +28,9 @@ data class LeafletMapMarker(
     val latitude: Double,
     val longitude: Double,
     val title: String,
-    val subtitle: String = ""
+    val subtitle: String = "",
+    val strokeColorHex: String = "#B91C1C",
+    val fillColorHex: String = "#DC2626"
 )
 
 private const val LeafletMarkerMapBridgeName = "AndroidLeafletMarkerMap"
@@ -165,6 +167,8 @@ internal fun buildLeafletMarkerMapHtml(
                 .put("longitude", marker.longitude)
                 .put("title", marker.title)
                 .put("subtitle", marker.subtitle)
+                .put("strokeColorHex", marker.strokeColorHex)
+                .put("fillColorHex", marker.fillColorHex)
         }
     ).toString()
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
@@ -218,9 +222,9 @@ internal fun buildLeafletMarkerMapHtml(
                     var selected = marker.id === selectedMarkerId;
                     var areaMarker = L.circleMarker([marker.latitude, marker.longitude], {
                         radius: selected ? 11 : 8,
-                        color: selected ? '#7F1D1D' : '#B91C1C',
+                        color: selected ? '#111827' : marker.strokeColorHex,
                         weight: selected ? 3 : 2,
-                        fillColor: selected ? '#B91C1C' : '#DC2626',
+                        fillColor: marker.fillColorHex,
                         fillOpacity: selected ? 0.95 : 0.82
                     }).addTo(map);
                     var label = marker.subtitle

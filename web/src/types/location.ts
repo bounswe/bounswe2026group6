@@ -74,8 +74,14 @@ export type GatheringAreaFeatureProperties = {
     osmType: string;
     name: string;
     category: string;
+    categoryLabel?: string;
     distanceMeters: number;
     rawTags: Record<string, unknown>;
+};
+
+export type GatheringAreaCategoryMeta = {
+    key: string;
+    label: string;
 };
 
 export type GatheringAreaFeature = {
@@ -99,6 +105,7 @@ export type NearbyGatheringAreasResponse = {
     meta: {
         requestedLimit: number;
         returnedCount: number;
+        categories?: GatheringAreaCategoryMeta[];
         stale?: boolean;
         providerErrorCode?: string;
         fallbackReason?: string;

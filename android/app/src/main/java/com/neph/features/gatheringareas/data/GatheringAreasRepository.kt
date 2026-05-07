@@ -17,10 +17,16 @@ data class GatheringAreaItem(
     val osmType: String,
     val name: String,
     val category: String,
+    val categoryLabel: String,
     val latitude: Double,
     val longitude: Double,
     val distanceMeters: Int,
     val addressLine: String?
+)
+
+data class GatheringAreaCategoryMeta(
+    val key: String,
+    val label: String
 )
 
 data class NearbyGatheringAreasResult(
@@ -31,6 +37,7 @@ data class NearbyGatheringAreasResult(
     val requestedLimit: Int,
     val returnedCount: Int,
     val skippedCount: Int,
+    val categories: List<GatheringAreaCategoryMeta>,
     val areas: List<GatheringAreaItem>
 )
 
@@ -92,6 +99,7 @@ object GatheringAreasRepository {
 
         val metaJson = response.optJSONObject("meta") ?: JSONObject()
         val requestedLimit = metaJson.optPositiveInt("requestedLimit") ?: fallbackLimit
+        val categories = parseCategoryMetadata(metaJson.optJSONArray("categories"))
 
         val features = response
             .optJSONObject("collection")
@@ -132,8 +140,28 @@ object GatheringAreasRepository {
             requestedLimit = requestedLimit,
             returnedCount = sortedAreas.size,
             skippedCount = skippedCount,
+            categories = categories,
             areas = sortedAreas
         )
+    }
+
+    private fun parseCategoryMetadata(raw: JSONArray?): List<GatheringAreaCategoryMeta> {
+        if (raw == null) return emptyList()
+
+        return buildList {
+            for (index in 0 until raw.length()) {
+                val item = raw.optJSONObject(index) ?: continue
+                val key = item.optString("key").trim().lowercase()
+                if (key.isBlank()) continue
+                val label = item.optString("label").trim()
+                add(
+                    GatheringAreaCategoryMeta(
+                        key = key,
+                        label = if (label.isBlank()) formatCategoryLabel(key) else label
+                    )
+                )
+            }
+        }
     }
 
     private fun parseFeature(
@@ -168,6 +196,9 @@ object GatheringAreasRepository {
             rawTags.optString("emergency").trim().ifBlank {
                 rawTags.optString("amenity").trim().ifBlank { "unknown" }
             }
+        }.lowercase()
+        val categoryLabel = properties.optString("categoryLabel").trim().ifBlank {
+            formatCategoryLabel(category)
         }
 
         val payloadDistance = properties.optNonNegativeInt("distanceMeters")
@@ -189,6 +220,7 @@ object GatheringAreasRepository {
             osmType = osmType,
             name = resolvedName,
             category = category,
+            categoryLabel = categoryLabel,
             latitude = latitude,
             longitude = longitude,
             distanceMeters = distanceMeters,
@@ -213,6 +245,16 @@ object GatheringAreasRepository {
 
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return (earthRadiusMeters * c).roundToInt()
+    }
+}
+
+private fun formatCategoryLabel(category: String): String {
+    val normalized = category.trim().lowercase()
+    if (normalized.isBlank() || normalized == "unknown") return "Gathering Area"
+    if (normalized == "assembly_point") return "Assembly Point"
+    if (normalized == "fire_station") return "Fire Station"
+    return normalized.split('_').joinToString(" ") { part ->
+        part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
 }
 
