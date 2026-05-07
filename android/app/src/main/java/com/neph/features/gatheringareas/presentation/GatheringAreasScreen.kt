@@ -2,10 +2,15 @@ package com.neph.features.gatheringareas.presentation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,12 +21,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.gatheringareas.data.GatheringAreaItem
+import com.neph.features.gatheringareas.data.GatheringAreaCategoryMeta
 import com.neph.features.gatheringareas.data.GatheringAreasRepository
 import com.neph.features.gatheringareas.data.NearbyGatheringAreasResult
 import com.neph.features.profile.data.CurrentLocationShareWarning
@@ -50,6 +57,7 @@ private enum class GatheringAreasSearchOrigin {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun GatheringAreasScreen(
     onNavigateToRoute: (String) -> Unit,
     onOpenSettings: (() -> Unit)?,
@@ -70,6 +78,7 @@ fun GatheringAreasScreen(
     var lastSearchOrigin by remember { mutableStateOf<GatheringAreasSearchOrigin?>(null) }
     var nearbyResult by remember { mutableStateOf<NearbyGatheringAreasResult?>(null) }
     var selectedAreaId by remember { mutableStateOf<String?>(null) }
+    var categoryFilters by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasSearchCenter = lastCenterLatitude != null && lastCenterLongitude != null
 
     fun fetchGatheringAreas(
@@ -99,6 +108,7 @@ fun GatheringAreasScreen(
                 lastCenterLatitude = result.centerLatitude
                 lastCenterLongitude = result.centerLongitude
                 selectedAreaId = result.areas.firstOrNull()?.id
+                categoryFilters = resolveCategoryOptions(result).map { it.key }.toSet()
 
                 if (result.areas.isEmpty()) {
                     infoMessage = "No gathering areas were found in this area."
@@ -180,6 +190,24 @@ fun GatheringAreasScreen(
         if (!opened) {
             infoMessage = "Could not open map application."
         }
+    }
+
+    val currentResult = nearbyResult
+    val categoryOptions = remember(currentResult) {
+        resolveCategoryOptions(currentResult)
+    }
+    val activeFilterKeys = if (categoryFilters.isEmpty() && categoryOptions.isNotEmpty()) {
+        categoryOptions.map { it.key }.toSet()
+    } else {
+        categoryFilters
+    }
+    val visibleAreas = currentResult?.areas?.filter { item ->
+        activeFilterKeys.contains(item.category.trim().lowercase())
+    }.orEmpty()
+    val isFilterEmpty = currentResult != null && currentResult.areas.isNotEmpty() && visibleAreas.isEmpty()
+
+    if (selectedAreaId != null && visibleAreas.none { it.id == selectedAreaId }) {
+        selectedAreaId = visibleAreas.firstOrNull()?.id
     }
 
     AppDrawerScaffold(
@@ -285,6 +313,7 @@ fun GatheringAreasScreen(
 
                     GatheringAreasMapCard(
                         result = result,
+                        visibleAreas = emptyList(),
                         selectedAreaId = null,
                         onAreaSelected = { selectedAreaId = it },
                         onOpenAreaInMap = ::openAreaInMap
@@ -315,8 +344,8 @@ fun GatheringAreasScreen(
 
                 else -> {
                     val result = nearbyResult ?: return@AppDrawerScaffold
-                    val selectedArea = result.areas.firstOrNull { it.id == selectedAreaId }
-                        ?: result.areas.firstOrNull()
+                    val selectedArea = visibleAreas.firstOrNull { it.id == selectedAreaId }
+                        ?: visibleAreas.firstOrNull()
 
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
@@ -339,14 +368,58 @@ fun GatheringAreasScreen(
                         }
                     }
 
+                    SectionCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                            SectionHeader(
+                                title = "Category Filters",
+                                subtitle = "Select one or more categories to filter map markers and list results."
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                                verticalArrangement = Arrangement.spacedBy(spacing.xs)
+                            ) {
+                                categoryOptions.forEach { category ->
+                                    val selected = activeFilterKeys.contains(category.key)
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = {
+                                            categoryFilters = if (selected) {
+                                                activeFilterKeys - category.key
+                                            } else {
+                                                activeFilterKeys + category.key
+                                            }
+                                        },
+                                        label = { Text(category.label) }
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextActionButton(
+                                    text = "Clear Filters",
+                                    onClick = {
+                                        categoryFilters = categoryOptions.map { it.key }.toSet()
+                                    }
+                                )
+                            }
+                            if (isFilterEmpty) {
+                                HelperText(text = "No results match the selected categories.")
+                            }
+                            GatheringAreasLegend(categoryOptions = categoryOptions)
+                        }
+                    }
+
                     GatheringAreasMapCard(
                         result = result,
+                        visibleAreas = visibleAreas,
                         selectedAreaId = selectedArea?.id,
                         onAreaSelected = { selectedAreaId = it },
                         onOpenAreaInMap = ::openAreaInMap
                     )
 
-                    result.areas.forEachIndexed { index, area ->
+                    visibleAreas.forEachIndexed { index, area ->
                         SectionCard {
                             Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
                                 Text(
@@ -356,7 +429,7 @@ fun GatheringAreasScreen(
                                 )
 
                                 Text(
-                                    text = "Category: ${formatCategory(area.category)}",
+                                    text = "Category: ${area.categoryLabel}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -395,7 +468,7 @@ fun GatheringAreasScreen(
                                     )
                                 }
 
-                                if (index < result.areas.lastIndex) {
+                                if (index < visibleAreas.lastIndex) {
                                     Spacer(modifier = Modifier.height(spacing.xs))
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 }
@@ -417,25 +490,29 @@ fun GatheringAreasScreen(
 @Composable
 private fun GatheringAreasMapCard(
     result: NearbyGatheringAreasResult,
+    visibleAreas: List<GatheringAreaItem>,
     selectedAreaId: String?,
     onAreaSelected: (String) -> Unit,
     onOpenAreaInMap: (GatheringAreaItem) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
-    var mapReady by remember(result.centerLatitude, result.centerLongitude, result.areas, selectedAreaId) {
+    var mapReady by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
         mutableStateOf(false)
     }
-    var mapError by remember(result.centerLatitude, result.centerLongitude, result.areas, selectedAreaId) {
+    var mapError by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
         mutableStateOf("")
     }
-    val selectedArea = result.areas.firstOrNull { it.id == selectedAreaId }
-    val markers = result.areas.map { area ->
+    val selectedArea = visibleAreas.firstOrNull { it.id == selectedAreaId }
+    val markers = visibleAreas.map { area ->
+        val markerStyle = categoryMarkerStyle(area.category)
         LeafletMapMarker(
             id = area.id,
             latitude = area.latitude,
             longitude = area.longitude,
             title = area.name.ifBlank { "Unnamed Gathering Area" },
-            subtitle = "${formatCategory(area.category)} • ${formatDistance(area.distanceMeters)}"
+            subtitle = "${area.categoryLabel} - ${formatDistance(area.distanceMeters)}",
+            strokeColorHex = markerStyle.strokeHex,
+            fillColorHex = markerStyle.fillHex
         )
     }
 
@@ -504,7 +581,7 @@ private fun GatheringAreaMapSelectionPreview(
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = "Category: ${formatCategory(area.category)}",
+            text = "Category: ${area.categoryLabel}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -533,20 +610,68 @@ private fun GatheringAreaMapSelectionPreview(
     }
 }
 
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun GatheringAreasLegend(categoryOptions: List<GatheringAreaCategoryMeta>) {
+    if (categoryOptions.isEmpty()) return
+    val spacing = LocalNephSpacing.current
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs)
+    ) {
+        categoryOptions.forEach { option ->
+            val style = categoryMarkerStyle(option.key)
+            Text(
+                text = "● ${option.label}",
+                style = MaterialTheme.typography.bodySmall,
+                color = style.dotColor
+            )
+        }
+    }
+}
+
+private data class MarkerStyle(
+    val strokeHex: String,
+    val fillHex: String,
+    val dotColor: Color
+)
+
+private fun categoryMarkerStyle(categoryKey: String): MarkerStyle {
+    return when (categoryKey.trim().lowercase()) {
+        "assembly_point" -> MarkerStyle("#C73D2A", "#E35F4F", Color(0xFFE35F4F))
+        "shelter" -> MarkerStyle("#D08A1F", "#F3B545", Color(0xFFF3B545))
+        "hospital" -> MarkerStyle("#B91C1C", "#EF4444", Color(0xFFEF4444))
+        "police" -> MarkerStyle("#1E40AF", "#3B82F6", Color(0xFF3B82F6))
+        "fire_station" -> MarkerStyle("#9A3412", "#F97316", Color(0xFFF97316))
+        "pharmacy" -> MarkerStyle("#166534", "#22C55E", Color(0xFF22C55E))
+        else -> MarkerStyle("#2B7FC8", "#4DA2EA", Color(0xFF4DA2EA))
+    }
+}
+
+private fun resolveCategoryOptions(result: NearbyGatheringAreasResult?): List<GatheringAreaCategoryMeta> {
+    if (result == null) return emptyList()
+    val mapped = linkedMapOf<String, String>()
+    result.categories.forEach { meta ->
+        val key = meta.key.trim().lowercase()
+        if (key.isNotBlank()) mapped[key] = meta.label
+    }
+    result.areas.forEach { item ->
+        val key = item.category.trim().lowercase()
+        if (key.isNotBlank() && !mapped.containsKey(key)) {
+            mapped[key] = item.categoryLabel
+        }
+    }
+    return mapped.entries.map { (key, label) ->
+        GatheringAreaCategoryMeta(key = key, label = label)
+    }
+}
+
 private fun formatDistance(distanceMeters: Int): String {
     if (distanceMeters >= 1000) {
         return String.format(Locale.US, "%.1f km", distanceMeters / 1000.0)
     }
 
     return "$distanceMeters m"
-}
-
-private fun formatCategory(category: String): String {
-    return when (category.trim().lowercase()) {
-        "assembly_point" -> "Assembly Point"
-        "shelter" -> "Shelter"
-        else -> category.replace('_', ' ').replaceFirstChar { it.uppercase() }
-    }
 }
 
 private fun isProviderError(error: ApiException): Boolean {

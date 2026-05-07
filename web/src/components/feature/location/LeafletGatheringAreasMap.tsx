@@ -2,9 +2,6 @@
 
 import * as React from "react";
 import L from "leaflet";
-import markerIcon2xAsset from "leaflet/dist/images/marker-icon-2x.png";
-import markerIconAsset from "leaflet/dist/images/marker-icon.png";
-import markerShadowAsset from "leaflet/dist/images/marker-shadow.png";
 import { LeafletMapCanvas } from "@/components/feature/location/LeafletMapCanvas";
 import type { LatLng } from "@/components/feature/location/LeafletMapCanvas";
 
@@ -15,6 +12,7 @@ type GatheringAreaMapFeature = {
     name: string;
     address: string;
     category: string;
+    categoryLabel: string;
     distanceMeters: number;
     latitude: number;
     longitude: number;
@@ -28,20 +26,6 @@ type LeafletGatheringAreasMapProps = {
     heightClassName?: string;
     zoom?: number;
 };
-
-function toAssetUrl(asset: string | { src: string }) {
-    return typeof asset === "string" ? asset : asset.src;
-}
-
-const gatheringAreaMarkerIcon = L.icon({
-    iconUrl: toAssetUrl(markerIconAsset),
-    iconRetinaUrl: toAssetUrl(markerIcon2xAsset),
-    shadowUrl: toAssetUrl(markerShadowAsset),
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-});
 
 function formatCategoryLabel(category: string) {
     const normalized = (category || "").trim().toLowerCase();
@@ -62,6 +46,36 @@ function formatCategoryLabel(category: string) {
         .split("_")
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
+}
+
+function getCategoryMarkerStyle(category: string) {
+    const normalized = (category || "").trim().toLowerCase();
+    if (normalized === "assembly_point") return { fill: "#e35f4f", stroke: "#c73d2a", glyph: "AP" };
+    if (normalized === "shelter") return { fill: "#f3b545", stroke: "#d08a1f", glyph: "SH" };
+    if (normalized === "hospital") return { fill: "#ef4444", stroke: "#b91c1c", glyph: "HP" };
+    if (normalized === "police") return { fill: "#3b82f6", stroke: "#1e40af", glyph: "PL" };
+    if (normalized === "fire_station") return { fill: "#f97316", stroke: "#9a3412", glyph: "FS" };
+    if (normalized === "pharmacy") return { fill: "#22c55e", stroke: "#166534", glyph: "PH" };
+    return { fill: "#4da2ea", stroke: "#2b7fc8", glyph: "OT" };
+}
+
+function createGatheringAreaMarkerIcon(category: string, selected: boolean) {
+    const style = getCategoryMarkerStyle(category);
+    const selectedClass = selected ? " is-selected" : "";
+    return L.divIcon({
+        className: "",
+        html: `
+            <div class="crisis-pin${selectedClass}" style="--pin-fill:${style.fill};--pin-stroke:${style.stroke};">
+                <span class="crisis-pin-head">
+                    <span class="crisis-pin-glyph">${style.glyph}</span>
+                </span>
+                <span class="crisis-pin-point"></span>
+            </div>
+        `,
+        iconSize: [42, 52],
+        iconAnchor: [21, 48],
+        popupAnchor: [0, -42],
+    });
 }
 
 function formatDistanceLabel(distanceMeters: number) {
@@ -90,7 +104,7 @@ function createPopupContent(feature: GatheringAreaMapFeature) {
     title.textContent = feature.name || "Unnamed gathering area";
 
     const category = document.createElement("span");
-    category.textContent = `Type: ${formatCategoryLabel(feature.category)}`;
+    category.textContent = `Type: ${feature.categoryLabel || formatCategoryLabel(feature.category)}`;
 
     const distance = document.createElement("span");
     distance.textContent = `Distance: ${formatDistanceLabel(feature.distanceMeters)}`;
@@ -172,8 +186,9 @@ export function LeafletGatheringAreasMap({
         markerRefs.current.clear();
 
         for (const feature of features) {
+            const isActive = feature.featureKey === selectedFeatureId;
             const marker = L.marker([feature.latitude, feature.longitude], {
-                icon: gatheringAreaMarkerIcon,
+                icon: createGatheringAreaMarkerIcon(feature.category, isActive),
                 riseOnHover: true,
             });
 
@@ -187,6 +202,10 @@ export function LeafletGatheringAreasMap({
     React.useEffect(() => {
         for (const [featureId, marker] of markerRefs.current.entries()) {
             const isActive = featureId === selectedFeatureId;
+            const feature = features.find((item) => item.featureKey === featureId);
+            if (feature) {
+                marker.setIcon(createGatheringAreaMarkerIcon(feature.category, isActive));
+            }
             marker.setZIndexOffset(isActive ? 600 : 0);
 
             if (isActive) {

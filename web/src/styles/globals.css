@@ -1410,6 +1410,38 @@ textarea::placeholder {
     background: #f3b545;
 }
 
+.gathering-areas-map-wrap .gathering-areas-pin.is-hospital {
+    color: #b91c1c;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-hospital .gathering-areas-pin-core {
+    background: #ef4444;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-police {
+    color: #1e40af;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-police .gathering-areas-pin-core {
+    background: #3b82f6;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-fire-station {
+    color: #9a3412;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-fire-station .gathering-areas-pin-core {
+    background: #f97316;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-pharmacy {
+    color: #166534;
+}
+
+.gathering-areas-map-wrap .gathering-areas-pin.is-pharmacy .gathering-areas-pin-core {
+    background: #22c55e;
+}
+
 .gathering-areas-map-wrap .gathering-areas-pin.is-other {
     color: #2b7fc8;
 }
@@ -1509,6 +1541,105 @@ textarea::placeholder {
     letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--text-secondary);
+}
+
+.gathering-areas-filters-wrap {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface-subtle);
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.gathering-areas-filter-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.gathering-areas-clear-filters {
+    border: 1px solid var(--border-default);
+    background: var(--surface-card);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.gathering-areas-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.gathering-areas-filter-chip {
+    border: 1px solid var(--border-default);
+    background: var(--surface-card);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.gathering-areas-filter-chip.is-active {
+    border-color: var(--brand-primary);
+    color: var(--brand-primary-strong);
+    background: color-mix(in srgb, var(--brand-primary-soft) 45%, var(--surface-card));
+}
+
+.gathering-areas-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.gathering-areas-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+}
+
+.gathering-areas-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.28);
+}
+
+.gathering-areas-legend-dot.is-assembly {
+    background: #e35f4f;
+}
+
+.gathering-areas-legend-dot.is-shelter {
+    background: #f3b545;
+}
+
+.gathering-areas-legend-dot.is-hospital {
+    background: #ef4444;
+}
+
+.gathering-areas-legend-dot.is-police {
+    background: #3b82f6;
+}
+
+.gathering-areas-legend-dot.is-fire-station {
+    background: #f97316;
+}
+
+.gathering-areas-legend-dot.is-pharmacy {
+    background: #22c55e;
+}
+
+.gathering-areas-legend-dot.is-other {
+    background: #4da2ea;
 }
 
 @media (max-width: 1023px) {
