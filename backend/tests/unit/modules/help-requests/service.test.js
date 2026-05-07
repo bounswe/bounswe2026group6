@@ -7,6 +7,7 @@ jest.mock('../../../../src/modules/help-requests/repository', () => ({
 	listHelpRequestsByUserId: jest.fn(),
 	findHelpRequestById: jest.fn(),
 	findHelpRequestByIdForUser: jest.fn(),
+	updateHelpRequestForUser: jest.fn(),
 	markHelpRequestAsSynced: jest.fn(),
 	markHelpRequestAsSyncedByRequestId: jest.fn(),
 	markHelpRequestAsResolved: jest.fn(),
@@ -22,12 +23,14 @@ const availabilityService = require('../../../../src/modules/availability/servic
 jest.mock('../../../../src/modules/availability/service', () => ({
 	tryToAssignRequest: jest.fn(),
 	cancelAssignmentByRequestId: jest.fn(),
+	notifyAssignedVolunteersRequestUpdated: jest.fn(),
 }));
 
 const {
 	createMyHelpRequest,
 	listMyHelpRequests,
 	getMyHelpRequest,
+	updateMyHelpRequest,
 	issueGuestHelpRequestAccessToken,
 	getGuestHelpRequest,
 	updateMyHelpRequestStatus,
@@ -166,6 +169,46 @@ describe('help-requests service', () => {
 			const result = await getMyHelpRequest('u1', 'nonexistent');
 
 			expect(result).toBeNull();
+		});
+	});
+
+	describe('updateMyHelpRequest', () => {
+		test('notifies assigned volunteers when authenticated requester edits details', async () => {
+			const current = { id: 'req_1', internalStatus: 'ASSIGNED' };
+			const updated = { id: 'req_1', internalStatus: 'ASSIGNED' };
+			repository.findHelpRequestByIdForUser.mockResolvedValueOnce(current);
+			repository.updateHelpRequestForUser.mockResolvedValueOnce(updated);
+			repository.findHelpRequestById.mockResolvedValueOnce(updated);
+
+			const result = await updateMyHelpRequest('u1', 'req_1', {
+				helpTypes: ['medical'],
+				otherHelpText: '',
+				affectedPeopleCount: 2,
+				riskFlags: ['injury'],
+				vulnerableGroups: [],
+				needType: 'medical',
+				description: 'Updated details',
+				bloodType: '',
+				location: {
+					country: 'turkiye',
+					city: 'istanbul',
+					district: 'kadikoy',
+					neighborhood: 'moda',
+				},
+				contact: {
+					fullName: 'Ayse',
+					phone: 5551112233,
+				},
+				consentGiven: true,
+			});
+
+			expect(availabilityService.notifyAssignedVolunteersRequestUpdated).toHaveBeenCalledWith(
+				'req_1',
+				'u1',
+				'request_details_updated',
+			);
+			expect(availabilityService.tryToAssignRequest).toHaveBeenCalledWith('req_1');
+			expect(result).toEqual(updated);
 		});
 	});
 

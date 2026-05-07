@@ -506,6 +506,22 @@ async function listUserIdsWithinRadius({
   return result.rows.map((row) => row.user_id);
 }
 
+async function listAnnouncementRecipientUserIds({ limit = 5000 } = {}) {
+  const result = await query(
+    `
+      SELECT user_id
+      FROM users
+      WHERE is_deleted = FALSE
+        AND COALESCE(is_banned, FALSE) = FALSE
+      ORDER BY created_at DESC, user_id ASC
+      LIMIT $1
+    `,
+    [limit],
+  );
+
+  return result.rows.map((row) => row.user_id);
+}
+
 async function listAvailabilityReminderCandidates({
   minMinutesSinceLocationUpdate,
   reminderCooldownMinutes,
@@ -516,8 +532,9 @@ async function listAvailabilityReminderCandidates({
       SELECT DISTINCT v.user_id
       FROM volunteers v
       WHERE v.is_available = TRUE
-        AND v.location_updated_at IS NOT NULL
-        AND v.location_updated_at <= CURRENT_TIMESTAMP - ($1::int * INTERVAL '1 minute')
+        AND v.available_until IS NOT NULL
+        AND v.available_until > CURRENT_TIMESTAMP
+        AND v.available_until <= CURRENT_TIMESTAMP + ($1::int * INTERVAL '1 minute')
         AND NOT EXISTS (
           SELECT 1
           FROM assignments a
@@ -530,7 +547,7 @@ async function listAvailabilityReminderCandidates({
           SELECT 1
           FROM notifications n
           WHERE n.recipient_user_id = v.user_id
-            AND n.type = 'TASK_UPDATED'
+            AND n.type = 'VOLUNTEER_AVAILABILITY_EXPIRING'
             AND COALESCE(n.payload->>'kind', '') = 'availability_reminder'
             AND n.created_at >= CURRENT_TIMESTAMP - ($2::int * INTERVAL '1 minute')
         )
@@ -645,6 +662,7 @@ module.exports = {
   listNotificationTypePreferencesByUserId,
   upsertNotificationTypePreference,
   listUserIdsWithinRadius,
+  listAnnouncementRecipientUserIds,
   listAvailabilityReminderCandidates,
   listAvailabilityPausedNotificationCandidates,
   expireStalePendingHelpRequests,
