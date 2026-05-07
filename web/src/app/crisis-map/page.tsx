@@ -188,10 +188,7 @@ export default function CrisisMapPage() {
         }
     }, [visibleRequests, selectedRequestId]);
 
-    const availableTypes = React.useMemo(() => {
-        const available = new Set(requests.map((item) => item.type));
-        return REQUEST_TYPE_ORDER.filter((type) => available.has(type));
-    }, [requests]);
+    const filterTypes = REQUEST_TYPE_ORDER;
 
     const selectedRequest =
         visibleRequests.find((item) => item.featureKey === selectedRequestId) ||
@@ -302,7 +299,7 @@ export default function CrisisMapPage() {
                             ) : null}
                         </div>
 
-                        {availableTypes.length ? (
+                        {filterTypes.length ? (
                             <div className="crisis-filters-panel">
                                 <div className="crisis-filters-header">
                                     <p className="crisis-filters-title">Filter by Request Type</p>
@@ -316,7 +313,7 @@ export default function CrisisMapPage() {
                                     </button>
                                 </div>
                                 <div className="crisis-filters-grid">
-                                    {availableTypes.map((type) => {
+                                    {filterTypes.map((type) => {
                                         const isActive = selectedTypes.has(type);
                                         const swatchColor = REQUEST_TYPE_COLORS[type];
                                         return (
@@ -348,7 +345,7 @@ export default function CrisisMapPage() {
                                     })}
                                 </div>
                                 <div className="crisis-legend">
-                                    {availableTypes.map((type) => (
+                                    {filterTypes.map((type) => (
                                         <span key={`legend-${type}`} className="crisis-legend-item">
                                             <span
                                                 className="crisis-legend-swatch"

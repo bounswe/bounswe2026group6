@@ -186,9 +186,7 @@ test('supports multi-select request type filters and clears selected details whe
   await expect(page.locator('.crisis-pin')).toHaveCount(3);
   await expect(list.getByRole('button', { name: /First Aid/i })).toBeVisible();
 
-  await filters.getByRole('button', { name: 'First Aid', exact: true }).click();
-  await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
-  await filters.getByRole('button', { name: 'Food / Water Supplies', exact: true }).click();
+  await filters.getByRole('button', { name: 'Other / Unknown', exact: true }).click();
   await expect(page.getByText('No help requests match the selected request type filters.')).toBeVisible();
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
 
