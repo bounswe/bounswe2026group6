@@ -19,6 +19,7 @@ import kotlin.random.Random
 class NephFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+        NotificationsBadge.increment()
         showLocalNotification(message)
     }
 

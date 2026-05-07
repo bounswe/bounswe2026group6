@@ -182,6 +182,11 @@ fun HelpRequestMapScreen(
         } else {
             Routes.guestDrawerItems
         },
+        bottomNavItems = if (isAuthenticated) {
+            Routes.authenticatedBottomNavItems
+        } else {
+            Routes.guestBottomNavItems
+        },
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
@@ -192,9 +197,10 @@ fun HelpRequestMapScreen(
         ) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                    SectionHeader(
-                        title = "Help Request Map",
-                        subtitle = "Showing waiting help requests by type and priority."
+                    Text(
+                        text = "Showing waiting help requests by type and priority.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     SecondaryButton(

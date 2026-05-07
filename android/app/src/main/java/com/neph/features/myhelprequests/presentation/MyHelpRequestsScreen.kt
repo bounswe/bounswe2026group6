@@ -57,6 +57,8 @@ import com.neph.ui.components.buttons.TextActionButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
+import com.neph.ui.components.display.StatusBadge
+import com.neph.ui.components.display.StatusBadgeTone
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
@@ -183,6 +185,11 @@ fun MyHelpRequestsScreen(
             Routes.authenticatedDrawerItems
         } else {
             Routes.guestDrawerItems
+        },
+        bottomNavItems = if (isAuthenticated) {
+            Routes.authenticatedBottomNavItems
+        } else {
+            Routes.guestBottomNavItems
         },
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
@@ -615,7 +622,13 @@ private fun MyHelpRequestCard(
             SectionHeader(
                 title = titleOverride ?: request.helpTypeSummary,
                 subtitle = subtitleOverride ?: (request.createdAt?.let { "Opened: $it" }
-                    ?: "Opened time unavailable")
+                    ?: "Opened time unavailable"),
+                trailing = {
+                    StatusBadge(
+                        text = request.statusLabel,
+                        tone = statusToneFor(request.status, request.statusLabel)
+                    )
+                }
             )
 
             Text(
@@ -628,12 +641,6 @@ private fun MyHelpRequestCard(
                 text = "Location: ${request.locationLabel}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = "Status: ${request.statusLabel}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
             )
 
             request.openDurationLabel?.let {
@@ -814,6 +821,20 @@ private fun MyHelpRequestUiModel.failedSyncMessage(): String {
         "CANCELLED" -> pendingError ?: "Cancellation could not sync yet. Pull down to reconnect when online."
         "RESOLVED" -> pendingError ?: "Resolution could not sync yet. Pull down to reconnect when online."
         else -> pendingError ?: "Sync failed. Retry when connected."
+    }
+}
+
+private fun statusToneFor(status: String, statusLabel: String): StatusBadgeTone {
+    return when (status.trim().uppercase()) {
+        "RESOLVED" -> StatusBadgeTone.SUCCESS
+        "CANCELLED" -> StatusBadgeTone.NEUTRAL
+        "OPEN", "PENDING" -> StatusBadgeTone.WARNING
+        "MATCHED", "ASSIGNED" -> StatusBadgeTone.INFO
+        else -> when {
+            statusLabel.contains("sync", ignoreCase = true) -> StatusBadgeTone.WARNING
+            statusLabel.contains("review", ignoreCase = true) -> StatusBadgeTone.WARNING
+            else -> StatusBadgeTone.BRAND
+        }
     }
 }
 

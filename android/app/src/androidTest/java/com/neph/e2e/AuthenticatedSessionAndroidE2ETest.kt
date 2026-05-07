@@ -58,8 +58,8 @@ class AuthenticatedSessionAndroidE2ETest {
 
     @Test
     fun authenticatedUser_can_openProfileFromDrawer() {
-        waitForText("I need help")
-        composeRule.onNodeWithText("I need help").assertIsDisplayed()
+        waitForText("I need help now")
+        composeRule.onNodeWithText("I need help now").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Open menu").performClick()
         waitForClickable("Profile")
@@ -72,10 +72,13 @@ class AuthenticatedSessionAndroidE2ETest {
 
     @Test
     fun authenticatedUser_can_openPrivacySecurityFromSettings_and_logout() {
-        waitForText("I need help")
-        composeRule.onNodeWithText("I need help").assertIsDisplayed()
+        waitForText("I need help now")
+        composeRule.onNodeWithText("I need help now").assertIsDisplayed()
 
-        composeRule.onAllNodesWithContentDescription("Open settings")[0].performClick()
+        composeRule.onNodeWithContentDescription("Open menu").performClick()
+        waitForClickable("Settings")
+        clickableNode("Settings").performClick()
+
         waitForClickable("Privacy & Security")
         clickableNode("Privacy & Security").performClick()
 
@@ -95,10 +98,13 @@ class AuthenticatedSessionAndroidE2ETest {
 
     @Test
     fun authenticatedUser_can_deleteAccountFromSettings() {
-        waitForText("I need help")
-        composeRule.onNodeWithText("I need help").assertIsDisplayed()
+        waitForText("I need help now")
+        composeRule.onNodeWithText("I need help now").assertIsDisplayed()
 
-        composeRule.onAllNodesWithContentDescription("Open settings")[0].performClick()
+        composeRule.onNodeWithContentDescription("Open menu").performClick()
+        waitForClickable("Settings")
+        clickableNode("Settings").performClick()
+
         waitForClickable("Delete Account")
         composeRule.onAllNodes(hasText("Delete Account") and hasClickAction())[0].performClick()
 

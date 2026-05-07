@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.neph.ui.theme.LocalNephSpacing
 
 @Composable
@@ -51,10 +52,11 @@ fun AppMultiSelectChipGroup(
                             style = MaterialTheme.typography.labelMedium
                         )
                     },
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(999.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         labelColor = MaterialTheme.colorScheme.onSurface
                     ),
                     border = FilterChipDefaults.filterChipBorder(
@@ -63,9 +65,9 @@ fun AppMultiSelectChipGroup(
                         borderColor = if (isError && !selected) {
                             MaterialTheme.colorScheme.error
                         } else {
-                            MaterialTheme.colorScheme.outline
+                            androidx.compose.ui.graphics.Color.Transparent
                         },
-                        selectedBorderColor = MaterialTheme.colorScheme.primary
+                        selectedBorderColor = androidx.compose.ui.graphics.Color.Transparent
                     )
                 )
             }

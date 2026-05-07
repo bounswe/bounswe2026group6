@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PeopleOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,8 +37,11 @@ import com.neph.features.profile.data.ProfileRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
+import com.neph.ui.components.display.EmptyState
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
+import com.neph.ui.components.display.StatusBadge
+import com.neph.ui.components.display.StatusBadgeTone
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
@@ -230,9 +236,10 @@ fun NearbyVisibleUsersScreen(
         ) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-                    SectionHeader(
-                        title = "Nearby Visible Users",
-                        subtitle = "Based on your residential/profile area, not your current GPS. Only users visible through privacy or trusted circle rules are cached."
+                    Text(
+                        text = "Based on your residential/profile area, not your current GPS. Only users visible through privacy or trusted circle rules are cached.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     SecondaryButton(
                         text = "Refresh",
@@ -293,6 +300,14 @@ fun NearbyVisibleUsersScreen(
             users.forEach { user ->
                 NearbyVisibleUserRow(user = user)
             }
+
+            if (!loading && errorMessage.isBlank() && users.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Filled.PeopleOutline,
+                    title = "No nearby users",
+                    description = "Nobody who shares their location with you is visible right now."
+                )
+            }
         }
     }
 }
@@ -320,10 +335,7 @@ private fun NearbyVisibleUserRow(user: NearbyVisibleUserUiModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(formatSafetyStatus(user.safetyStatus)) }
-                )
+                AssistChipReplacement(safetyStatus = user.safetyStatus)
             }
 
             Text(
@@ -342,6 +354,16 @@ private fun NearbyVisibleUserRow(user: NearbyVisibleUserUiModel) {
             }
         }
     }
+}
+
+@Composable
+private fun AssistChipReplacement(safetyStatus: String) {
+    val tone = when (safetyStatus.trim().lowercase()) {
+        "safe" -> StatusBadgeTone.SUCCESS
+        "not_safe" -> StatusBadgeTone.DANGER
+        else -> StatusBadgeTone.NEUTRAL
+    }
+    StatusBadge(text = formatSafetyStatus(safetyStatus), tone = tone)
 }
 
 private fun buildLocationLabel(user: NearbyVisibleUserUiModel): String {

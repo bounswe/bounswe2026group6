@@ -140,9 +140,10 @@ fun PrivacySecurityScreen(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(spacing.md)
                     ) {
-                        SectionHeader(
-                            title = "Privacy",
-                            subtitle = "Choose who can see profile, health, and location details."
+                        Text(
+                            text = "Choose who can see profile, health, and location details.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         AppRadioGroup(

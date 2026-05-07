@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.neph.ui.components.display.AuthCard
-import com.neph.ui.components.theme.ThemeIconButton
 import com.neph.ui.theme.LocalNephSpacing
 
 @Composable
@@ -34,10 +33,6 @@ fun AuthScaffold(
         modifier = modifier.background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        ThemeIconButton(
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
-
         Column(
             modifier = Modifier
                 .widthIn(max = 420.dp)

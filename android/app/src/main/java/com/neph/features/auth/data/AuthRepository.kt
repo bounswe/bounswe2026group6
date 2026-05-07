@@ -9,6 +9,7 @@ import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.notifications.data.PushTokenSync
+import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
 import com.neph.features.operationallocation.data.OperationalLocationRepository
@@ -97,6 +98,7 @@ object AuthRepository {
 
         AuthSessionStore.saveAccessToken(accessToken, rememberMe, userId = userId)
         PushTokenSync.syncCurrentToken()
+        NotificationsBadge.hydrateIfAuthenticated()
         ProfileRepository.clearProfile()
         ProfileRepository.saveProfile(
             if (canReuseLocalProfileFields) {
@@ -149,6 +151,7 @@ object AuthRepository {
             AuthSessionStore.saveAccessToken(accessToken, rememberMe = true, userId = userId)
             ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
             PushTokenSync.syncCurrentToken()
+            NotificationsBadge.hydrateIfAuthenticated()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
 
@@ -271,6 +274,7 @@ object AuthRepository {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
+        NotificationsBadge.clear()
         ioScope.launch {
             try {
                 NearbyVisibleUsersRepository.clearLocalCache()
