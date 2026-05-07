@@ -60,6 +60,7 @@ function mapProfileRow(row) {
       profileVisibility: row.profile_visibility || DEFAULT_PROFILE_VISIBILITY,
       healthInfoVisibility: row.health_info_visibility || DEFAULT_HEALTH_INFO_VISIBILITY,
       locationVisibility: row.location_visibility || DEFAULT_LOCATION_VISIBILITY,
+      locationVisibilityInitialized: Boolean(row.privacy_settings_id && row.location_visibility),
       locationSharingEnabled: row.location_sharing_enabled || false,
     },
     healthInfo: {

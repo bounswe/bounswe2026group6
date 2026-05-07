@@ -36,6 +36,36 @@ class ProfileRepositoryLocationPayloadTest {
     }
 
     @Test
+    fun resolveLocationVisibilityForPermissionBootstrap_preservesExistingLocationVisibility() {
+        val profile = ProfileData(
+            locationVisibility = "PUBLIC",
+            locationVisibilityInitialized = true
+        )
+
+        val result = ProfileRepository.resolveLocationVisibilityForPermissionBootstrap(
+            profile = profile,
+            locationPermissionGranted = false
+        )
+
+        assertEquals("PUBLIC", result)
+    }
+
+    @Test
+    fun resolveLocationVisibilityForPermissionBootstrap_usesPermissionDefaultWhenUninitialized() {
+        val profile = ProfileData(
+            locationVisibility = "PRIVATE",
+            locationVisibilityInitialized = false
+        )
+
+        val result = ProfileRepository.resolveLocationVisibilityForPermissionBootstrap(
+            profile = profile,
+            locationPermissionGranted = true
+        )
+
+        assertEquals("EMERGENCY_ONLY", result)
+    }
+
+    @Test
     fun mergePrivacySettingsResponse_preservesUnrelatedCachedProfileFields() {
         val cached = ProfileData(
             firstName = "Ada",
@@ -87,6 +117,7 @@ class ProfileRepositoryLocationPayloadTest {
             profileVisibility = "PUBLIC",
             healthInfoVisibility = "EMERGENCY_ONLY",
             locationVisibility = "PUBLIC",
+            locationVisibilityInitialized = true,
             shareLocation = true
         ), updated)
     }

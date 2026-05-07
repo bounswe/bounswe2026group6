@@ -32,6 +32,7 @@ function makeBundleRow(overrides = {}) {
 		first_name: 'Ada',
 		last_name: 'Lovelace',
 		phone_number: null,
+		privacy_settings_id: null,
 		profile_visibility: null,
 		health_info_visibility: null,
 		location_visibility: null,
@@ -88,6 +89,22 @@ describe('profiles service', () => {
 		expect(result.privacySettings.profileVisibility).toBe('EMERGENCY_ONLY');
 		expect(result.privacySettings.healthInfoVisibility).toBe('EMERGENCY_ONLY');
 		expect(result.privacySettings.locationVisibility).toBe('PRIVATE');
+		expect(result.privacySettings.locationVisibilityInitialized).toBe(false);
+	});
+
+	test('getMyProfile reports location visibility initialized when privacy row exists', async () => {
+		repository.findProfileBundleByUserId.mockResolvedValueOnce(
+			makeBundleRow({
+				privacy_settings_id: 'set_1',
+				location_visibility: 'PUBLIC',
+			}),
+		);
+		repository.listExpertiseByProfileId.mockResolvedValueOnce([]);
+
+		const result = await getMyProfile('u1');
+
+		expect(result.privacySettings.locationVisibility).toBe('PUBLIC');
+		expect(result.privacySettings.locationVisibilityInitialized).toBe(true);
 	});
 
 	test('getMyProfile maps date_of_birth to physicalInfo.dateOfBirth', async () => {

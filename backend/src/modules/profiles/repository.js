@@ -621,6 +621,7 @@ async function findProfileBundleByUserId(userId) {
       up.first_name,
       up.last_name,
       up.phone_number,
+      ps.settings_id AS privacy_settings_id,
       ps.profile_visibility,
       ps.health_info_visibility,
       ps.location_visibility,

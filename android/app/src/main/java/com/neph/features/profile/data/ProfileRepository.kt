@@ -13,6 +13,7 @@ import java.util.Locale
 object ProfileRepository {
     private const val PrefsName = "neph_profile"
     private const val LocationPermissionPrivacyHintKey = "locationPermissionPrivacyHint"
+    private const val PendingLocationPermissionPrivacyHintSyncKey = "pendingLocationPermissionPrivacyHintSync"
 
     internal const val DefaultProfileVisibility = "EMERGENCY_ONLY"
     internal const val DefaultHealthInfoVisibility = "EMERGENCY_ONLY"
@@ -67,6 +68,11 @@ object ProfileRepository {
         return defaultLocationVisibilityForPermission(
             prefs.getBoolean(LocationPermissionPrivacyHintKey, false)
         )
+    }
+
+    fun hasPendingLocationPermissionPrivacyHintSync(): Boolean {
+        ensureInitialized()
+        return prefs.getBoolean(PendingLocationPermissionPrivacyHintSyncKey, false)
     }
 
     fun resetForTesting() {
@@ -249,6 +255,7 @@ object ProfileRepository {
             )
 
             saveProfile(normalizedProfile)
+            clearPendingLocationPermissionPrivacyHintSync()
 
             val refreshed = fetchAndCacheRemoteProfile()
             saveProfile(refreshed)
@@ -323,6 +330,7 @@ object ProfileRepository {
 
         val token = AuthSessionStore.getAccessToken().orEmpty()
         if (token.isBlank()) {
+            markPendingLocationPermissionPrivacyHintSync()
             return null
         }
 
@@ -334,12 +342,44 @@ object ProfileRepository {
             return null
         }
 
-        return syncPrivacySettings(
+        if (!shouldSyncLocationPermissionBootstrap(profile)) {
+            clearPendingLocationPermissionPrivacyHintSync()
+            return profile
+        }
+
+        val updated = syncPrivacySettings(
             profileVisibility = profile.profileVisibility ?: DefaultProfileVisibility,
             healthInfoVisibility = profile.healthInfoVisibility ?: DefaultHealthInfoVisibility,
-            locationVisibility = defaultLocationVisibilityForPermission(locationPermissionGranted),
+            locationVisibility = resolveLocationVisibilityForPermissionBootstrap(
+                profile = profile,
+                locationPermissionGranted = locationPermissionGranted
+            ),
             locationSharingEnabled = profile.shareLocation == true
         )
+        clearPendingLocationPermissionPrivacyHintSync()
+        return updated
+    }
+
+    suspend fun syncPendingLocationPermissionPrivacyHintIfNeeded(): ProfileData? {
+        ensureInitialized()
+        if (!hasPendingLocationPermissionPrivacyHintSync()) {
+            return null
+        }
+
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        if (token.isBlank()) {
+            return null
+        }
+
+        return try {
+            syncPrivacyDefaultsForLocationPermission(
+                prefs.getBoolean(LocationPermissionPrivacyHintKey, false)
+            )
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (_: Exception) {
+            null
+        }
     }
 
     internal fun buildPrivacySettingsPatchPayload(
@@ -358,6 +398,21 @@ object ProfileRepository {
 
     internal fun defaultLocationVisibilityForPermission(granted: Boolean): String {
         return if (granted) LocationPermissionGrantedVisibility else DefaultLocationVisibility
+    }
+
+    internal fun shouldSyncLocationPermissionBootstrap(profile: ProfileData): Boolean {
+        return !profile.locationVisibilityInitialized
+    }
+
+    internal fun resolveLocationVisibilityForPermissionBootstrap(
+        profile: ProfileData,
+        locationPermissionGranted: Boolean
+    ): String {
+        return if (profile.locationVisibilityInitialized) {
+            profile.locationVisibility ?: DefaultLocationVisibility
+        } else {
+            defaultLocationVisibilityForPermission(locationPermissionGranted)
+        }
     }
 
     internal fun mergePrivacySettingsResponse(
@@ -379,6 +434,7 @@ object ProfileRepository {
             locationVisibility = normalizeVisibility(
                 privacySettings.optStringOrNull("locationVisibility") ?: requestedLocationVisibility
             ),
+            locationVisibilityInitialized = true,
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled")
                 ?: requestedLocationSharingEnabled
         )
@@ -523,6 +579,7 @@ object ProfileRepository {
             putString("profileVisibility", normalizeVisibility(profile.profileVisibility))
             putString("healthInfoVisibility", normalizeVisibility(profile.healthInfoVisibility))
             putString("locationVisibility", normalizeVisibility(profile.locationVisibility))
+            putBoolean("locationVisibilityInitialized", profile.locationVisibilityInitialized)
             putBoolean("shareLocation", profile.shareLocation ?: false)
             putString("sharedLatitude", profile.sharedLatitude?.toString())
             putString("sharedLongitude", profile.sharedLongitude?.toString())
@@ -571,6 +628,7 @@ object ProfileRepository {
             profileVisibility = normalizeVisibility(prefs.getString("profileVisibility", null)),
             healthInfoVisibility = normalizeVisibility(prefs.getString("healthInfoVisibility", null)),
             locationVisibility = normalizeVisibility(prefs.getString("locationVisibility", null)),
+            locationVisibilityInitialized = prefs.getBoolean("locationVisibilityInitialized", false),
             shareLocation = if (prefs.contains("shareLocation")) prefs.getBoolean("shareLocation", false) else null,
             sharedLatitude = prefs.getString("sharedLatitude", null)?.toDoubleOrNull(),
             sharedLongitude = prefs.getString("sharedLongitude", null)?.toDoubleOrNull()
@@ -667,10 +725,24 @@ object ProfileRepository {
                 privacySettings.optStringOrNull("locationVisibility"),
                 defaultLocationVisibilityFromStoredPermission()
             ),
+            locationVisibilityInitialized = privacySettings.optNullableBoolean("locationVisibilityInitialized")
+                ?: privacySettings.has("locationVisibility"),
             shareLocation = privacySettings.optNullableBoolean("locationSharingEnabled"),
             sharedLatitude = sharedLatitude,
             sharedLongitude = sharedLongitude
         )
+    }
+
+    private fun markPendingLocationPermissionPrivacyHintSync() {
+        prefs.edit()
+            .putBoolean(PendingLocationPermissionPrivacyHintSyncKey, true)
+            .apply()
+    }
+
+    private fun clearPendingLocationPermissionPrivacyHintSync() {
+        prefs.edit()
+            .remove(PendingLocationPermissionPrivacyHintSyncKey)
+            .apply()
     }
 
     private fun parseLocationAddress(

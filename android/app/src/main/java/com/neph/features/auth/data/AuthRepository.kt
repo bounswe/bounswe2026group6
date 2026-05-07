@@ -107,6 +107,7 @@ object AuthRepository {
         )
 
         return try {
+            ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
             ProfileRepository.fetchAndCacheRemoteProfile()
             AuthSessionStore.clearPendingVerificationEmail()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login") }
@@ -146,6 +147,7 @@ object AuthRepository {
         if (accessToken.isNotBlank()) {
             val userId = response.optJSONObject("user")?.optString("userId")?.trim().orEmpty()
             AuthSessionStore.saveAccessToken(accessToken, rememberMe = true, userId = userId)
+            ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
             PushTokenSync.syncCurrentToken()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
