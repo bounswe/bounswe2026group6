@@ -171,20 +171,7 @@ Notes:
 
 ### Demo data seed
 
-After migrations have run, you can populate the app with clearly marked demo data for presentations and evaluation. The seed is idempotent, so running it again skips existing demo records instead of creating duplicates.
-
-For the Docker Compose setup, including EC2 deployments that run this repository with Compose:
-
-```bash
-docker compose exec -e ENABLE_DEMO_SEED=true backend node scripts/seed-demo-data.js
-```
-
-For a backend process running directly on the host:
-
-```bash
-cd backend
-ENABLE_DEMO_SEED=true node scripts/seed-demo-data.js
-```
+Demo-ready data is inserted by the backend SQL migrations. It is clearly marked with `[DEMO]` in user-facing records and uses deterministic `demo_*` IDs so local and deployment databases get the same presentation dataset when migrations run.
 
 Demo login password for `*@neph.test` users:
 
@@ -199,8 +186,11 @@ Demo accounts:
 | Admin | `admin_demo@neph.test` | `DemoPass123!` |
 | Requester | `requester_ayse@neph.test` | `DemoPass123!` |
 | Requester | `requester_mert@neph.test` | `DemoPass123!` |
+| Requester | `requester_fatma@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_elif@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_can@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_sarp@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_zeynep@neph.test` | `DemoPass123!` |
 
 ### Optional non-Docker development
 
