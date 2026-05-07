@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.neph.ui.components.buttons.TextActionButton
-import com.neph.ui.components.theme.ThemeIconButton
 import com.neph.ui.theme.LocalNephSpacing
 
 @Composable
@@ -44,10 +43,6 @@ fun AppScaffold(
             ScreenContainer(
                 modifier = Modifier.weight(1f)
             ) {
-                ThemeIconButton(
-                    modifier = Modifier.align(Alignment.TopEnd)
-                )
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()

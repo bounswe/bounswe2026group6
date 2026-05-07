@@ -57,5 +57,25 @@ sealed class Routes(
         )
 
         val drawerItems = authenticatedDrawerItems
+
+        // Primary destinations exposed in the bottom NavigationBar.
+        // Layout: [Menu] · Requests · Home · Map · Alerts
+        // The Menu (hamburger) item is rendered separately by the scaffold and
+        // opens an upward-sliding panel containing News and the remaining
+        // drawer destinations. Alerts (Notifications) shows a badge for new
+        // unread items.
+        val authenticatedBottomNavItems = listOf(
+            MyHelpRequests,
+            Home,
+            HelpRequestMap,
+            Notifications
+        )
+
+        val guestBottomNavItems = listOf(
+            MyHelpRequests,
+            Home,
+            HelpRequestMap,
+            Notifications
+        )
     }
 }
