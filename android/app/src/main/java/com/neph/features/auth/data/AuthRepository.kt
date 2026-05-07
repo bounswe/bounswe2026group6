@@ -231,8 +231,8 @@ object AuthRepository {
             token = accessToken
         )
 
-        clearLocalAuthState()
         clearDeletedAccountOfflineState()
+        clearLocalAuthState()
         return response.optString("message").ifBlank { "Account deleted successfully." }
     }
 
