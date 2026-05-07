@@ -14,6 +14,7 @@ export type BackendProfileResponse = {
         profileVisibility: string;
         healthInfoVisibility: string;
         locationVisibility: string;
+        locationVisibilityInitialized?: boolean;
         locationSharingEnabled: boolean;
     };
     healthInfo: {

@@ -13,6 +13,10 @@ const {
   listExpertiseByProfileId,
 } = require('./repository');
 
+const DEFAULT_PROFILE_VISIBILITY = 'EMERGENCY_ONLY';
+const DEFAULT_HEALTH_INFO_VISIBILITY = 'EMERGENCY_ONLY';
+const DEFAULT_LOCATION_VISIBILITY = 'PRIVATE';
+
 function toIsoDateString(value) {
   if (!value) {
     return null;
@@ -53,9 +57,10 @@ function mapProfileRow(row) {
       phoneNumber: row.phone_number,
     },
     privacySettings: {
-      profileVisibility: row.profile_visibility || 'PRIVATE',
-      healthInfoVisibility: row.health_info_visibility || 'PRIVATE',
-      locationVisibility: row.location_visibility || 'PRIVATE',
+      profileVisibility: row.profile_visibility || DEFAULT_PROFILE_VISIBILITY,
+      healthInfoVisibility: row.health_info_visibility || DEFAULT_HEALTH_INFO_VISIBILITY,
+      locationVisibility: row.location_visibility || DEFAULT_LOCATION_VISIBILITY,
+      locationVisibilityInitialized: Boolean(row.privacy_settings_id && row.location_visibility),
       locationSharingEnabled: row.location_sharing_enabled || false,
     },
     healthInfo: {
