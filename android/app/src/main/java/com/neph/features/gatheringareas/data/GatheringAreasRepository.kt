@@ -42,8 +42,8 @@ data class NearbyGatheringAreasResult(
 )
 
 object GatheringAreasRepository {
-    private const val DefaultRadiusMeters = 2000
-    private const val DefaultLimit = 20
+    internal const val DefaultRadiusMeters = 10000
+    internal const val DefaultLimit = 50
     private const val MaxRadiusMeters = 10000
     private const val MaxLimit = 50
     private const val NearbyRequestTimeoutMillis = 8000L

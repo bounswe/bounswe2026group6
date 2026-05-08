@@ -293,8 +293,76 @@ function toFeatureCollection(elements, limit, center) {
 
   return {
     type: 'FeatureCollection',
-    features: features.slice(0, limit),
+    features: selectBalancedFeatures(features, limit),
   };
+}
+
+function selectBalancedFeatures(sortedFeatures, limit) {
+  const cappedLimit = Math.max(0, limit);
+  if (cappedLimit === 0 || sortedFeatures.length <= cappedLimit) {
+    return sortedFeatures.slice(0, cappedLimit);
+  }
+
+  const groups = new Map();
+  for (const feature of sortedFeatures) {
+    const category = feature.properties && feature.properties.category
+      ? feature.properties.category
+      : 'other';
+    if (!groups.has(category)) {
+      groups.set(category, []);
+    }
+    groups.get(category).push(feature);
+  }
+
+  const categoriesByNearest = [...groups.entries()]
+    .sort((left, right) => left[1][0].properties.distanceMeters - right[1][0].properties.distanceMeters);
+  const selected = [];
+  const selectedIds = new Set();
+  const perCategoryTarget = Math.min(
+    3,
+    Math.max(1, Math.floor(cappedLimit / Math.max(categoriesByNearest.length, 1))),
+  );
+
+  for (let round = 0; round < perCategoryTarget && selected.length < cappedLimit; round += 1) {
+    for (const [, categoryFeatures] of categoriesByNearest) {
+      const feature = categoryFeatures[round];
+      if (!feature || selected.length >= cappedLimit) {
+        continue;
+      }
+      const featureKey = getFeatureSelectionKey(feature);
+      if (selectedIds.has(featureKey)) {
+        continue;
+      }
+      selectedIds.add(featureKey);
+      selected.push(feature);
+    }
+  }
+
+  for (const feature of sortedFeatures) {
+    if (selected.length >= cappedLimit) {
+      break;
+    }
+    const featureKey = getFeatureSelectionKey(feature);
+    if (selectedIds.has(featureKey)) {
+      continue;
+    }
+    selectedIds.add(featureKey);
+    selected.push(feature);
+  }
+
+  return selected.sort((left, right) => left.properties.distanceMeters - right.properties.distanceMeters);
+}
+
+function getFeatureSelectionKey(feature) {
+  const properties = feature.properties || {};
+  if (properties.id) {
+    return `${properties.osmType || 'unknown'}:${properties.id}`;
+  }
+
+  const coordinates = feature.geometry && Array.isArray(feature.geometry.coordinates)
+    ? feature.geometry.coordinates.join(':')
+    : 'unknown';
+  return `coordinates:${coordinates}`;
 }
 
 function toFallbackFeatureCollection() {

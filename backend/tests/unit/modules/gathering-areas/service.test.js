@@ -14,6 +14,16 @@ afterAll(() => {
 });
 
 describe('gathering-areas service', () => {
+  function buildNode(id, latOffset, tags) {
+    return {
+      type: 'node',
+      id,
+      lat: 41.01 + latOffset,
+      lon: 29.01,
+      tags,
+    };
+  }
+
   test('getNearbyGatheringAreas includes expanded category filters in Overpass query', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
@@ -63,6 +73,46 @@ describe('gathering-areas service', () => {
       { key: 'pharmacy', label: 'Pharmacy' },
       { key: 'other', label: 'Other' },
     ]));
+  });
+
+  test('getNearbyGatheringAreas balances dense pharmacy results with other available categories', async () => {
+    const densePharmacies = Array.from({ length: 12 }, (_, index) => (
+      buildNode(9000 + index, (index + 1) * 0.00001, { amenity: 'pharmacy' })
+    ));
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        elements: [
+          ...densePharmacies,
+          buildNode(9101, 0.0020, { amenity: 'hospital' }),
+          buildNode(9102, 0.0021, { amenity: 'police' }),
+          buildNode(9103, 0.0022, { amenity: 'fire_station' }),
+          buildNode(9103, 0.0022, { amenity: 'fire_station' }),
+        ],
+      }),
+    });
+
+    const result = await gatheringAreasService.getNearbyGatheringAreas({
+      lat: 41.01,
+      lon: 29.01,
+      radius: 10000,
+      limit: 5,
+    });
+
+    const features = result.collection.features;
+    const categories = features.map((feature) => feature.properties.category);
+    const featureKeys = features.map((feature) => `${feature.properties.osmType}:${feature.properties.id}`);
+
+    expect(features).toHaveLength(5);
+    expect(categories).toEqual(expect.arrayContaining([
+      'pharmacy',
+      'hospital',
+      'police',
+      'fire_station',
+    ]));
+    expect(new Set(featureKeys).size).toBe(featureKeys.length);
+    expect(result.meta.returnedCount).toBe(5);
   });
 
   test('getNearbyGatheringAreas rethrows unexpected internal errors instead of returning fallback', async () => {

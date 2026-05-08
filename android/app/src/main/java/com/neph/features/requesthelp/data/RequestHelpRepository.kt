@@ -57,7 +57,8 @@ data class RequestHelpReverseLocation(
     val city: String? = null,
     val district: String? = null,
     val neighborhood: String? = null,
-    val extraAddress: String? = null
+    val extraAddress: String? = null,
+    val displayName: String? = null
 )
 
 data class RequestHelpContactSubmission(
@@ -366,7 +367,8 @@ object RequestHelpRepository {
             city = administrative.optTrimmedString("city"),
             district = administrative.optTrimmedString("district"),
             neighborhood = administrative.optTrimmedString("neighborhood"),
-            extraAddress = administrative.optTrimmedString("extraAddress")
+            extraAddress = administrative.optTrimmedString("extraAddress"),
+            displayName = item.optTrimmedString("displayName")
         )
     }
 

@@ -54,6 +54,7 @@ import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
+import com.neph.ui.map.residentialMapPickerFeedbackMessage
 import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
@@ -187,18 +188,11 @@ fun EditProfileScreen(
                     neighborhood = update.neighborhood,
                     extraAddress = update.extraAddress
                 )
-                mapActionInfo = when {
-                    reverseLocation == null ->
-                        "Could not resolve selected coordinates. You can continue with manual location entry."
-                    update.isMeaningfulMapping ->
-                        "Selected location applied."
-                    else ->
-                        "Selected coordinates were detected. Please verify the location fields manually."
-                }
+                mapActionInfo = residentialMapPickerFeedbackMessage(reverseLocation, update)
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                mapActionInfo = "Could not resolve selected coordinates. You can continue with manual location entry."
+                mapActionInfo = "Could not resolve the selected point. You can still enter the address manually."
             } finally {
                 mapPickerSelection = selection
                 mapPickerLoading = false
@@ -207,8 +201,19 @@ fun EditProfileScreen(
         }
     }
 
-    fun centerProfileMapOnCurrentLocation() {
-        if (mapCenterLoading) return
+    fun openProfileMapPickerWithFallback(message: String) {
+        mapCenterLatitude = null
+        mapCenterLongitude = null
+        mapCenterInfo = message
+        mapCenterLoading = false
+        mapPickerOpen = true
+    }
+
+    fun captureCurrentLocationForProfileMap(
+        openPickerAfterCapture: Boolean,
+        fromPermissionResult: Boolean = false
+    ) {
+        if (mapCenterLoading && !fromPermissionResult) return
 
         mapCenterLoading = true
         mapCenterInfo = ""
@@ -221,23 +226,44 @@ fun EditProfileScreen(
                 )
                 val location = attempt.location
                 if (location == null) {
-                    mapCenterInfo = when (attempt.warning) {
+                    val fallbackMessage = when (attempt.warning) {
                         CurrentLocationShareWarning.PERMISSION_DENIED ->
-                            "Location permission is denied. The map was not centered."
+                            "Location permission was denied. You can still choose your home location manually."
 
                         CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
-                        null -> "Current location is unavailable. The map was not centered."
+                        null -> "Current location is unavailable. You can still choose your home location manually."
+                    }
+                    if (openPickerAfterCapture) {
+                        openProfileMapPickerWithFallback(fallbackMessage)
+                    } else {
+                        mapCenterLatitude = null
+                        mapCenterLongitude = null
+                        mapCenterInfo = fallbackMessage
                     }
                     return@launch
                 }
 
                 mapCenterLatitude = location.latitude
                 mapCenterLongitude = location.longitude
-                mapCenterInfo = "Map centered on your current location. Choose a point to update your residential location."
+                mapCenterInfo = if (openPickerAfterCapture) {
+                    "Map opened near your device location. Please verify the selected home location."
+                } else {
+                    "Map centered on your device location. Please verify the selected home location."
+                }
+                if (openPickerAfterCapture) {
+                    mapPickerOpen = true
+                }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                mapCenterInfo = "Current location is unavailable. The map was not centered."
+                val fallbackMessage = "Current location is unavailable. You can still choose your home location manually."
+                if (openPickerAfterCapture) {
+                    openProfileMapPickerWithFallback(fallbackMessage)
+                } else {
+                    mapCenterLatitude = null
+                    mapCenterLongitude = null
+                    mapCenterInfo = fallbackMessage
+                }
             } finally {
                 mapCenterLoading = false
             }
@@ -246,9 +272,30 @@ fun EditProfileScreen(
 
     val mapLocationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
         if (result.granted) {
-            centerProfileMapOnCurrentLocation()
+            captureCurrentLocationForProfileMap(
+                openPickerAfterCapture = true,
+                fromPermissionResult = true
+            )
         } else {
-            mapCenterInfo = "Location permission is denied. The map was not centered."
+            openProfileMapPickerWithFallback(
+                "Location permission was denied. You can still choose your home location manually."
+            )
+        }
+    }
+
+    fun prepareAndOpenProfileMapPicker() {
+        if (mapCenterLoading) return
+
+        mapActionInfo = ""
+        mapCenterLatitude = null
+        mapCenterLongitude = null
+        mapCenterInfo = ""
+
+        if (mapLocationPermissionRequester.refreshPermissionState()) {
+            captureCurrentLocationForProfileMap(openPickerAfterCapture = true)
+        } else {
+            mapCenterLoading = true
+            mapLocationPermissionRequester.requestPermission()
         }
     }
 
@@ -509,8 +556,8 @@ fun EditProfileScreen(
 
                     SecondaryButton(
                         text = "Select Home Location on Map",
-                        onClick = { mapPickerOpen = true },
-                        enabled = !locationLoading && !loading
+                        onClick = ::prepareAndOpenProfileMapPicker,
+                        enabled = !locationLoading && !loading && !mapCenterLoading
                     )
 
                     AppTextField(
@@ -546,7 +593,7 @@ fun EditProfileScreen(
                             onConfirm = ::handleMapSelection,
                             onCenterOnCurrentLocation = {
                                 if (mapLocationPermissionRequester.refreshPermissionState()) {
-                                    centerProfileMapOnCurrentLocation()
+                                    captureCurrentLocationForProfileMap(openPickerAfterCapture = false)
                                 } else {
                                     mapLocationPermissionRequester.requestPermission()
                                 }
