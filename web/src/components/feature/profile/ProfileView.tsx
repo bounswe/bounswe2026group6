@@ -20,7 +20,8 @@ import {
 } from "@/components/feature/location";
 import { bloodTypeOptions } from "@/lib/bloodTypes";
 import { countryCodeOptions } from "@/lib/countryCodes";
-import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
+import { DateInput } from "@/components/ui/inputs/DateInput";
+import { expertiseOptions } from "@/lib/profileOptions";
 import {
     clearAccessToken,
     deleteCurrentAccount,
@@ -50,7 +51,6 @@ import {
     patchMyLocation,
     patchMyPhysical,
     patchMyPrivacy,
-    patchMyProfession,
     validateExpertiseAreas,
     putMyExpertiseAreas,
 } from "@/lib/profile";
@@ -489,6 +489,25 @@ export default function ProfileView() {
             return;
         }
 
+        if (profile.dateOfBirth) {
+            const dobPattern = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dobPattern.test(profile.dateOfBirth)) {
+                setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
+                return;
+            }
+            const [dobYear, dobMonth, dobDay] = profile.dateOfBirth.split("-").map(Number);
+            const dateOfBirth = new Date(dobYear, dobMonth - 1, dobDay);
+            if (
+                dateOfBirth.getFullYear() !== dobYear ||
+                dateOfBirth.getMonth() + 1 !== dobMonth ||
+                dateOfBirth.getDate() !== dobDay ||
+                dateOfBirth >= new Date(new Date().toDateString())
+            ) {
+                setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
+                return;
+            }
+        }
+
         if (
             !initialShareLocation &&
             profile.shareLocation &&
@@ -574,7 +593,7 @@ export default function ProfileView() {
                 }) || null;
 
             await patchMyPhysical(token, {
-                dateOfBirth: profile.dateOfBirth || null,
+                dateOfBirth: /^\d{4}-\d{2}-\d{2}$/.test(profile.dateOfBirth || "") ? profile.dateOfBirth : null,
                 gender: profile.gender || null,
                 height: profile.height ? Number(profile.height) : undefined,
                 weight: profile.weight ? Number(profile.weight) : undefined,
@@ -623,10 +642,6 @@ export default function ProfileView() {
 
             await patchMyPrivacy(token, {
                 locationSharingEnabled: profile.shareLocation,
-            });
-
-            await patchMyProfession(token, {
-                profession: profile.profession.trim() || null,
             });
 
             await putMyExpertiseAreas(token, {
@@ -933,19 +948,14 @@ export default function ProfileView() {
                             ]}
                         />
                         <div>
-                            <TextInput
+                            <DateInput
                                 id="dateOfBirth"
                                 label="Date of Birth"
-                                type="date"
-                                max={new Date().toISOString().slice(0, 10)}
                                 value={profile.dateOfBirth}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                     setProfile((currentProfile) =>
                                         currentProfile
-                                            ? {
-                                                ...currentProfile,
-                                                dateOfBirth: e.target.value,
-                                            }
+                                            ? { ...currentProfile, dateOfBirth: v }
                                             : currentProfile
                                     )
                                 }
@@ -955,53 +965,31 @@ export default function ProfileView() {
                 </SectionCard>
 
                 <SectionCard>
-                    <SectionHeader title="Profession" />
-                    <p className="mb-3 text-xs text-[color:var(--text-muted)]">
-                        Your profession and expertise help with community coordination.
-                    </p>
+                    <SectionHeader title="First Aid" />
 
-                    <div className="flex flex-col gap-4">
-                        <SelectInput
-                            id="profession"
-                            label="Profession"
-                            value={profile.profession}
-                            onChange={(e) =>
-                                setProfile((currentProfile) =>
-                                    currentProfile
-                                        ? { ...currentProfile, profession: e.target.value }
-                                        : currentProfile
-                                )
-                            }
-                            options={professionOptions}
-                        />
-
-                        <div className="flex flex-col gap-3">
-                            <p className="text-sm font-medium text-[color:var(--text-primary)]">
-                                Expertise (optional)
-                            </p>
-                            {expertiseOptions.map((option) => (
-                                <Checkbox
-                                    key={option}
-                                    id={`profile-expertise-${option}`}
-                                    label={option}
-                                    checked={profile.expertise.includes(option)}
-                                    onCheckedChange={(checked) =>
-                                        setProfile((currentProfile) =>
-                                            currentProfile
-                                                ? {
-                                                    ...currentProfile,
-                                                    expertise: checked
-                                                        ? [...currentProfile.expertise, option]
-                                                        : currentProfile.expertise.filter(
-                                                            (item) => item !== option
-                                                        ),
-                                                }
-                                                : currentProfile
-                                        )
-                                    }
-                                />
-                            ))}
-                        </div>
+                    <div className="flex flex-col gap-3">
+                        {expertiseOptions.map((option) => (
+                            <Checkbox
+                                key={option}
+                                id={`profile-expertise-${option}`}
+                                label={option}
+                                checked={profile.expertise.includes(option)}
+                                onCheckedChange={(checked) =>
+                                    setProfile((currentProfile) =>
+                                        currentProfile
+                                            ? {
+                                                ...currentProfile,
+                                                expertise: checked
+                                                    ? [...currentProfile.expertise, option]
+                                                    : currentProfile.expertise.filter(
+                                                        (item) => item !== option
+                                                    ),
+                                            }
+                                            : currentProfile
+                                    )
+                                }
+                            />
+                        ))}
                     </div>
                 </SectionCard>
 

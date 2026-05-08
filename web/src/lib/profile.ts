@@ -209,6 +209,7 @@ export function mapBackendProfileToEditableProfile(
             .map((area) => area.trim())
             .filter((area) =>
                 expertiseOptions.some((allowed) => allowed.toLocaleLowerCase() === area.toLocaleLowerCase())
+                || area.toLocaleLowerCase() === "first aid"
             )
             .map(() => expertiseOptions[0]),
         height:
