@@ -33,7 +33,6 @@ import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizeDateOfBirth
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseListField
-import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
@@ -96,7 +95,6 @@ fun CompleteProfileScreen(
     var district by rememberSaveable { mutableStateOf(existingProfile.district.orEmpty()) }
     var neighborhood by rememberSaveable { mutableStateOf(existingProfile.neighborhood.orEmpty()) }
     var extraAddress by rememberSaveable { mutableStateOf(existingProfile.extraAddress.orEmpty()) }
-    var profession by rememberSaveable { mutableStateOf(existingProfile.profession) }
     var expertise by rememberSaveable { mutableStateOf(existingProfile.expertise) }
     var loading by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf("") }
@@ -242,7 +240,6 @@ fun CompleteProfileScreen(
                     district = district,
                     neighborhood = neighborhood,
                     extraAddress = extraAddress.takeIf(String::isNotBlank),
-                    profession = profession?.trim()?.takeIf(String::isNotBlank),
                     expertise = parseListField(expertise.joinToString(", "))
                 )
                 ProfileRepository.syncProfile(

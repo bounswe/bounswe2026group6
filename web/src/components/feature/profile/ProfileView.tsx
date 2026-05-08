@@ -489,6 +489,19 @@ export default function ProfileView() {
             return;
         }
 
+        if (profile.dateOfBirth) {
+            const dobPattern = /^\d{4}-\d{2}-\d{2}$/;
+            const dateOfBirth = new Date(profile.dateOfBirth);
+            if (
+                !dobPattern.test(profile.dateOfBirth) ||
+                Number.isNaN(dateOfBirth.getTime()) ||
+                dateOfBirth > new Date()
+            ) {
+                setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
+                return;
+            }
+        }
+
         if (
             !initialShareLocation &&
             profile.shareLocation &&
@@ -574,7 +587,7 @@ export default function ProfileView() {
                 }) || null;
 
             await patchMyPhysical(token, {
-                dateOfBirth: profile.dateOfBirth || null,
+                dateOfBirth: /^\d{4}-\d{2}-\d{2}$/.test(profile.dateOfBirth || "") ? profile.dateOfBirth : null,
                 gender: profile.gender || null,
                 height: profile.height ? Number(profile.height) : undefined,
                 weight: profile.weight ? Number(profile.weight) : undefined,

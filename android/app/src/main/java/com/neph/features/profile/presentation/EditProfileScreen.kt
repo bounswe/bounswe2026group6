@@ -34,7 +34,6 @@ import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizeDateOfBirth
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseListField
-import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.toEditableString
 import com.neph.features.requesthelp.data.RequestHelpRepository

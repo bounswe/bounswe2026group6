@@ -385,9 +385,14 @@ export default function CompleteProfileForm() {
             return;
         }
 
+        const dobPattern = /^\d{4}-\d{2}-\d{2}$/;
         const dateOfBirth = new Date(form.dateOfBirth);
-        if (Number.isNaN(dateOfBirth.getTime()) || dateOfBirth > new Date()) {
-            setError("Please select a valid date of birth.");
+        if (
+            !dobPattern.test(form.dateOfBirth) ||
+            Number.isNaN(dateOfBirth.getTime()) ||
+            dateOfBirth > new Date()
+        ) {
+            setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
             return;
         }
 
