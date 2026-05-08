@@ -375,23 +375,7 @@ fun CompleteProfileScreen(
                 label = "Allergies (optional - comma-separated)"
             )
 
-            Text("Profession", style = MaterialTheme.typography.titleMedium)
-
-            AppDropdown(
-                value = profession.orEmpty(),
-                onValueChange = { profession = it },
-                label = "Profession",
-                options = professionOptionsFor(profession),
-                placeholder = "Select your profession"
-            )
-
             Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-                Text(
-                    text = "Expertise (optional)",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
                 expertiseOptionsFor(expertise).forEach { option ->
                     AppCheckbox(
                         checked = option in expertise,
