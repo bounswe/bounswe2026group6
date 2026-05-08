@@ -187,6 +187,7 @@ fun MapPickerDialog(
 private const val MapPickerBridgeName = "AndroidMapPicker"
 private const val DefaultCenterLatitude = 39.9334
 private const val DefaultCenterLongitude = 32.8597
+private const val MapPickerMapHeightCssPx = 260
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -204,7 +205,12 @@ private fun MapPickerMap(
     val latestOnMapError by rememberUpdatedState(onMapError)
     val latestCurrentMapInstanceId by rememberUpdatedState(currentMapInstanceId)
     val html = remember(mapInstanceId, initialLatitude, initialLongitude) {
-        buildMapHtml(mapInstanceId, initialLatitude, initialLongitude)
+        buildMapHtml(
+            mapInstanceId = mapInstanceId,
+            initialLatitude = initialLatitude,
+            initialLongitude = initialLongitude,
+            mapHeightCssPx = MapPickerMapHeightCssPx
+        )
     }
     val bridge = remember {
         MapPickerBridge(
@@ -222,7 +228,7 @@ private fun MapPickerMap(
         bridge = bridge,
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp)
+            .height(MapPickerMapHeightCssPx.dp)
     )
 }
 
@@ -325,7 +331,12 @@ private class MapPickerBridge(
     }
 }
 
-private fun buildMapHtml(mapInstanceId: String, initialLatitude: Double?, initialLongitude: Double?): String {
+private fun buildMapHtml(
+    mapInstanceId: String,
+    initialLatitude: Double?,
+    initialLongitude: Double?,
+    mapHeightCssPx: Int
+): String {
     val hasInitial = initialLatitude != null && initialLongitude != null
     val centerLat = initialLatitude ?: DefaultCenterLatitude
     val centerLon = initialLongitude ?: DefaultCenterLongitude
@@ -337,18 +348,19 @@ private fun buildMapHtml(mapInstanceId: String, initialLatitude: Double?, initia
         <!DOCTYPE html>
         <html>
         <head>
-            ${buildLeafletDocumentHead()}
+            ${buildLeafletDocumentHead(mapHeightCssPx)}
         </head>
         <body>
             <div id="map"></div>
             <script>
-                ${buildLeafletErrorScript(MapPickerBridgeName, mapInstanceId)}
+                ${buildLeafletErrorScript(MapPickerBridgeName, mapInstanceId, mapHeightCssPx)}
 
                 var mapElement = document.getElementById('map');
                 if (!mapElement) {
                     failMap('Map failed to load.');
                 }
                 logNephMapBreadcrumb('NEPH_MAP: map element found');
+                ensureNephMapHeight(mapElement);
                 logNephMapSize('before L.map', mapElement);
                 var map = L.map('map').setView([$formattedLat, $formattedLon], $zoom);
                 logNephMapBreadcrumb('NEPH_MAP: map created');

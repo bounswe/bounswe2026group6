@@ -46,6 +46,7 @@ internal const val LeafletMapWebViewLogTag = "NephMapWebView"
 internal const val LeafletMapInitializationTimeoutMillis = 15_000L
 internal const val LeafletMapInitializationTimeoutMessage =
     "Map failed to initialize. Please check WebView and network access."
+internal const val LeafletMapFallbackHeightCssPx = 260
 internal const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 internal const val LeafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 private const val LeafletAssetOrigin = "https://unpkg.com"
@@ -60,6 +61,10 @@ private val AllowedOpenStreetMapTileHosts = setOf(
 private val OpenStreetMapTilePathPattern = Regex("""^/\d+/\d+/\d+\.png$""")
 
 internal fun newLeafletMapInstanceId(): String = "map-${UUID.randomUUID()}"
+
+internal fun coerceLeafletMapHeightCssPx(cssPx: Int): Int {
+    return cssPx.coerceAtLeast(LeafletMapFallbackHeightCssPx)
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -112,6 +117,7 @@ fun LeafletMarkerMap(
     centerLongitude: Double,
     markers: List<LeafletMapMarker>,
     selectedMarkerId: String?,
+    mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx,
     onMarkerSelected: (String, String) -> Unit,
     onMapReady: (String) -> Unit,
     onMapError: (String, String) -> Unit,
@@ -128,7 +134,8 @@ fun LeafletMarkerMap(
             centerLongitude = centerLongitude,
             markers = markers,
             selectedMarkerId = selectedMarkerId,
-            bridgeName = LeafletMarkerMapBridgeName
+            bridgeName = LeafletMarkerMapBridgeName,
+            mapHeightCssPx = mapHeightCssPx
         )
     }
     val bridge = remember {
@@ -149,7 +156,8 @@ fun LeafletMarkerMap(
     )
 }
 
-internal fun buildLeafletDocumentHead(): String {
+internal fun buildLeafletDocumentHead(mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx): String {
+    val coercedMapHeightCssPx = coerceLeafletMapHeightCssPx(mapHeightCssPx)
     return """
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <!-- Keep embedded maps limited to Leaflet assets, OSM tiles, and inline map scripts. -->
@@ -157,16 +165,36 @@ internal fun buildLeafletDocumentHead(): String {
         <link rel="stylesheet" href="$LeafletCssUrl" />
         <script src="$LeafletJsUrl" onerror="window.__leafletScriptLoadFailed = true;"></script>
         <style>
-            html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+            html, body {
+                width: 100%;
+                height: 100%;
+                min-height: ${coercedMapHeightCssPx}px;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+            }
+            #map {
+                width: 100%;
+                height: ${coercedMapHeightCssPx}px;
+                min-height: ${coercedMapHeightCssPx}px;
+                margin: 0;
+                padding: 0;
+            }
         </style>
     """.trimIndent()
 }
 
-internal fun buildLeafletErrorScript(bridgeName: String, mapInstanceId: String): String {
+internal fun buildLeafletErrorScript(
+    bridgeName: String,
+    mapInstanceId: String,
+    mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx
+): String {
     val quotedMapInstanceId = JSONObject.quote(mapInstanceId)
+    val coercedMapHeightCssPx = coerceLeafletMapHeightCssPx(mapHeightCssPx)
     return """
         var nephMapInstanceId = $quotedMapInstanceId;
         var nephMapReadyNotified = false;
+        var nephMapFallbackHeightCssPx = $coercedMapHeightCssPx;
         console.log('NEPH_MAP: script started instance=' + nephMapInstanceId);
 
         function logNephMapBreadcrumb(message) {
@@ -185,6 +213,22 @@ internal fun buildLeafletErrorScript(bridgeName: String, mapInstanceId: String):
                 'NEPH_MAP: map size ' + label + ' width=' + Math.round(rect.width) +
                     ' height=' + Math.round(rect.height)
             );
+        }
+
+        function ensureNephMapHeight(element) {
+            if (!element) {
+                return;
+            }
+            var rect = element.getBoundingClientRect();
+            if (rect.height > 0) {
+                return;
+            }
+            var fallbackHeight = nephMapFallbackHeightCssPx + 'px';
+            document.documentElement.style.minHeight = fallbackHeight;
+            document.body.style.minHeight = fallbackHeight;
+            element.style.height = fallbackHeight;
+            element.style.minHeight = fallbackHeight;
+            logNephMapBreadcrumb('NEPH_MAP: applied fallback map height height=' + nephMapFallbackHeightCssPx);
         }
 
         function notifyMapError(message) {
@@ -254,7 +298,8 @@ internal fun buildLeafletMarkerMapHtml(
     markers: List<LeafletMapMarker>,
     selectedMarkerId: String?,
     bridgeName: String,
-    zoom: Int = 13
+    zoom: Int = 13,
+    mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx
 ): String {
     val formattedLat = String.format(Locale.US, "%.6f", centerLatitude)
     val formattedLon = String.format(Locale.US, "%.6f", centerLongitude)
@@ -276,12 +321,12 @@ internal fun buildLeafletMarkerMapHtml(
         <!DOCTYPE html>
         <html>
         <head>
-            ${buildLeafletDocumentHead()}
+            ${buildLeafletDocumentHead(mapHeightCssPx)}
         </head>
         <body>
             <div id="map"></div>
             <script>
-                ${buildLeafletErrorScript(bridgeName, mapInstanceId)}
+                ${buildLeafletErrorScript(bridgeName, mapInstanceId, mapHeightCssPx)}
 
                 var center = [$formattedLat, $formattedLon];
                 var markerData = $markersJson;
@@ -291,6 +336,7 @@ internal fun buildLeafletMarkerMapHtml(
                     failMap('Map failed to load.');
                 }
                 logNephMapBreadcrumb('NEPH_MAP: map element found');
+                ensureNephMapHeight(mapElement);
                 logNephMapSize('before L.map', mapElement);
                 var map = L.map('map').setView(center, $zoom);
                 logNephMapBreadcrumb('NEPH_MAP: map created');

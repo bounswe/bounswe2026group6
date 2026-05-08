@@ -12,6 +12,13 @@ class LeafletMapWebViewTest {
     }
 
     @Test
+    fun coerceLeafletMapHeightCssPx_enforcesNonZeroSharedFallback() {
+        assertEquals(LeafletMapFallbackHeightCssPx, coerceLeafletMapHeightCssPx(0))
+        assertEquals(LeafletMapFallbackHeightCssPx, coerceLeafletMapHeightCssPx(220))
+        assertEquals(280, coerceLeafletMapHeightCssPx(280))
+    }
+
+    @Test
     fun buildLeafletDocumentHead_allowsLeafletOriginWithoutQuotedUrlSources() {
         val head = buildLeafletDocumentHead()
 
@@ -20,6 +27,8 @@ class LeafletMapWebViewTest {
         assertFalse(head.contains("script-src 'https://unpkg.com"))
         assertFalse(head.contains("style-src 'self' 'https://unpkg.com"))
         assertFalse(head.contains("navigate-to"))
+        assertTrue(head.contains("min-height: ${LeafletMapFallbackHeightCssPx}px"))
+        assertTrue(head.contains("height: ${LeafletMapFallbackHeightCssPx}px"))
     }
 
     @Test
@@ -86,6 +95,7 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMarkerSelected(nephMapInstanceId, marker.id);"))
         assertTrue(html.contains("map.fitBounds(bounds"))
         assertTrue(html.contains("scheduleMapInvalidateSize(map, mapElement);"))
+        assertTrue(html.contains("ensureNephMapHeight(mapElement);"))
     }
 
     @Test
@@ -96,7 +106,8 @@ class LeafletMapWebViewTest {
             centerLongitude = 29.0,
             markers = emptyList(),
             selectedMarkerId = null,
-            bridgeName = "AndroidLeafletMarkerMap"
+            bridgeName = "AndroidLeafletMarkerMap",
+            mapHeightCssPx = 280
         )
 
         assertTrue(html.contains("NEPH_MAP: script started"))
@@ -108,6 +119,8 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("NEPH_MAP: notifying Android ready"))
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMapReady(nephMapInstanceId);"))
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMapError(nephMapInstanceId, errorMessage);"))
+        assertTrue(html.contains("var nephMapFallbackHeightCssPx = 280;"))
+        assertTrue(html.contains("NEPH_MAP: applied fallback map height height="))
         assertTrue(html.contains("NEPH_MAP: map size "))
         assertTrue(html.contains("before L.map"))
         assertTrue(html.contains("after L.map"))

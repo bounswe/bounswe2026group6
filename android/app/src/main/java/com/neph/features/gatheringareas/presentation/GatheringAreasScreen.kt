@@ -61,6 +61,8 @@ private enum class GatheringAreasSearchOrigin {
     OTHER
 }
 
+private const val GatheringAreasMapHeightCssPx = 280
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun GatheringAreasScreen(
@@ -565,6 +567,7 @@ private fun GatheringAreasMapCard(
                 centerLongitude = result.centerLongitude,
                 markers = markers,
                 selectedMarkerId = selectedAreaId,
+                mapHeightCssPx = GatheringAreasMapHeightCssPx,
                 onMarkerSelected = { markerInstanceId, markerId ->
                     if (markerInstanceId == currentMapInstanceIdState.value) {
                         onAreaSelected(markerId)
@@ -583,7 +586,7 @@ private fun GatheringAreasMapCard(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(GatheringAreasMapHeightCssPx.dp)
             )
 
             if (!mapReady && mapError.isBlank()) {
