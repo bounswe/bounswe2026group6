@@ -64,6 +64,7 @@ class LeafletMapWebViewTest {
     @Test
     fun buildLeafletMarkerMapHtml_serializesMarkersAndSelection() {
         val html = buildLeafletMarkerMapHtml(
+            mapInstanceId = "test-map-1",
             centerLatitude = 41.0,
             centerLongitude = 29.0,
             markers = listOf(
@@ -80,15 +81,17 @@ class LeafletMapWebViewTest {
         )
 
         assertTrue(html.contains("\"id\":\"area-1\""))
+        assertTrue(html.contains("var nephMapInstanceId = \"test-map-1\";"))
         assertTrue(html.contains("var selectedMarkerId = \"area-1\";"))
-        assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMarkerSelected(marker.id);"))
+        assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMarkerSelected(nephMapInstanceId, marker.id);"))
         assertTrue(html.contains("map.fitBounds(bounds"))
-        assertTrue(html.contains("scheduleMapInvalidateSize(map);"))
+        assertTrue(html.contains("scheduleMapInvalidateSize(map, mapElement);"))
     }
 
     @Test
     fun buildLeafletMarkerMapHtml_includesReadyBreadcrumbsAndFallback() {
         val html = buildLeafletMarkerMapHtml(
+            mapInstanceId = "test-map-2",
             centerLatitude = 41.0,
             centerLongitude = 29.0,
             markers = emptyList(),
@@ -103,6 +106,14 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("NEPH_MAP: tile layer added"))
         assertTrue(html.contains("NEPH_MAP: whenReady fired"))
         assertTrue(html.contains("NEPH_MAP: notifying Android ready"))
+        assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMapReady(nephMapInstanceId);"))
+        assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMapError(nephMapInstanceId, errorMessage);"))
+        assertTrue(html.contains("NEPH_MAP: map size "))
+        assertTrue(html.contains("before L.map"))
+        assertTrue(html.contains("after L.map"))
+        assertTrue(html.contains("after invalidateSize"))
+        assertTrue(html.contains("NEPH_MAP: tileloadstart"))
+        assertTrue(html.contains("NEPH_MAP: tileload"))
         assertTrue(html.contains("NEPH_MAP: tile error"))
         assertTrue(html.contains("function notifyMapReadyOnce()"))
         assertTrue(html.contains("setTimeout(notifyMapReadyOnce, 1000);"))

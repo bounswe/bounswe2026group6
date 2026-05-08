@@ -48,6 +48,7 @@ import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.formatMapCoordinate
+import com.neph.ui.map.newLeafletMapInstanceId
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -512,13 +513,22 @@ private fun GatheringAreasMapCard(
     var mapError by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
         mutableStateOf("")
     }
+    val mapInstanceId = remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
+        newLeafletMapInstanceId()
+    }
+    val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
+    currentMapInstanceIdState.value = mapInstanceId
 
-    LaunchedEffect(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId, mapReady, mapError) {
+    LaunchedEffect(mapInstanceId, mapReady, mapError) {
         if (mapReady || mapError.isNotBlank()) {
             return@LaunchedEffect
         }
         delay(LeafletMapInitializationTimeoutMillis)
-        if (!mapReady && mapError.isBlank()) {
+        if (
+            currentMapInstanceIdState.value == mapInstanceId &&
+            !mapReady &&
+            mapError.isBlank()
+        ) {
             mapError = LeafletMapInitializationTimeoutMessage
         }
     }
@@ -549,17 +559,27 @@ private fun GatheringAreasMapCard(
             )
 
             LeafletMarkerMap(
+                mapInstanceId = mapInstanceId,
+                currentMapInstanceId = { currentMapInstanceIdState.value },
                 centerLatitude = result.centerLatitude,
                 centerLongitude = result.centerLongitude,
                 markers = markers,
                 selectedMarkerId = selectedAreaId,
-                onMarkerSelected = onAreaSelected,
-                onMapReady = {
-                    mapReady = true
-                    mapError = ""
+                onMarkerSelected = { markerInstanceId, markerId ->
+                    if (markerInstanceId == currentMapInstanceIdState.value) {
+                        onAreaSelected(markerId)
+                    }
                 },
-                onMapError = { message ->
-                    mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                onMapReady = { readyInstanceId ->
+                    if (readyInstanceId == currentMapInstanceIdState.value) {
+                        mapReady = true
+                        mapError = ""
+                    }
+                },
+                onMapError = { errorInstanceId, message ->
+                    if (errorInstanceId == currentMapInstanceIdState.value) {
+                        mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
