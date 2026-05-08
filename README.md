@@ -169,22 +169,19 @@ Notes:
 - the backend waits for PostgreSQL to become healthy before starting
 - the web container is configured to talk to the backend in the local Docker setup
 
-### Demo data seed
+### Optional demo data seed
 
-After migrations have run, you can populate the app with clearly marked demo data for presentations and evaluation. The seed is idempotent, so running it again skips existing demo records instead of creating duplicates.
+Demo-ready data is stored as SQL seed migrations under `backend/demo-migrations/`, but it is not applied by the normal backend migration flow. This keeps regular `npm run migrate` and `start:with-migrations` safe for normal environments.
 
-For the Docker Compose setup, including EC2 deployments that run this repository with Compose:
-
-```bash
-docker compose exec -e ENABLE_DEMO_SEED=true backend node scripts/seed-demo-data.js
-```
-
-For a backend process running directly on the host:
+To apply the demo dataset intentionally, run the regular migrations first and then run the guarded demo seed command:
 
 ```bash
 cd backend
-ENABLE_DEMO_SEED=true node scripts/seed-demo-data.js
+npm run migrate
+ENABLE_DEMO_SEED=true npm run seed:demo
 ```
+
+The demo seed is clearly marked with `[DEMO]` in user-facing records and uses deterministic `demo_*` IDs so local and deployment demo databases get the same presentation dataset. The demo seed command refuses to run unless `ENABLE_DEMO_SEED=true` is set. It includes 24 demo people: 1 admin, 9 requesters, 9 volunteers, and 5 additional community residents.
 
 Demo login password for `*@neph.test` users:
 
@@ -199,8 +196,13 @@ Demo accounts:
 | Admin | `admin_demo@neph.test` | `DemoPass123!` |
 | Requester | `requester_ayse@neph.test` | `DemoPass123!` |
 | Requester | `requester_mert@neph.test` | `DemoPass123!` |
+| Requester | `requester_fatma@neph.test` | `DemoPass123!` |
+| Requester | `requester_orhan@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_elif@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_can@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_sarp@neph.test` | `DemoPass123!` |
+| Volunteer | `volunteer_zeynep@neph.test` | `DemoPass123!` |
+| Mixed requester/volunteer/resident demos | `resident_nazan@neph.test` through `resident_lale@neph.test` | `DemoPass123!` |
 
 ### Optional non-Docker development
 
