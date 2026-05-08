@@ -3,7 +3,6 @@ package com.neph.ui.map
 import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.webkit.JavascriptInterface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -70,18 +69,19 @@ fun MapPickerDialog(
     var selection by remember(effectiveInitialLatitude, effectiveInitialLongitude) {
         mutableStateOf(initialMapPickerSelection(effectiveInitialLatitude, effectiveInitialLongitude))
     }
-    val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val initializedInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
     var mapError by remember {
         mutableStateOf("")
     }
-    val activeMapReady = isLeafletMapReadyForInstance(
+    val activeMapInitialized = isLeafletMapInitializedForInstance(
         activeInstanceId = mapInstanceId,
-        readyInstanceId = readyInstanceIdState.value
+        initializedInstanceId = initializedInstanceIdState.value
     )
     val activeMapError = leafletMapErrorForInstance(
         activeInstanceId = mapInstanceId,
-        readyInstanceId = readyInstanceIdState.value,
+        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
         errorInstanceId = errorInstanceIdState.value,
         errorMessage = mapError
     )
@@ -93,33 +93,36 @@ fun MapPickerDialog(
         if (shouldApplyLeafletMapTimeout(
                 activeInstanceId = mapInstanceId,
                 currentInstanceId = currentMapInstanceIdState.value,
-                readyInstanceId = readyInstanceIdState.value,
+                initializedInstanceId = initializedInstanceIdState.value,
                 errorInstanceId = errorInstanceIdState.value
             )
         ) {
-            Log.d(LeafletMapWebViewLogTag, "native MapPicker timeout applied instance=$mapInstanceId")
+            logMapDebug("native MapPicker timeout applied instance=$mapInstanceId")
             errorInstanceIdState.value = mapInstanceId
             mapError = LeafletMapInitializationTimeoutMessage
         } else {
-            Log.d(
-                LeafletMapWebViewLogTag,
-                "native MapPicker timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} ready=${readyInstanceIdState.value} error=${errorInstanceIdState.value}"
+            logMapDebug(
+                "native MapPicker timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} initialized=${initializedInstanceIdState.value} error=${errorInstanceIdState.value}"
             )
         }
     }
 
     fun markMapAlive(instanceId: String, source: String) {
         if (instanceId == currentMapInstanceIdState.value) {
-            if (readyInstanceIdState.value != instanceId) {
-                Log.d(LeafletMapWebViewLogTag, "native MapPicker ready source=$source instance=$instanceId")
+            if (initializedInstanceIdState.value != instanceId) {
+                logMapDebug("native MapPicker initialized source=$source instance=$instanceId")
             }
-            readyInstanceIdState.value = instanceId
-            errorInstanceIdState.value = null
-            mapError = ""
+            initializedInstanceIdState.value = instanceId
+            if (isLeafletTileLoadedSignal(source)) {
+                tileLoadedInstanceIdState.value = instanceId
+            }
+            if (shouldClearLeafletMapErrorForSignal(source, mapError)) {
+                errorInstanceIdState.value = null
+                mapError = ""
+            }
         } else {
-            Log.d(
-                LeafletMapWebViewLogTag,
-                "native MapPicker ready ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
+            logMapDebug(
+                "native MapPicker initialized ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
             )
         }
     }
@@ -152,28 +155,31 @@ fun MapPickerDialog(
                     onLocationSelected = { lat, lon ->
                         selection = MapPickerSelection(lat, lon)
                     },
-                    onMapReady = { readyInstanceId, source -> markMapAlive(readyInstanceId, source) },
+                    onMapReady = { initializedInstanceId, source -> markMapAlive(initializedInstanceId, source) },
                     onMapError = { errorInstanceId, message ->
                         if (
-                            errorInstanceId == currentMapInstanceIdState.value &&
-                            !isLeafletMapReadyForInstance(mapInstanceId, readyInstanceIdState.value)
+                            shouldApplyLeafletMapError(
+                                activeInstanceId = errorInstanceId,
+                                currentInstanceId = currentMapInstanceIdState.value,
+                                tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                                errorMessage = message
+                            )
                         ) {
                             errorInstanceIdState.value = errorInstanceId
                             mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                         } else {
-                            Log.d(
-                                LeafletMapWebViewLogTag,
+                            logMapDebug(
                                 "native onMapError ignored stale instance=$errorInstanceId current=${currentMapInstanceIdState.value}"
                             )
                         }
                     }
                 )
 
-                if (!activeMapReady && activeMapError.isBlank()) {
+                if (!activeMapInitialized && activeMapError.isBlank()) {
                     HelperText(text = "Loading map...")
                 }
 
-                if (!activeMapReady && activeMapError.isNotBlank()) {
+                if (activeMapError.isNotBlank()) {
                     HelperText(text = activeMapError)
                 }
 
@@ -276,16 +282,14 @@ private class MapPickerBridge(
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onLocationSelected ignored stale instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
         }
         mainHandler.post {
             if (incomingInstanceId != currentMapInstanceId()) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onLocationSelected ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
                 )
                 return@post
@@ -299,21 +303,18 @@ private class MapPickerBridge(
     fun onMapReady(instanceId: String?) {
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
-        Log.d(
-            LeafletMapWebViewLogTag,
+        logMapDebug(
             "native MapPickerBridge.onMapReady received instance=$incomingInstanceId current=$currentInstanceId"
         )
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapReady ignored stale instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
         }
         synchronized(this) {
             if (readyDeliveredInstanceId == incomingInstanceId) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapReady ignored duplicate instance=$incomingInstanceId current=$currentInstanceId"
                 )
                 return
@@ -323,14 +324,12 @@ private class MapPickerBridge(
         mainHandler.post {
             val postedCurrentInstanceId = currentMapInstanceId()
             if (incomingInstanceId != postedCurrentInstanceId) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapReady ignored stale instance=$incomingInstanceId current=$postedCurrentInstanceId"
                 )
                 return@post
             }
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native MapPickerBridge.onMapReady dispatched instance=$incomingInstanceId"
             )
             onMapReady(incomingInstanceId, "whenReady")
@@ -343,8 +342,7 @@ private class MapPickerBridge(
         val currentInstanceId = currentMapInstanceId()
         val readySource = source?.trim().orEmpty().ifBlank { "fallback" }
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapAlive ignored stale source=$readySource instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
@@ -357,13 +355,12 @@ private class MapPickerBridge(
         mainHandler.post {
             val postedCurrentInstanceId = currentMapInstanceId()
             if (incomingInstanceId != postedCurrentInstanceId) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapAlive ignored stale source=$readySource instance=$incomingInstanceId current=$postedCurrentInstanceId"
                 )
                 return@post
             }
-            Log.d(LeafletMapWebViewLogTag, "native MapPickerBridge.onMapAlive dispatched source=$readySource instance=$incomingInstanceId")
+            logMapDebug("native MapPickerBridge.onMapAlive dispatched source=$readySource instance=$incomingInstanceId")
             onMapReady(incomingInstanceId, readySource)
         }
     }
@@ -373,8 +370,7 @@ private class MapPickerBridge(
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapError ignored stale instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
@@ -382,8 +378,7 @@ private class MapPickerBridge(
         val trimmed = message?.trim().orEmpty()
         mainHandler.post {
             if (incomingInstanceId != currentMapInstanceId()) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapError ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
                 )
                 return@post
@@ -467,7 +462,7 @@ private fun buildMapHtml(
                 if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapError) {
                     tiles.on('tileerror', function() {
                         logNephMapBreadcrumb('NEPH_MAP: tile error');
-                        notifyMapError('Map tiles could not be loaded.');
+                        notifyMapError('$LeafletMapTileLoadErrorMessage');
                     });
                 }
 

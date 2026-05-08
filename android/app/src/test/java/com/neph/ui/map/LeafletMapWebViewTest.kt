@@ -19,25 +19,66 @@ class LeafletMapWebViewTest {
     }
 
     @Test
-    fun leafletMapInstanceState_readySuppressesErrorAndTimeout() {
-        assertTrue(isLeafletMapReadyForInstance("map-current", "map-current"))
+    fun leafletMapInstanceState_initializationSuppressesTimeoutButNotTileError() {
+        assertTrue(isLeafletMapInitializedForInstance("map-current", "map-current"))
+        assertFalse(isLeafletMapTilesLoadedForInstance("map-current", null))
+        assertTrue(
+            shouldApplyLeafletMapError(
+                activeInstanceId = "map-current",
+                currentInstanceId = "map-current",
+                tileLoadedInstanceId = null,
+                errorMessage = LeafletMapTileLoadErrorMessage
+            )
+        )
         assertEquals(
-            "",
+            LeafletMapTileLoadErrorMessage,
             leafletMapErrorForInstance(
                 activeInstanceId = "map-current",
-                readyInstanceId = "map-current",
+                tileLoadedInstanceId = null,
                 errorInstanceId = "map-current",
-                errorMessage = LeafletMapInitializationTimeoutMessage
+                errorMessage = LeafletMapTileLoadErrorMessage
             )
         )
         assertFalse(
             shouldApplyLeafletMapTimeout(
                 activeInstanceId = "map-current",
                 currentInstanceId = "map-current",
-                readyInstanceId = "map-current",
+                initializedInstanceId = "map-current",
                 errorInstanceId = null
             )
         )
+    }
+
+    @Test
+    fun leafletMapInstanceState_tileLoadedInstanceIgnoresLaterTileErrors() {
+        assertTrue(isLeafletMapTilesLoadedForInstance("map-current", "map-current"))
+        assertFalse(
+            shouldApplyLeafletMapError(
+                activeInstanceId = "map-current",
+                currentInstanceId = "map-current",
+                tileLoadedInstanceId = "map-current",
+                errorMessage = LeafletMapTileLoadErrorMessage
+            )
+        )
+        assertEquals(
+            "",
+            leafletMapErrorForInstance(
+                activeInstanceId = "map-current",
+                tileLoadedInstanceId = "map-current",
+                errorInstanceId = "map-current",
+                errorMessage = LeafletMapTileLoadErrorMessage
+            )
+        )
+    }
+
+    @Test
+    fun leafletMapInstanceState_sourcesSeparateInitializationFromTileLoaded() {
+        assertFalse(isLeafletTileLoadedSignal("map-created"))
+        assertFalse(isLeafletTileLoadedSignal("whenReady"))
+        assertTrue(isLeafletTileLoadedSignal("tileload"))
+        assertTrue(shouldClearLeafletMapErrorForSignal("tileload", LeafletMapTileLoadErrorMessage))
+        assertTrue(shouldClearLeafletMapErrorForSignal("selection", LeafletMapTileLoadErrorMessage))
+        assertFalse(shouldClearLeafletMapErrorForSignal("whenReady", LeafletMapTileLoadErrorMessage))
     }
 
     @Test
@@ -46,7 +87,7 @@ class LeafletMapWebViewTest {
             "",
             leafletMapErrorForInstance(
                 activeInstanceId = "map-current",
-                readyInstanceId = null,
+                tileLoadedInstanceId = null,
                 errorInstanceId = "map-stale",
                 errorMessage = LeafletMapInitializationTimeoutMessage
             )
@@ -55,8 +96,16 @@ class LeafletMapWebViewTest {
             shouldApplyLeafletMapTimeout(
                 activeInstanceId = "map-stale",
                 currentInstanceId = "map-current",
-                readyInstanceId = null,
+                initializedInstanceId = null,
                 errorInstanceId = null
+            )
+        )
+        assertFalse(
+            shouldApplyLeafletMapError(
+                activeInstanceId = "map-stale",
+                currentInstanceId = "map-current",
+                tileLoadedInstanceId = null,
+                errorMessage = LeafletMapTileLoadErrorMessage
             )
         )
     }
@@ -67,7 +116,7 @@ class LeafletMapWebViewTest {
             LeafletMapInitializationTimeoutMessage,
             leafletMapErrorForInstance(
                 activeInstanceId = "map-current",
-                readyInstanceId = null,
+                tileLoadedInstanceId = null,
                 errorInstanceId = "map-current",
                 errorMessage = LeafletMapInitializationTimeoutMessage
             )
@@ -76,7 +125,7 @@ class LeafletMapWebViewTest {
             shouldApplyLeafletMapTimeout(
                 activeInstanceId = "map-current",
                 currentInstanceId = "map-current",
-                readyInstanceId = null,
+                initializedInstanceId = null,
                 errorInstanceId = null
             )
         )
@@ -156,6 +205,8 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("\"id\":\"area-1\""))
         assertTrue(html.contains("var nephMapInstanceId = \"test-map-1\";"))
         assertTrue(html.contains("var selectedMarkerId = \"area-1\";"))
+        assertTrue(html.contains("window.nephSelectMarker = function(markerId)"))
+        assertTrue(html.contains("window.nephSelectMarker(marker.id);"))
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMarkerSelected(nephMapInstanceId, marker.id);"))
         assertTrue(html.contains("map.fitBounds(bounds"))
         assertTrue(html.contains("scheduleMapInvalidateSize(map, mapElement);"))
@@ -193,6 +244,7 @@ class LeafletMapWebViewTest {
         )
 
         assertTrue(html.contains("NEPH_MAP: script started"))
+        assertTrue(html.contains("var nephMapDebugLogsEnabled = "))
         assertTrue(html.contains("NEPH_MAP: Leaflet available"))
         assertTrue(html.contains("NEPH_MAP: map element found"))
         assertTrue(html.contains("NEPH_MAP: map created"))
@@ -201,6 +253,7 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("NEPH_MAP: notifying Android ready"))
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMapReady(nephMapInstanceId);"))
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMapError(nephMapInstanceId, errorMessage);"))
+        assertTrue(html.contains(LeafletMapTileLoadErrorMessage))
         assertTrue(html.contains("var nephMapFallbackHeightCssPx = 280;"))
         assertTrue(html.contains("NEPH_MAP: applied fallback map height height="))
         assertTrue(html.contains("NEPH_MAP: map size "))

@@ -46,6 +46,8 @@ internal const val LeafletMapWebViewLogTag = "NephMapWebView"
 internal const val LeafletMapInitializationTimeoutMillis = 15_000L
 internal const val LeafletMapInitializationTimeoutMessage =
     "Map failed to initialize. Please check WebView and network access."
+internal const val LeafletMapTileLoadErrorMessage =
+    "Map tiles could not be loaded. Please check your connection and try again."
 internal const val LeafletMapFallbackHeightCssPx = 260
 internal const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 internal const val LeafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -66,38 +68,79 @@ internal fun coerceLeafletMapHeightCssPx(cssPx: Int): Int {
     return cssPx.coerceAtLeast(LeafletMapFallbackHeightCssPx)
 }
 
-internal fun isLeafletMapReadyForInstance(
+internal fun isLeafletMapInitializedForInstance(
     activeInstanceId: String,
-    readyInstanceId: String?
+    initializedInstanceId: String?
 ): Boolean {
-    return activeInstanceId == readyInstanceId
+    return activeInstanceId == initializedInstanceId
+}
+
+internal fun isLeafletMapTilesLoadedForInstance(
+    activeInstanceId: String,
+    tileLoadedInstanceId: String?
+): Boolean {
+    return activeInstanceId == tileLoadedInstanceId
 }
 
 internal fun leafletMapErrorForInstance(
     activeInstanceId: String,
-    readyInstanceId: String?,
+    tileLoadedInstanceId: String?,
     errorInstanceId: String?,
     errorMessage: String
 ): String {
-    return if (
-        !isLeafletMapReadyForInstance(activeInstanceId, readyInstanceId) &&
-        activeInstanceId == errorInstanceId
+    if (activeInstanceId != errorInstanceId) return ""
+    if (
+        errorMessage == LeafletMapTileLoadErrorMessage &&
+        isLeafletMapTilesLoadedForInstance(activeInstanceId, tileLoadedInstanceId)
     ) {
-        errorMessage
-    } else {
-        ""
+        return ""
     }
+    return errorMessage
 }
 
 internal fun shouldApplyLeafletMapTimeout(
     activeInstanceId: String,
     currentInstanceId: String,
-    readyInstanceId: String?,
+    initializedInstanceId: String?,
     errorInstanceId: String?
 ): Boolean {
     return activeInstanceId == currentInstanceId &&
-        !isLeafletMapReadyForInstance(activeInstanceId, readyInstanceId) &&
+        !isLeafletMapInitializedForInstance(activeInstanceId, initializedInstanceId) &&
         activeInstanceId != errorInstanceId
+}
+
+internal fun shouldApplyLeafletMapError(
+    activeInstanceId: String,
+    currentInstanceId: String,
+    tileLoadedInstanceId: String?,
+    errorMessage: String
+): Boolean {
+    if (activeInstanceId != currentInstanceId) return false
+    return errorMessage != LeafletMapTileLoadErrorMessage ||
+        !isLeafletMapTilesLoadedForInstance(activeInstanceId, tileLoadedInstanceId)
+}
+
+internal fun isLeafletTileLoadedSignal(source: String): Boolean {
+    return source == "tileload"
+}
+
+internal fun shouldClearLeafletMapErrorForSignal(source: String, errorMessage: String): Boolean {
+    return isLeafletTileLoadedSignal(source) ||
+        source == "selection" ||
+        source == "marker-selected" ||
+        errorMessage == LeafletMapInitializationTimeoutMessage
+}
+
+internal fun logMapDebug(message: String) {
+    if (BuildConfig.DEBUG) {
+        Log.d(LeafletMapWebViewLogTag, message)
+    }
+}
+
+internal fun logMapWarning(message: String) {
+    if (BuildConfig.DEBUG) {
+        Log.w(LeafletMapWebViewLogTag, message)
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -107,6 +150,7 @@ internal fun LeafletMapWebView(
     html: String,
     bridgeName: String,
     bridge: Any,
+    javaScriptUpdate: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -115,7 +159,7 @@ internal fun LeafletMapWebView(
         AndroidView(
             factory = {
                 WebView(context).apply {
-                    Log.d(LeafletMapWebViewLogTag, "native WebView created instance=$mapInstanceId")
+                    logMapDebug("native WebView created instance=$mapInstanceId")
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = false
                     settings.useWideViewPort = true
@@ -130,8 +174,13 @@ internal fun LeafletMapWebView(
                     loadDataWithBaseURL(LeafletMapBaseUrl, html, "text/html", "utf-8", null)
                 }
             },
+            update = { webView ->
+                javaScriptUpdate?.let { script ->
+                    webView.evaluateJavascript(script, null)
+                }
+            },
             onRelease = { webView ->
-                Log.d(LeafletMapWebViewLogTag, "native WebView released instance=$mapInstanceId")
+                logMapDebug("native WebView released instance=$mapInstanceId")
                 runCatching { webView.stopLoading() }
                 runCatching { webView.removeJavascriptInterface(bridgeName) }
                 webView.webChromeClient = null
@@ -168,7 +217,6 @@ fun LeafletMarkerMap(
         centerLatitude,
         centerLongitude,
         markers,
-        selectedMarkerId,
         zoom,
         showCenterMarker
     ) {
@@ -198,8 +246,14 @@ fun LeafletMarkerMap(
         html = html,
         bridgeName = LeafletMarkerMapBridgeName,
         bridge = bridge,
+        javaScriptUpdate = buildSelectedMarkerUpdateScript(selectedMarkerId),
         modifier = modifier
     )
+}
+
+private fun buildSelectedMarkerUpdateScript(selectedMarkerId: String?): String {
+    val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
+    return "if (window.nephSelectMarker) { window.nephSelectMarker($selectedMarkerJson); }"
 }
 
 internal fun buildLeafletDocumentHead(mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx): String {
@@ -237,14 +291,16 @@ internal fun buildLeafletErrorScript(
 ): String {
     val quotedMapInstanceId = JSONObject.quote(mapInstanceId)
     val coercedMapHeightCssPx = coerceLeafletMapHeightCssPx(mapHeightCssPx)
+    val debugLogsEnabled = if (BuildConfig.DEBUG) "true" else "false"
     return """
         var nephMapInstanceId = $quotedMapInstanceId;
         var nephMapReadyNotified = false;
         var nephMapFallbackHeightCssPx = $coercedMapHeightCssPx;
-        console.log('NEPH_MAP: script started instance=' + nephMapInstanceId);
+        var nephMapDebugLogsEnabled = $debugLogsEnabled;
+        logNephMapBreadcrumb('NEPH_MAP: script started');
 
         function logNephMapBreadcrumb(message) {
-            if (window.console && window.console.log) {
+            if (nephMapDebugLogsEnabled && window.console && window.console.log) {
                 window.console.log(message + ' instance=' + nephMapInstanceId);
             }
         }
@@ -283,7 +339,7 @@ internal fun buildLeafletErrorScript(
                 return;
             }
             window.__lastMapErrorMessage = errorMessage;
-            if (window.console && window.console.error) {
+            if (nephMapDebugLogsEnabled && window.console && window.console.error) {
                 window.console.error(errorMessage);
             }
             if (window.$bridgeName && window.$bridgeName.onMapError) {
@@ -429,7 +485,7 @@ internal fun buildLeafletMarkerMapHtml(
 
                 tiles.on('tileerror', function() {
                     logNephMapBreadcrumb('NEPH_MAP: tile error');
-                    notifyMapError('Map tiles could not be loaded.');
+                    notifyMapError('$LeafletMapTileLoadErrorMessage');
                 });
 
                 $centerMarkerScript
@@ -447,24 +503,46 @@ internal fun buildLeafletMarkerMapHtml(
                 }
 
                 var bounds = [center];
-                markerData.forEach(function(marker) {
-                    var selected = marker.id === selectedMarkerId;
-                    var areaMarker = L.circleMarker([marker.latitude, marker.longitude], {
+                var areaMarkersById = {};
+
+                function markerOptions(marker, selected) {
+                    return {
                         radius: selected ? 11 : 8,
                         color: selected ? '#111827' : marker.strokeColorHex,
                         weight: selected ? 3 : 2,
                         fillColor: marker.fillColorHex,
                         fillOpacity: selected ? 0.95 : 0.82
-                    }).addTo(map);
+                    };
+                }
+
+                window.nephSelectMarker = function(markerId) {
+                    selectedMarkerId = markerId || null;
+                    Object.keys(areaMarkersById).forEach(function(id) {
+                        var entry = areaMarkersById[id];
+                        entry.marker.setStyle(markerOptions(entry.data, id === selectedMarkerId));
+                    });
+                };
+
+                markerData.forEach(function(marker) {
+                    var selected = marker.id === selectedMarkerId;
+                    var areaMarker = L.circleMarker(
+                        [marker.latitude, marker.longitude],
+                        markerOptions(marker, selected)
+                    ).addTo(map);
                     var label = marker.subtitle
                         ? escapeHtml(marker.title) + '<br />' + escapeHtml(marker.subtitle)
                         : escapeHtml(marker.title);
                     areaMarker.bindTooltip(label, { direction: 'top' });
                     areaMarker.on('click', function() {
+                        window.nephSelectMarker(marker.id);
                         if (window.$bridgeName && window.$bridgeName.onMarkerSelected) {
                             window.$bridgeName.onMarkerSelected(nephMapInstanceId, marker.id);
                         }
                     });
+                    areaMarkersById[marker.id] = {
+                        marker: areaMarker,
+                        data: marker
+                    };
                     bounds.push([marker.latitude, marker.longitude]);
                 });
 
@@ -498,8 +576,7 @@ private class LeafletMarkerMapBridge(
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMarkerSelected ignored stale instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
@@ -508,8 +585,7 @@ private class LeafletMarkerMapBridge(
         if (trimmed.isBlank()) return
         mainHandler.post {
             if (incomingInstanceId != currentMapInstanceId()) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMarkerSelected ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
                 )
                 return@post
@@ -525,21 +601,18 @@ private class LeafletMarkerMapBridge(
     fun onMapReady(instanceId: String?) {
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
-        Log.d(
-            LeafletMapWebViewLogTag,
+        logMapDebug(
             "native LeafletMarkerMapBridge.onMapReady received instance=$incomingInstanceId current=$currentInstanceId"
         )
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapReady ignored stale instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
         }
         synchronized(this) {
             if (readyDeliveredInstanceId == incomingInstanceId) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapReady ignored duplicate instance=$incomingInstanceId current=$currentInstanceId"
                 )
                 return
@@ -549,14 +622,12 @@ private class LeafletMarkerMapBridge(
         mainHandler.post {
             val postedCurrentInstanceId = currentMapInstanceId()
             if (incomingInstanceId != postedCurrentInstanceId) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapReady ignored stale instance=$incomingInstanceId current=$postedCurrentInstanceId"
                 )
                 return@post
             }
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native LeafletMarkerMapBridge.onMapReady dispatched source=whenReady instance=$incomingInstanceId"
             )
             onMapReady(incomingInstanceId, "whenReady")
@@ -569,15 +640,13 @@ private class LeafletMarkerMapBridge(
         val currentInstanceId = currentMapInstanceId()
         val readySource = source?.trim().orEmpty().ifBlank { "alive" }
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapAlive ignored stale source=$readySource instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
         }
         if (!markAliveSignalForDelivery(incomingInstanceId, readySource)) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapAlive ignored duplicate source=$readySource instance=$incomingInstanceId"
             )
             return
@@ -592,8 +661,7 @@ private class LeafletMarkerMapBridge(
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapError ignored stale instance=$incomingInstanceId current=$currentInstanceId"
             )
             return
@@ -601,8 +669,7 @@ private class LeafletMarkerMapBridge(
         val trimmed = message?.trim().orEmpty()
         mainHandler.post {
             if (incomingInstanceId != currentMapInstanceId()) {
-                Log.d(
-                    LeafletMapWebViewLogTag,
+                logMapDebug(
                     "native onMapError ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
                 )
                 return@post
@@ -614,14 +681,12 @@ private class LeafletMarkerMapBridge(
     private fun dispatchMapAliveFromMain(instanceId: String, source: String) {
         val currentInstanceId = currentMapInstanceId()
         if (instanceId != currentInstanceId) {
-            Log.d(
-                LeafletMapWebViewLogTag,
+            logMapDebug(
                 "native onMapAlive ignored stale source=$source instance=$instanceId current=$currentInstanceId"
             )
             return
         }
-        Log.d(
-            LeafletMapWebViewLogTag,
+        logMapDebug(
             "native LeafletMarkerMapBridge.onMapAlive dispatched source=$source instance=$instanceId"
         )
         onMapReady(instanceId, source)
@@ -676,11 +741,13 @@ private class LeafletMapWebViewClient : WebViewClient() {
         error: WebResourceError?
     ) {
         super.onReceivedError(view, request, error)
-        Log.e(
-            LeafletMapWebViewLogTag,
-            "WebView resource error url=${request?.url} mainFrame=${request?.isForMainFrame} " +
-                "code=${error?.errorCode} description=${error?.description}"
-        )
+        val message = "WebView resource error url=${request?.url} mainFrame=${request?.isForMainFrame} " +
+            "code=${error?.errorCode} description=${error?.description}"
+        if (request?.isForMainFrame == true) {
+            Log.e(LeafletMapWebViewLogTag, message)
+        } else {
+            logMapWarning(message)
+        }
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
@@ -691,10 +758,7 @@ private class LeafletMapWebViewClient : WebViewClient() {
         failingUrl: String?
     ) {
         super.onReceivedError(view, errorCode, description, failingUrl)
-        Log.e(
-            LeafletMapWebViewLogTag,
-            "WebView resource error url=$failingUrl code=$errorCode description=$description"
-        )
+        logMapWarning("WebView resource error url=$failingUrl code=$errorCode description=$description")
     }
 
     override fun onReceivedHttpError(
@@ -703,11 +767,13 @@ private class LeafletMapWebViewClient : WebViewClient() {
         errorResponse: WebResourceResponse?
     ) {
         super.onReceivedHttpError(view, request, errorResponse)
-        Log.e(
-            LeafletMapWebViewLogTag,
-            "WebView HTTP error url=${request?.url} mainFrame=${request?.isForMainFrame} " +
-                "status=${errorResponse?.statusCode} reason=${errorResponse?.reasonPhrase}"
-        )
+        val message = "WebView HTTP error url=${request?.url} mainFrame=${request?.isForMainFrame} " +
+            "status=${errorResponse?.statusCode} reason=${errorResponse?.reasonPhrase}"
+        if (request?.isForMainFrame == true) {
+            Log.e(LeafletMapWebViewLogTag, message)
+        } else {
+            logMapWarning(message)
+        }
     }
 
     private fun emptyBlockedResponse(): WebResourceResponse {
@@ -715,17 +781,14 @@ private class LeafletMapWebViewClient : WebViewClient() {
     }
 
     private fun logBlockedUrl(uri: Uri) {
-        if (BuildConfig.DEBUG) {
-            Log.w(LeafletMapWebViewLogTag, "Blocked map WebView URL: $uri")
-        }
+        logMapWarning("Blocked map WebView URL: $uri")
     }
 }
 
 private class LeafletMapWebChromeClient : WebChromeClient() {
     override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
         val message = consoleMessage ?: return false
-        Log.d(
-            LeafletMapWebViewLogTag,
+        logMapDebug(
             "JS console ${message.messageLevel()} ${message.sourceId()}:${message.lineNumber()} ${message.message()}"
         )
         return true

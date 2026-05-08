@@ -1,6 +1,8 @@
 package com.neph.features.gatheringareas.presentation
 
 import com.neph.core.network.ApiException
+import com.neph.features.gatheringareas.data.GatheringAreaItem
+import com.neph.features.gatheringareas.data.NearbyGatheringAreasResult
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -64,5 +66,55 @@ class GatheringAreasScreenTest {
             GatheringAreasVisibleCategoriesSubtitle
         )
         assertEquals("Show All Categories", GatheringAreasShowAllCategoriesText)
+    }
+
+    @Test
+    fun gatheringAreasMapInstanceKey_staysStableForSameCenterAndVisibleMarkers() {
+        val result = sampleNearbyResult()
+        val visibleAreas = result.areas
+
+        val firstKey = gatheringAreasMapInstanceKey(result, visibleAreas)
+        val afterSelectionOnlyKey = gatheringAreasMapInstanceKey(result, visibleAreas)
+
+        assertEquals(firstKey, afterSelectionOnlyKey)
+    }
+
+    private fun sampleNearbyResult(): NearbyGatheringAreasResult {
+        val areas = listOf(
+            GatheringAreaItem(
+                id = "area-1",
+                osmType = "node",
+                name = "Assembly Area",
+                category = "assembly_point",
+                categoryLabel = "Assembly Point",
+                latitude = 41.01,
+                longitude = 29.02,
+                distanceMeters = 120,
+                addressLine = null
+            ),
+            GatheringAreaItem(
+                id = "area-2",
+                osmType = "node",
+                name = "Shelter",
+                category = "shelter",
+                categoryLabel = "Shelter",
+                latitude = 41.03,
+                longitude = 29.04,
+                distanceMeters = 340,
+                addressLine = "Nearby street"
+            )
+        )
+
+        return NearbyGatheringAreasResult(
+            centerLatitude = 41.0,
+            centerLongitude = 29.0,
+            radiusMeters = 10_000,
+            source = "overpass",
+            requestedLimit = 50,
+            returnedCount = areas.size,
+            skippedCount = 0,
+            categories = emptyList(),
+            areas = areas
+        )
     }
 }

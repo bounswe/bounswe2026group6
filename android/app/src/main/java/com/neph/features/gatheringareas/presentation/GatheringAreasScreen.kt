@@ -1,6 +1,5 @@
 package com.neph.features.gatheringareas.presentation
 
-import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -45,12 +44,15 @@ import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
-import com.neph.ui.map.LeafletMapWebViewLogTag
 import com.neph.ui.map.NephMapIntegration
-import com.neph.ui.map.isLeafletMapReadyForInstance
+import com.neph.ui.map.isLeafletMapInitializedForInstance
+import com.neph.ui.map.isLeafletTileLoadedSignal
 import com.neph.ui.map.leafletMapErrorForInstance
+import com.neph.ui.map.logMapDebug
 import com.neph.ui.map.newLeafletMapInstanceId
+import com.neph.ui.map.shouldApplyLeafletMapError
 import com.neph.ui.map.shouldApplyLeafletMapTimeout
+import com.neph.ui.map.shouldClearLeafletMapErrorForSignal
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -71,6 +73,35 @@ internal const val GatheringAreasVisibleCategoriesTitle = "Visible Categories"
 internal const val GatheringAreasVisibleCategoriesSubtitle =
     "Selected categories are shown on the map and in the list."
 internal const val GatheringAreasShowAllCategoriesText = "Show All Categories"
+
+internal data class GatheringAreaMapMarkerKey(
+    val id: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
+internal data class GatheringAreasMapInstanceKey(
+    val centerLatitude: Double,
+    val centerLongitude: Double,
+    val markers: List<GatheringAreaMapMarkerKey>
+)
+
+internal fun gatheringAreasMapInstanceKey(
+    result: NearbyGatheringAreasResult,
+    visibleAreas: List<GatheringAreaItem>
+): GatheringAreasMapInstanceKey {
+    return GatheringAreasMapInstanceKey(
+        centerLatitude = result.centerLatitude,
+        centerLongitude = result.centerLongitude,
+        markers = visibleAreas.map { area ->
+            GatheringAreaMapMarkerKey(
+                id = area.id,
+                latitude = area.latitude,
+                longitude = area.longitude
+            )
+        }
+    )
+}
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -545,37 +576,43 @@ private fun GatheringAreasMapCard(
     showCenterMarker: Boolean = true
 ) {
     val spacing = LocalNephSpacing.current
-    val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val initializedInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
     var mapError by remember {
         mutableStateOf("")
     }
-    val mapInstanceId = remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
+    val mapInstanceKey = gatheringAreasMapInstanceKey(result, visibleAreas)
+    val mapInstanceId = remember(mapInstanceKey) {
         newLeafletMapInstanceId()
     }
     val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
     currentMapInstanceIdState.value = mapInstanceId
-    val activeMapReady = isLeafletMapReadyForInstance(
+    val activeMapInitialized = isLeafletMapInitializedForInstance(
         activeInstanceId = mapInstanceId,
-        readyInstanceId = readyInstanceIdState.value
+        initializedInstanceId = initializedInstanceIdState.value
     )
     val activeMapError = leafletMapErrorForInstance(
         activeInstanceId = mapInstanceId,
-        readyInstanceId = readyInstanceIdState.value,
+        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
         errorInstanceId = errorInstanceIdState.value,
         errorMessage = mapError
     )
 
     fun markMapAlive(instanceId: String, source: String) {
         if (instanceId == currentMapInstanceIdState.value) {
-            Log.d(LeafletMapWebViewLogTag, "native GatheringAreas ready source=$source instance=$instanceId")
-            readyInstanceIdState.value = instanceId
-            errorInstanceIdState.value = null
-            mapError = ""
+            logMapDebug("native GatheringAreas initialized source=$source instance=$instanceId")
+            initializedInstanceIdState.value = instanceId
+            if (isLeafletTileLoadedSignal(source)) {
+                tileLoadedInstanceIdState.value = instanceId
+            }
+            if (shouldClearLeafletMapErrorForSignal(source, mapError)) {
+                errorInstanceIdState.value = null
+                mapError = ""
+            }
         } else {
-            Log.d(
-                LeafletMapWebViewLogTag,
-                "native GatheringAreas ready ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
+            logMapDebug(
+                "native GatheringAreas initialized ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
             )
         }
     }
@@ -587,17 +624,16 @@ private fun GatheringAreasMapCard(
         if (shouldApplyLeafletMapTimeout(
                 activeInstanceId = mapInstanceId,
                 currentInstanceId = currentMapInstanceIdState.value,
-                readyInstanceId = readyInstanceIdState.value,
+                initializedInstanceId = initializedInstanceIdState.value,
                 errorInstanceId = errorInstanceIdState.value
             )
         ) {
-            Log.d(LeafletMapWebViewLogTag, "native GatheringAreas timeout applied instance=$mapInstanceId")
+            logMapDebug("native GatheringAreas timeout applied instance=$mapInstanceId")
             errorInstanceIdState.value = mapInstanceId
             mapError = LeafletMapInitializationTimeoutMessage
         } else {
-            Log.d(
-                LeafletMapWebViewLogTag,
-                "native GatheringAreas timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} ready=${readyInstanceIdState.value} error=${errorInstanceIdState.value}"
+            logMapDebug(
+                "native GatheringAreas timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} initialized=${initializedInstanceIdState.value} error=${errorInstanceIdState.value}"
             )
         }
     }
@@ -642,13 +678,17 @@ private fun GatheringAreasMapCard(
                         onAreaSelected(markerId)
                     }
                 },
-                onMapReady = { readyInstanceId, source ->
-                    markMapAlive(readyInstanceId, source)
+                onMapReady = { initializedInstanceId, source ->
+                    markMapAlive(initializedInstanceId, source)
                 },
                 onMapError = { errorInstanceId, message ->
                     if (
-                        errorInstanceId == currentMapInstanceIdState.value &&
-                        !isLeafletMapReadyForInstance(mapInstanceId, readyInstanceIdState.value)
+                        shouldApplyLeafletMapError(
+                            activeInstanceId = errorInstanceId,
+                            currentInstanceId = currentMapInstanceIdState.value,
+                            tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                            errorMessage = message
+                        )
                     ) {
                         errorInstanceIdState.value = errorInstanceId
                         mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
@@ -659,11 +699,11 @@ private fun GatheringAreasMapCard(
                     .height(GatheringAreasMapHeightCssPx.dp)
             )
 
-            if (!activeMapReady && activeMapError.isBlank()) {
+            if (!activeMapInitialized && activeMapError.isBlank()) {
                 HelperText(text = "Loading map...")
             }
 
-            if (!activeMapReady && activeMapError.isNotBlank()) {
+            if (activeMapError.isNotBlank()) {
                 HelperText(text = activeMapError)
             }
 
