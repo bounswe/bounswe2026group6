@@ -3,10 +3,12 @@
 import * as React from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
+import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { CrisisMap } from "@/components/feature/location/CrisisMap";
 import type { CrisisMapFeature, CrisisRequestType } from "@/components/feature/location/LeafletCrisisMap";
 import { fetchActiveHelpRequests } from "@/lib/crisisMap";
 import { getAccessToken } from "@/lib/auth";
+import { openDirections } from "@/lib/mapDirections";
 
 const DEFAULT_CENTER = {
     latitude: 41.0082,
@@ -114,6 +116,7 @@ export default function CrisisMapPage() {
     const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
     const [fetchState, setFetchState] = React.useState<FetchState>("idle");
     const [error, setError] = React.useState("");
+    const [directionsMessage, setDirectionsMessage] = React.useState("");
     const [selectedTypes, setSelectedTypes] = React.useState<Set<CrisisRequestType>>(new Set());
     const requestIdRef = React.useRef(0);
 
@@ -148,7 +151,7 @@ export default function CrisisMapPage() {
                 if (current && mapped.some((item) => item.featureKey === current)) {
                     return current;
                 }
-                return mapped[0].featureKey;
+                return null;
             });
         } catch (err) {
             if (currentRequestId !== requestIdRef.current) {
@@ -190,9 +193,16 @@ export default function CrisisMapPage() {
 
     const filterTypes = REQUEST_TYPE_ORDER;
 
-    const selectedRequest =
-        visibleRequests.find((item) => item.featureKey === selectedRequestId) ||
-        (visibleRequests.length ? visibleRequests[0] : null);
+    const selectedRequest = selectedRequestId
+        ? visibleRequests.find((item) => item.featureKey === selectedRequestId) || null
+        : null;
+
+    const handleGetDirections = React.useCallback((request: CrisisMapFeature) => {
+        const opened = openDirections(request.latitude, request.longitude, request.typeLabel);
+        setDirectionsMessage(
+            opened ? "" : "Directions are unavailable for this request location."
+        );
+    }, []);
 
     return (
         <AppShell title="Help Request Map" containerClassName="gathering-areas-page-container">
@@ -207,6 +217,7 @@ export default function CrisisMapPage() {
                                 onSelectFeature={(featureId) => {
                                     setSelectedRequestId(featureId);
                                     setIsDetailsOpen(true);
+                                    setDirectionsMessage("");
                                 }}
                                 heightClassName="h-[380px] md:h-[500px]"
                             />
@@ -266,6 +277,16 @@ export default function CrisisMapPage() {
                                             <p className="gathering-areas-selected-meta">
                                                 Opened: {formatRelative(selectedRequest.createdAt)}
                                             </p>
+                                            <PrimaryButton
+                                                type="button"
+                                                className="mt-1 h-10 w-auto"
+                                                onClick={() => handleGetDirections(selectedRequest)}
+                                            >
+                                                Get Directions
+                                            </PrimaryButton>
+                                            {directionsMessage ? (
+                                                <p className="gathering-areas-selected-meta">{directionsMessage}</p>
+                                            ) : null}
                                         </article>
                                     ) : (
                                         <p className="gathering-areas-empty-detail">
@@ -281,7 +302,10 @@ export default function CrisisMapPage() {
                                                     key={item.featureKey}
                                                     type="button"
                                                     className={`gathering-areas-item${selectedRequest?.featureKey === item.featureKey ? " is-active" : ""}`}
-                                                    onClick={() => setSelectedRequestId(item.featureKey)}
+                                                    onClick={() => {
+                                                        setSelectedRequestId(item.featureKey);
+                                                        setDirectionsMessage("");
+                                                    }}
                                                 >
                                                     <p className="gathering-areas-item-name">{item.typeLabel}</p>
                                                     <p className="gathering-areas-item-meta">
