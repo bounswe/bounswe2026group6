@@ -160,6 +160,24 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("map.fitBounds(bounds"))
         assertTrue(html.contains("scheduleMapInvalidateSize(map, mapElement);"))
         assertTrue(html.contains("ensureNephMapHeight(mapElement);"))
+        assertTrue(html.contains("L.circleMarker(center"))
+        assertTrue(html.contains("Search center"))
+    }
+
+    @Test
+    fun buildLeafletMarkerMapHtml_canDisableSearchCenterMarker() {
+        val html = buildLeafletMarkerMapHtml(
+            mapInstanceId = "test-map-no-center",
+            centerLatitude = 39.0,
+            centerLongitude = 35.0,
+            markers = emptyList(),
+            selectedMarkerId = null,
+            bridgeName = "AndroidLeafletMarkerMap",
+            showCenterMarker = false
+        )
+
+        assertFalse(html.contains("L.circleMarker(center"))
+        assertFalse(html.contains("Search center"))
     }
 
     @Test

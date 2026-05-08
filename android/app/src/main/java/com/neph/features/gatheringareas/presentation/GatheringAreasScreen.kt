@@ -345,7 +345,8 @@ fun GatheringAreasScreen(
                         onGetDirections = ::openAreaDirections,
                         emptyMarkersMessage = "Use your device location to find nearby gathering areas.",
                         emptyMapSubtitle = "Turkey overview. Nearby markers will appear after using your device location.",
-                        mapZoom = TurkeyOverviewZoom
+                        mapZoom = TurkeyOverviewZoom,
+                        showCenterMarker = false
                     )
                 }
 
@@ -540,7 +541,8 @@ private fun GatheringAreasMapCard(
     onGetDirections: (GatheringAreaItem) -> Unit,
     emptyMarkersMessage: String = "No gathering area markers are available for this search center.",
     emptyMapSubtitle: String = "Showing the searched area. No gathering area markers were returned.",
-    mapZoom: Int = 13
+    mapZoom: Int = 13,
+    showCenterMarker: Boolean = true
 ) {
     val spacing = LocalNephSpacing.current
     val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
@@ -634,6 +636,7 @@ private fun GatheringAreasMapCard(
                 selectedMarkerId = selectedAreaId,
                 mapHeightCssPx = GatheringAreasMapHeightCssPx,
                 zoom = mapZoom,
+                showCenterMarker = showCenterMarker,
                 onMarkerSelected = { markerInstanceId, markerId ->
                     if (markerInstanceId == currentMapInstanceIdState.value) {
                         onAreaSelected(markerId)
@@ -762,7 +765,7 @@ private fun categoryMarkerStyle(categoryKey: String): MarkerStyle {
     return when (categoryKey.trim().lowercase()) {
         "assembly_point" -> MarkerStyle("#B42318", "#EF4444", Color(0xFFDC2626))
         "shelter" -> MarkerStyle("#6D28D9", "#8B5CF6", Color(0xFF8B5CF6))
-        "hospital" -> MarkerStyle("#BE123C", "#F43F5E", Color(0xFFF43F5E))
+        "hospital" -> MarkerStyle("#A21CAF", "#D946EF", Color(0xFFD946EF))
         "police" -> MarkerStyle("#1D4ED8", "#3B82F6", Color(0xFF3B82F6))
         "fire_station" -> MarkerStyle("#C2410C", "#F97316", Color(0xFFF97316))
         "pharmacy" -> MarkerStyle("#15803D", "#22C55E", Color(0xFF22C55E))

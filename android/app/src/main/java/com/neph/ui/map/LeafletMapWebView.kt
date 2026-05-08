@@ -153,6 +153,7 @@ fun LeafletMarkerMap(
     selectedMarkerId: String?,
     mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx,
     zoom: Int = 13,
+    showCenterMarker: Boolean = true,
     onMarkerSelected: (String, String) -> Unit,
     onMapReady: (String, String) -> Unit,
     onMapError: (String, String) -> Unit,
@@ -162,7 +163,15 @@ fun LeafletMarkerMap(
     val latestOnMapReady by rememberUpdatedState(onMapReady)
     val latestOnMapError by rememberUpdatedState(onMapError)
     val latestCurrentMapInstanceId by rememberUpdatedState(currentMapInstanceId)
-    val html = remember(mapInstanceId, centerLatitude, centerLongitude, markers, selectedMarkerId, zoom) {
+    val html = remember(
+        mapInstanceId,
+        centerLatitude,
+        centerLongitude,
+        markers,
+        selectedMarkerId,
+        zoom,
+        showCenterMarker
+    ) {
         buildLeafletMarkerMapHtml(
             mapInstanceId = mapInstanceId,
             centerLatitude = centerLatitude,
@@ -171,6 +180,7 @@ fun LeafletMarkerMap(
             selectedMarkerId = selectedMarkerId,
             bridgeName = LeafletMarkerMapBridgeName,
             zoom = zoom,
+            showCenterMarker = showCenterMarker,
             mapHeightCssPx = mapHeightCssPx
         )
     }
@@ -343,6 +353,7 @@ internal fun buildLeafletMarkerMapHtml(
     selectedMarkerId: String?,
     bridgeName: String,
     zoom: Int = 13,
+    showCenterMarker: Boolean = true,
     mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx
 ): String {
     val formattedLat = String.format(Locale.US, "%.6f", centerLatitude)
@@ -360,6 +371,19 @@ internal fun buildLeafletMarkerMapHtml(
         }
     ).toString()
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
+    val centerMarkerScript = if (showCenterMarker) {
+        """
+                L.circleMarker(center, {
+                    radius: 7,
+                    color: '#2563EB',
+                    weight: 2,
+                    fillColor: '#3B82F6',
+                    fillOpacity: 0.50
+                }).addTo(map).bindTooltip('Search center', { direction: 'top' });
+        """.trimIndent()
+    } else {
+        ""
+    }
 
     return """
         <!DOCTYPE html>
@@ -408,13 +432,7 @@ internal fun buildLeafletMarkerMapHtml(
                     notifyMapError('Map tiles could not be loaded.');
                 });
 
-                L.circleMarker(center, {
-                    radius: 7,
-                    color: '#2563EB',
-                    weight: 2,
-                    fillColor: '#3B82F6',
-                    fillOpacity: 0.50
-                }).addTo(map).bindTooltip('Search center', { direction: 'top' });
+                $centerMarkerScript
 
                 function escapeHtml(value) {
                     return String(value || '').replace(/[&<>"']/g, function(character) {
