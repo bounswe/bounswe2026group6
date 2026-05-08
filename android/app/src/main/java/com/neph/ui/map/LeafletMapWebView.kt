@@ -4,7 +4,11 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -18,9 +22,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import com.neph.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.net.URI
 import java.util.Locale
 
 data class LeafletMapMarker(
@@ -35,9 +41,12 @@ data class LeafletMapMarker(
 
 private const val LeafletMarkerMapBridgeName = "AndroidLeafletMarkerMap"
 private const val LeafletMapBaseUrl = "https://neph.app/android-map/"
+private const val LeafletMapWebViewLogTag = "NephMapWebView"
 internal const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 internal const val LeafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 private const val LeafletAssetOrigin = "https://unpkg.com"
+private const val LeafletAssetHost = "unpkg.com"
+private const val LeafletAssetPathPrefix = "/leaflet@1.9.4/dist/"
 private val AllowedOpenStreetMapTileHosts = setOf(
     "tile.openstreetmap.org",
     "a.tile.openstreetmap.org",
@@ -69,6 +78,7 @@ internal fun LeafletMapWebView(
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     webViewClient = LeafletMapWebViewClient()
+                    webChromeClient = LeafletMapWebChromeClient()
                     addJavascriptInterface(bridge, bridgeName)
                     loadDataWithBaseURL(LeafletMapBaseUrl, html, "text/html", "utf-8", null)
                 }
@@ -123,7 +133,7 @@ internal fun buildLeafletDocumentHead(): String {
         <!-- Keep embedded maps limited to Leaflet assets, OSM tiles, and inline map scripts. -->
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; style-src 'self' $LeafletAssetOrigin 'unsafe-inline'; script-src $LeafletAssetOrigin 'unsafe-inline'; img-src https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; connect-src 'none'; font-src 'none'; media-src 'none'; navigate-to 'none'" />
         <link rel="stylesheet" href="$LeafletCssUrl" />
-        <script src="$LeafletJsUrl"></script>
+        <script src="$LeafletJsUrl" onerror="window.__leafletScriptLoadFailed = true;"></script>
         <style>
             html, body, #map { height: 100%; margin: 0; padding: 0; }
         </style>
@@ -133,18 +143,47 @@ internal fun buildLeafletDocumentHead(): String {
 internal fun buildLeafletErrorScript(bridgeName: String): String {
     return """
         function notifyMapError(message) {
+            var errorMessage = String(message || 'Map failed to load.');
+            if (window.__lastMapErrorMessage === errorMessage) {
+                return;
+            }
+            window.__lastMapErrorMessage = errorMessage;
+            if (window.console && window.console.error) {
+                window.console.error(errorMessage);
+            }
             if (window.$bridgeName && window.$bridgeName.onMapError) {
-                window.$bridgeName.onMapError(String(message || 'Map failed to load.'));
+                window.$bridgeName.onMapError(errorMessage);
             }
         }
 
+        function failMap(message) {
+            window.__ignoreNextMapRuntimeError = true;
+            notifyMapError(message);
+            throw new Error(message);
+        }
+
         window.onerror = function(message) {
+            if (window.__ignoreNextMapRuntimeError) {
+                window.__ignoreNextMapRuntimeError = false;
+                return;
+            }
             notifyMapError(message);
         };
 
-        if (!window.L) {
-            notifyMapError('Map library could not be loaded.');
-            throw new Error('Leaflet failed to load.');
+        if (window.__leafletScriptLoadFailed || !window.L) {
+            failMap('Map library could not be loaded.');
+        }
+
+        function scheduleMapInvalidateSize(map) {
+            function invalidateMapSize() {
+                if (map && map.invalidateSize) {
+                    map.invalidateSize();
+                }
+            }
+
+            window.addEventListener('resize', invalidateMapSize);
+            setTimeout(invalidateMapSize, 100);
+            setTimeout(invalidateMapSize, 500);
         }
     """.trimIndent()
 }
@@ -187,7 +226,12 @@ internal fun buildLeafletMarkerMapHtml(
                 var center = [$formattedLat, $formattedLon];
                 var markerData = $markersJson;
                 var selectedMarkerId = $selectedMarkerJson;
+                var mapElement = document.getElementById('map');
+                if (!mapElement) {
+                    failMap('Map failed to load.');
+                }
                 var map = L.map('map').setView(center, $zoom);
+                scheduleMapInvalidateSize(map);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '(c) OpenStreetMap'
@@ -290,7 +334,7 @@ private class LeafletMapWebViewClient : WebViewClient() {
         return !request.isForMainFrame || !isAllowedLeafletMapNavigation(uri)
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
         val uri = url?.let(Uri::parse) ?: return true
         return !isAllowedLeafletMapNavigation(uri)
@@ -301,22 +345,81 @@ private class LeafletMapWebViewClient : WebViewClient() {
         return if (isAllowedLeafletMapResource(uri)) {
             null
         } else {
+            logBlockedUrl(uri)
             emptyBlockedResponse()
         }
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
         val uri = url?.let(Uri::parse) ?: return emptyBlockedResponse()
         return if (isAllowedLeafletMapResource(uri)) {
             null
         } else {
+            logBlockedUrl(uri)
             emptyBlockedResponse()
         }
     }
 
+    override fun onReceivedError(
+        view: WebView?,
+        request: WebResourceRequest?,
+        error: WebResourceError?
+    ) {
+        super.onReceivedError(view, request, error)
+        Log.e(
+            LeafletMapWebViewLogTag,
+            "WebView resource error url=${request?.url} mainFrame=${request?.isForMainFrame} " +
+                "code=${error?.errorCode} description=${error?.description}"
+        )
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onReceivedError(
+        view: WebView?,
+        errorCode: Int,
+        description: String?,
+        failingUrl: String?
+    ) {
+        super.onReceivedError(view, errorCode, description, failingUrl)
+        Log.e(
+            LeafletMapWebViewLogTag,
+            "WebView resource error url=$failingUrl code=$errorCode description=$description"
+        )
+    }
+
+    override fun onReceivedHttpError(
+        view: WebView?,
+        request: WebResourceRequest?,
+        errorResponse: WebResourceResponse?
+    ) {
+        super.onReceivedHttpError(view, request, errorResponse)
+        Log.e(
+            LeafletMapWebViewLogTag,
+            "WebView HTTP error url=${request?.url} mainFrame=${request?.isForMainFrame} " +
+                "status=${errorResponse?.statusCode} reason=${errorResponse?.reasonPhrase}"
+        )
+    }
+
     private fun emptyBlockedResponse(): WebResourceResponse {
         return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+    }
+
+    private fun logBlockedUrl(uri: Uri) {
+        if (BuildConfig.DEBUG) {
+            Log.w(LeafletMapWebViewLogTag, "Blocked map WebView URL: $uri")
+        }
+    }
+}
+
+private class LeafletMapWebChromeClient : WebChromeClient() {
+    override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+        val message = consoleMessage ?: return false
+        Log.d(
+            LeafletMapWebViewLogTag,
+            "JS console ${message.messageLevel()} ${message.sourceId()}:${message.lineNumber()} ${message.message()}"
+        )
+        return true
     }
 }
 
@@ -324,13 +427,46 @@ private fun isAllowedLeafletMapNavigation(uri: Uri): Boolean {
     return uri.toString() == LeafletMapBaseUrl
 }
 
-private fun isAllowedLeafletMapResource(uri: Uri): Boolean {
-    val url = uri.toString()
-    if (url == LeafletMapBaseUrl || url == LeafletCssUrl || url == LeafletJsUrl) {
+internal fun isAllowedLeafletMapResource(uri: Uri): Boolean {
+    return isAllowedLeafletMapResource(
+        url = uri.toString(),
+        scheme = uri.scheme,
+        host = uri.host,
+        path = uri.path.orEmpty()
+    )
+}
+
+internal fun isAllowedLeafletMapResourceUrl(url: String): Boolean {
+    return try {
+        val uri = URI(url)
+        isAllowedLeafletMapResource(
+            url = url,
+            scheme = uri.scheme,
+            host = uri.host,
+            path = uri.path.orEmpty()
+        )
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private fun isAllowedLeafletMapResource(
+    url: String,
+    scheme: String?,
+    host: String?,
+    path: String
+): Boolean {
+    if (url == LeafletMapBaseUrl || isAllowedLeafletAsset(scheme, host, path)) {
         return true
     }
 
-    return uri.scheme == "https" &&
-        uri.host in AllowedOpenStreetMapTileHosts &&
-        OpenStreetMapTilePathPattern.matches(uri.path.orEmpty())
+    return scheme == "https" &&
+        host in AllowedOpenStreetMapTileHosts &&
+        OpenStreetMapTilePathPattern.matches(path)
+}
+
+private fun isAllowedLeafletAsset(scheme: String?, host: String?, path: String): Boolean {
+    return scheme == "https" &&
+        host == LeafletAssetHost &&
+        path.startsWith(LeafletAssetPathPrefix)
 }

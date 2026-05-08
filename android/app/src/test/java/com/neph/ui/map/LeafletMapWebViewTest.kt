@@ -16,6 +16,35 @@ class LeafletMapWebViewTest {
     }
 
     @Test
+    fun isAllowedLeafletMapResourceUrl_allowsLeafletAssetsUnderDist() {
+        assertTrue(isAllowedLeafletMapResourceUrl(LeafletCssUrl))
+        assertTrue(isAllowedLeafletMapResourceUrl(LeafletJsUrl))
+        assertTrue(
+            isAllowedLeafletMapResourceUrl(
+                "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png"
+            )
+        )
+    }
+
+    @Test
+    fun isAllowedLeafletMapResourceUrl_allowsOnlyOpenStreetMapTileHosts() {
+        assertTrue(isAllowedLeafletMapResourceUrl("https://tile.openstreetmap.org/13/4776/3078.png"))
+        assertTrue(isAllowedLeafletMapResourceUrl("https://a.tile.openstreetmap.org/13/4776/3078.png"))
+        assertTrue(isAllowedLeafletMapResourceUrl("https://b.tile.openstreetmap.org/13/4776/3078.png"))
+        assertTrue(isAllowedLeafletMapResourceUrl("https://c.tile.openstreetmap.org/13/4776/3078.png"))
+
+        assertFalse(isAllowedLeafletMapResourceUrl("https://d.tile.openstreetmap.org/13/4776/3078.png"))
+        assertFalse(isAllowedLeafletMapResourceUrl("http://tile.openstreetmap.org/13/4776/3078.png"))
+    }
+
+    @Test
+    fun isAllowedLeafletMapResourceUrl_blocksUnrelatedHosts() {
+        assertFalse(isAllowedLeafletMapResourceUrl("https://example.com/leaflet@1.9.4/dist/leaflet.js"))
+        assertFalse(isAllowedLeafletMapResourceUrl("https://unpkg.com/other-package/dist/file.js"))
+        assertFalse(isAllowedLeafletMapResourceUrl("https://evil.example/13/4776/3078.png"))
+    }
+
+    @Test
     fun buildLeafletMarkerMapHtml_serializesMarkersAndSelection() {
         val html = buildLeafletMarkerMapHtml(
             centerLatitude = 41.0,
@@ -37,5 +66,6 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("var selectedMarkerId = \"area-1\";"))
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMarkerSelected(marker.id);"))
         assertTrue(html.contains("map.fitBounds(bounds"))
+        assertTrue(html.contains("scheduleMapInvalidateSize(map);"))
     }
 }

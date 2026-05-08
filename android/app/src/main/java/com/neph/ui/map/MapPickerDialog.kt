@@ -223,7 +223,12 @@ private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): S
             <script>
                 ${buildLeafletErrorScript(MapPickerBridgeName)}
 
+                var mapElement = document.getElementById('map');
+                if (!mapElement) {
+                    failMap('Map failed to load.');
+                }
                 var map = L.map('map').setView([$formattedLat, $formattedLon], $zoom);
+                scheduleMapInvalidateSize(map);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '(c) OpenStreetMap'
