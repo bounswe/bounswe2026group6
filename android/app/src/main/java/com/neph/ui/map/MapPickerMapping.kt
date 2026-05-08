@@ -66,7 +66,15 @@ private fun matchesLocationToken(candidate: String?, target: String?): Boolean {
     return normalizedCandidate.isNotBlank() && normalizedCandidate == normalizedTarget
 }
 
-private fun resolveCountryKey(countryCode: String?, countryLabel: String?, locations: LocationData): String {
+private fun displayNameCandidates(displayName: String?): List<String> {
+    return displayName
+        .orEmpty()
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+}
+
+private fun resolveCountryKey(countryCode: String?, countryLabels: List<String>, locations: LocationData): String {
     val rawCode = countryCode?.trim().orEmpty()
     val codeCandidates = listOf(
         rawCode,
@@ -76,54 +84,67 @@ private fun resolveCountryKey(countryCode: String?, countryLabel: String?, locat
 
     codeCandidates.firstOrNull { locations.containsKey(it) }?.let { return it }
 
-    val normalizedLabel = normalizedLocationToken(countryLabel)
-    return locations.entries.firstOrNull { (key, country) ->
-        matchesLocationToken(key, countryLabel) || matchesLocationToken(country.label, normalizedLabel)
-    }?.key.orEmpty()
+    countryLabels.forEach { label ->
+        locations.entries.firstOrNull { (key, country) ->
+            matchesLocationToken(key, label) || matchesLocationToken(country.label, label)
+        }?.let { return it.key }
+    }
+
+    return ""
 }
 
-private fun resolveCityKey(countryKey: String, cityLabel: String?, locations: LocationData): String {
+private fun resolveCityKey(countryKey: String, cityLabels: List<String>, locations: LocationData): String {
     val cityEntries = locations[countryKey]?.cities?.entries ?: return ""
-    val rawCity = cityLabel?.trim().orEmpty()
-    if (rawCity.isBlank()) {
-        return ""
+
+    cityLabels.forEach { label ->
+        val rawCity = label.trim()
+        if (rawCity.isBlank()) {
+            return@forEach
+        }
+
+        cityEntries.firstOrNull { it.key == rawCity || it.key == rawCity.lowercase(Locale.ROOT) }?.let {
+            return it.key
+        }
+
+        cityEntries.firstOrNull { (key, city) ->
+            matchesLocationToken(key, rawCity) || matchesLocationToken(city.label, rawCity)
+        }?.let { return it.key }
     }
 
-    cityEntries.firstOrNull { it.key == rawCity || it.key == rawCity.lowercase(Locale.ROOT) }?.let {
-        return it.key
-    }
-
-    return cityEntries.firstOrNull { (key, city) ->
-        matchesLocationToken(key, rawCity) || matchesLocationToken(city.label, rawCity)
-    }?.key.orEmpty()
+    return ""
 }
 
 private fun resolveDistrictKey(
     countryKey: String,
     cityKey: String,
-    districtLabel: String?,
+    districtLabels: List<String>,
     locations: LocationData
 ): String {
     val districtEntries = locations[countryKey]?.cities?.get(cityKey)?.districts?.entries ?: return ""
-    val rawDistrict = districtLabel?.trim().orEmpty()
-    if (rawDistrict.isBlank()) {
-        return ""
+
+    districtLabels.forEach { label ->
+        val rawDistrict = label.trim()
+        if (rawDistrict.isBlank()) {
+            return@forEach
+        }
+
+        districtEntries.firstOrNull { it.key == rawDistrict || it.key == rawDistrict.lowercase(Locale.ROOT) }?.let {
+            return it.key
+        }
+
+        districtEntries.firstOrNull { (key, district) ->
+            matchesLocationToken(key, rawDistrict) || matchesLocationToken(district.label, rawDistrict)
+        }?.let { return it.key }
     }
 
-    districtEntries.firstOrNull { it.key == rawDistrict || it.key == rawDistrict.lowercase(Locale.ROOT) }?.let {
-        return it.key
-    }
-
-    return districtEntries.firstOrNull { (key, district) ->
-        matchesLocationToken(key, rawDistrict) || matchesLocationToken(district.label, rawDistrict)
-    }?.key.orEmpty()
+    return ""
 }
 
 private fun resolveNeighborhoodValue(
     countryKey: String,
     cityKey: String,
     districtKey: String,
-    neighborhoodLabel: String?,
+    neighborhoodLabels: List<String>,
     locations: LocationData
 ): String {
     val neighborhoods = locations[countryKey]
@@ -133,15 +154,20 @@ private fun resolveNeighborhoodValue(
         ?.get(districtKey)
         ?.neighborhoods
         ?: return ""
-    val rawNeighborhood = neighborhoodLabel?.trim().orEmpty()
-    if (rawNeighborhood.isBlank()) {
-        return ""
+
+    neighborhoodLabels.forEach { label ->
+        val rawNeighborhood = label.trim()
+        if (rawNeighborhood.isBlank()) {
+            return@forEach
+        }
+
+        neighborhoods.firstOrNull { neighborhood ->
+            matchesLocationToken(neighborhood.value, rawNeighborhood) ||
+                matchesLocationToken(neighborhood.label, rawNeighborhood)
+        }?.let { return it.value }
     }
 
-    return neighborhoods.firstOrNull { neighborhood ->
-        matchesLocationToken(neighborhood.value, rawNeighborhood) ||
-            matchesLocationToken(neighborhood.label, rawNeighborhood)
-    }?.value.orEmpty()
+    return ""
 }
 
 fun resolveMapPickerLocationUpdate(
@@ -165,20 +191,40 @@ fun resolveMapPickerLocationUpdate(
         )
     }
 
-    val mappedCountry = resolveCountryKey(reverseLocation.countryCode, reverseLocation.country, locations)
+    val displayNameParts = displayNameCandidates(reverseLocation.displayName)
+    val mappedCountry = resolveCountryKey(
+        countryCode = reverseLocation.countryCode,
+        countryLabels = listOfNotNull(reverseLocation.country) + displayNameParts,
+        locations = locations
+    )
 
     val mappedCity = if (mappedCountry.isNotBlank()) {
-        resolveCityKey(mappedCountry, reverseLocation.city, locations)
+        resolveCityKey(
+            countryKey = mappedCountry,
+            cityLabels = listOfNotNull(reverseLocation.city) + displayNameParts.asReversed(),
+            locations = locations
+        )
     } else {
         ""
     }
     val mappedDistrict = if (mappedCountry.isNotBlank() && mappedCity.isNotBlank()) {
-        resolveDistrictKey(mappedCountry, mappedCity, reverseLocation.district, locations)
+        resolveDistrictKey(
+            countryKey = mappedCountry,
+            cityKey = mappedCity,
+            districtLabels = listOfNotNull(reverseLocation.district) + displayNameParts,
+            locations = locations
+        )
     } else {
         ""
     }
     val mappedNeighborhood = if (mappedCountry.isNotBlank() && mappedCity.isNotBlank() && mappedDistrict.isNotBlank()) {
-        resolveNeighborhoodValue(mappedCountry, mappedCity, mappedDistrict, reverseLocation.neighborhood, locations)
+        resolveNeighborhoodValue(
+            countryKey = mappedCountry,
+            cityKey = mappedCity,
+            districtKey = mappedDistrict,
+            neighborhoodLabels = listOfNotNull(reverseLocation.neighborhood) + displayNameParts,
+            locations = locations
+        )
     } else {
         ""
     }
@@ -271,6 +317,9 @@ fun residentialMapPickerFeedbackMessage(
         update.hasStructuredMatch ->
             "We found part of the address. Please complete the remaining location fields manually."
 
+        reverseLocation.extraAddress?.isNotBlank() == true ->
+            "We found part of the address. Please complete the remaining location fields manually."
+
         else ->
             "Could not resolve the selected point. You can still enter the address manually."
     }
@@ -295,6 +344,9 @@ fun requestHelpMapPickerFeedbackMessage(
             "We found the city. Please choose the district and neighborhood manually."
 
         update.hasStructuredMatch ->
+            "We found part of the emergency address. Please complete the remaining fields manually."
+
+        reverseLocation.extraAddress?.isNotBlank() == true ->
             "We found part of the emergency address. Please complete the remaining fields manually."
 
         else ->

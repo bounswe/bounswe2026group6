@@ -205,7 +205,7 @@ fun CompleteProfileScreen(
 
                 mapCenterLatitude = location.latitude
                 mapCenterLongitude = location.longitude
-                mapCenterInfo = "Map opened near your current location. Please verify the selected home location."
+                mapCenterInfo = "Map opened near your device location. Please verify the selected home location."
                 mapPickerOpen = true
             } catch (cancellationException: CancellationException) {
                 throw cancellationException

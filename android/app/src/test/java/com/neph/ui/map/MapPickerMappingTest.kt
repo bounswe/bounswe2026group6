@@ -98,6 +98,84 @@ class MapPickerMappingTest {
     }
 
     @Test
+    fun resolveMapPickerLocationUpdate_usesDisplayNameWhenAdministrativeFieldsAreMissing() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "",
+            currentCity = "",
+            currentDistrict = "",
+            currentNeighborhood = "",
+            currentExtraAddress = "",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = null,
+                city = null,
+                district = null,
+                neighborhood = null,
+                extraAddress = "Aytekin Kotil Caddesi 12",
+                displayName = "Balmumcu, Beşiktaş, İstanbul, Turkey"
+            ),
+            locations = locationData
+        )
+
+        assertEquals("tr", result.country)
+        assertEquals("istanbul", result.city)
+        assertEquals("besiktas", result.district)
+        assertEquals("balmumcu", result.neighborhood)
+        assertEquals("Aytekin Kotil Caddesi 12", result.extraAddress)
+        assertEquals(true, result.isMeaningfulMapping)
+    }
+
+    @Test
+    fun resolveMapPickerLocationUpdate_usesDisplayNameSuffixesWhenAdministrativeFieldsAreMissing() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "",
+            currentCity = "",
+            currentDistrict = "",
+            currentNeighborhood = "",
+            currentExtraAddress = "",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = null,
+                city = null,
+                district = null,
+                neighborhood = null,
+                extraAddress = null,
+                displayName = "Balmumcu Mahallesi, Beşiktaş İlçesi, İstanbul, Turkey"
+            ),
+            locations = locationData
+        )
+
+        assertEquals("istanbul", result.city)
+        assertEquals("besiktas", result.district)
+        assertEquals("balmumcu", result.neighborhood)
+    }
+
+    @Test
+    fun resolveMapPickerLocationUpdate_prefersValidAdministrativeFieldsOverDisplayName() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "",
+            currentCity = "",
+            currentDistrict = "",
+            currentNeighborhood = "",
+            currentExtraAddress = "",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = "Turkey",
+                city = "Ankara",
+                district = "Çankaya",
+                neighborhood = "Anıttepe",
+                extraAddress = null,
+                displayName = "Balmumcu, Beşiktaş, İstanbul, Turkey"
+            ),
+            locations = locationData
+        )
+
+        assertEquals("ankara", result.city)
+        assertEquals("cankaya", result.district)
+        assertEquals("anittepe", result.neighborhood)
+    }
+
+    @Test
     fun resolveMapPickerLocationUpdate_keepsUsefulPartialCityAndDistrictWhenNeighborhoodMissing() {
         val result = resolveMapPickerLocationUpdate(
             currentCountry = "",

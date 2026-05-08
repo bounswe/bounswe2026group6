@@ -246,9 +246,9 @@ fun EditProfileScreen(
                 mapCenterLatitude = location.latitude
                 mapCenterLongitude = location.longitude
                 mapCenterInfo = if (openPickerAfterCapture) {
-                    "Map opened near your current location. Please verify the selected home location."
+                    "Map opened near your device location. Please verify the selected home location."
                 } else {
-                    "Map centered on your current location. Please verify the selected home location."
+                    "Map centered on your device location. Please verify the selected home location."
                 }
                 if (openPickerAfterCapture) {
                     mapPickerOpen = true
