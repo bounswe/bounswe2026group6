@@ -47,6 +47,7 @@ import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
+import com.neph.ui.components.inputs.DateInput
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.layout.AppScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
@@ -410,14 +411,10 @@ fun EditProfileScreen(
                         onValueChange = { profile = profile.copy(gender = it) }
                     )
 
-                    AppTextField(
+                    DateInput(
                         value = dateOfBirthText,
-                        onValueChange = {
-                            dateOfBirthText = it
-                        },
-                        label = "Date of Birth",
-                        placeholder = "YYYY-MM-DD",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                        onValueChange = { dateOfBirthText = it },
+                        label = "Date of Birth"
                     )
                 }
             }
