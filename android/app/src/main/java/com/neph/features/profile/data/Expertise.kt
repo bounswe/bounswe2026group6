@@ -1,7 +1,7 @@
 package com.neph.features.profile.data
 
 val expertiseOptions = listOf(
-    "First Aid"
+    "Do you know first aid?"
 )
 
 fun normalizeExpertise(selectedExpertise: List<String>): List<String> {
@@ -9,7 +9,7 @@ fun normalizeExpertise(selectedExpertise: List<String>): List<String> {
 
     return selectedExpertise
         .map { it.trim() }
-        .filter { it.equals(allowed, ignoreCase = true) }
+        .filter { it.equals(allowed, ignoreCase = true) || it.equals("First Aid", ignoreCase = true) }
         .map { allowed }
         .distinct()
 }

@@ -123,10 +123,9 @@ fun ProfileScreen(
 
                 ProfileSection(title = "Contact") {
                     ProfileFieldRow(label = "Phone", value = profile.phone)
-                    ProfileFieldRow(label = "Profession", value = profile.profession)
                     ProfileFieldRow(
-                        label = "Expertise",
-                        value = profile.expertise.takeIf { it.isNotEmpty() }?.joinToString(", ")
+                        label = "First Aid",
+                        value = if (profile.expertise.any { it.equals("Do you know first aid?", ignoreCase = true) || it.equals("First Aid", ignoreCase = true) }) "Yes" else null
                     )
                 }
 

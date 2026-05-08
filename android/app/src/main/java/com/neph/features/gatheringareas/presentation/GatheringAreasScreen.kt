@@ -123,7 +123,9 @@ fun GatheringAreasScreen(
                 sourceLabel = normalizedLabel
                 lastCenterLatitude = result.centerLatitude
                 lastCenterLongitude = result.centerLongitude
-                selectedAreaId = result.areas.firstOrNull()?.id
+                selectedAreaId = selectedAreaId
+                    ?.takeIf { selected -> result.areas.any { it.id == selected } }
+                    ?: result.areas.firstOrNull()?.id
                 categoryFilters = resolveCategoryOptions(result).map { it.key }.toSet()
 
                 if (result.areas.isEmpty()) {
@@ -208,6 +210,18 @@ fun GatheringAreasScreen(
         }
     }
 
+    fun openAreaDirections(item: GatheringAreaItem) {
+        val opened = NephMapIntegration.openDirections(
+            context = context,
+            latitude = item.latitude,
+            longitude = item.longitude,
+            label = item.name.ifBlank { "Gathering Area" }
+        )
+        if (!opened) {
+            infoMessage = "Directions are unavailable for this gathering area."
+        }
+    }
+
     val currentResult = nearbyResult
     val categoryOptions = remember(currentResult) {
         resolveCategoryOptions(currentResult)
@@ -223,7 +237,7 @@ fun GatheringAreasScreen(
     val isFilterEmpty = currentResult != null && currentResult.areas.isNotEmpty() && visibleAreas.isEmpty()
 
     if (selectedAreaId != null && visibleAreas.none { it.id == selectedAreaId }) {
-        selectedAreaId = visibleAreas.firstOrNull()?.id
+        selectedAreaId = null
     }
 
     AppDrawerScaffold(
@@ -328,6 +342,7 @@ fun GatheringAreasScreen(
                         selectedAreaId = null,
                         onAreaSelected = { selectedAreaId = it },
                         onOpenAreaInMap = ::openAreaInMap,
+                        onGetDirections = ::openAreaDirections,
                         emptyMarkersMessage = "Use your device location to find nearby gathering areas.",
                         emptyMapSubtitle = "Turkey overview. Nearby markers will appear after using your device location.",
                         mapZoom = TurkeyOverviewZoom
@@ -342,7 +357,8 @@ fun GatheringAreasScreen(
                         visibleAreas = emptyList(),
                         selectedAreaId = null,
                         onAreaSelected = { selectedAreaId = it },
-                        onOpenAreaInMap = ::openAreaInMap
+                        onOpenAreaInMap = ::openAreaInMap,
+                        onGetDirections = ::openAreaDirections
                     )
 
                     SectionCard {
@@ -371,7 +387,6 @@ fun GatheringAreasScreen(
                 else -> {
                     val result = nearbyResult ?: return@AppDrawerScaffold
                     val selectedArea = visibleAreas.firstOrNull { it.id == selectedAreaId }
-                        ?: visibleAreas.firstOrNull()
 
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
@@ -445,7 +460,8 @@ fun GatheringAreasScreen(
                         visibleAreas = visibleAreas,
                         selectedAreaId = selectedArea?.id,
                         onAreaSelected = { selectedAreaId = it },
-                        onOpenAreaInMap = ::openAreaInMap
+                        onOpenAreaInMap = ::openAreaInMap,
+                        onGetDirections = ::openAreaDirections
                     )
 
                     visibleAreas.forEachIndexed { index, area ->
@@ -486,6 +502,10 @@ fun GatheringAreasScreen(
                                     horizontalArrangement = Arrangement.End
                                 ) {
                                     TextActionButton(
+                                        text = "Get Directions",
+                                        onClick = { openAreaDirections(area) }
+                                    )
+                                    TextActionButton(
                                         text = "Open in Map",
                                         onClick = { openAreaInMap(area) }
                                     )
@@ -517,6 +537,7 @@ private fun GatheringAreasMapCard(
     selectedAreaId: String?,
     onAreaSelected: (String) -> Unit,
     onOpenAreaInMap: (GatheringAreaItem) -> Unit,
+    onGetDirections: (GatheringAreaItem) -> Unit,
     emptyMarkersMessage: String = "No gathering area markers are available for this search center.",
     emptyMapSubtitle: String = "Showing the searched area. No gathering area markers were returned.",
     mapZoom: Int = 13
@@ -652,7 +673,8 @@ private fun GatheringAreasMapCard(
             selectedArea?.let { area ->
                 GatheringAreaMapSelectionPreview(
                     area = area,
-                    onOpenAreaInMap = onOpenAreaInMap
+                    onOpenAreaInMap = onOpenAreaInMap,
+                    onGetDirections = onGetDirections
                 )
             }
         }
@@ -662,7 +684,8 @@ private fun GatheringAreasMapCard(
 @Composable
 private fun GatheringAreaMapSelectionPreview(
     area: GatheringAreaItem,
-    onOpenAreaInMap: (GatheringAreaItem) -> Unit
+    onOpenAreaInMap: (GatheringAreaItem) -> Unit,
+    onGetDirections: (GatheringAreaItem) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
 
@@ -697,6 +720,10 @@ private fun GatheringAreaMapSelectionPreview(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
+            TextActionButton(
+                text = "Get Directions",
+                onClick = { onGetDirections(area) }
+            )
             TextActionButton(
                 text = "Open in Map",
                 onClick = { onOpenAreaInMap(area) }

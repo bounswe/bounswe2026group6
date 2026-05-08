@@ -37,6 +37,8 @@ class AssignedRequestRepositoryMappingTest {
             put("assigned_at", "2026-04-26T10:20:00.000Z")
             put("request_city", "Istanbul")
             put("request_district", "Besiktas")
+            put("latitude", 41.043)
+            put("longitude", 29.009)
         }
 
         val model = AssignedRequestRepository.run {
@@ -47,5 +49,7 @@ class AssignedRequestRepositoryMappingTest {
         assertEquals("High", model.priorityLabel)
         assertEquals("2026-04-26 10:00:00", model.openedAtLabel)
         assertEquals("Assigned to you", model.statusLabel)
+        assertEquals(41.043, model.latitude ?: 0.0, 0.0)
+        assertEquals(29.009, model.longitude ?: 0.0, 0.0)
     }
 }

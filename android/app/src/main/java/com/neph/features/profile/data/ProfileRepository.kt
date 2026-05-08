@@ -259,15 +259,6 @@ object ProfileRepository {
             )
 
             JsonHttpClient.request(
-                path = "/profiles/me/profession",
-                method = "PATCH",
-                token = token,
-                body = JSONObject().apply {
-                    putNullable("profession", normalizedProfile.profession)
-                }
-            )
-
-            JsonHttpClient.request(
                 path = "/profiles/me/expertise-areas",
                 method = "PUT",
                 token = token,

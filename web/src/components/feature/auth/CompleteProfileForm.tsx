@@ -17,7 +17,8 @@ import {
 } from "@/components/feature/location";
 import { bloodTypeOptions } from "@/lib/bloodTypes";
 import { countryCodeOptions } from "@/lib/countryCodes";
-import { expertiseOptions, professionOptions } from "@/lib/profileOptions";
+import { DateInput } from "@/components/ui/inputs/DateInput";
+import { expertiseOptions } from "@/lib/profileOptions";
 import { getAccessToken, SIGNUP_DRAFT_KEY } from "@/lib/auth";
 import { fetchLocationTree, searchLocations } from "@/lib/location";
 import {
@@ -31,7 +32,6 @@ import {
     patchMyLocation,
     patchMyPhysical,
     patchMyPrivacy,
-    patchMyProfession,
     patchMyProfile,
     putMyExpertiseAreas,
     validateExpertiseAreas,
@@ -50,7 +50,6 @@ type ProfileForm = {
     medicalHistory: string;
     chronicDiseases: string;
     allergies: string;
-    profession: string;
     expertise: string[];
     country: string;
     city: string;
@@ -73,7 +72,6 @@ const initialForm: ProfileForm = {
     medicalHistory: "",
     chronicDiseases: "",
     allergies: "",
-    profession: "",
     expertise: [],
     country: "",
     city: "",
@@ -387,9 +385,20 @@ export default function CompleteProfileForm() {
             return;
         }
 
-        const dateOfBirth = new Date(form.dateOfBirth);
-        if (Number.isNaN(dateOfBirth.getTime()) || dateOfBirth > new Date()) {
-            setError("Please select a valid date of birth.");
+        const dobPattern = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dobPattern.test(form.dateOfBirth)) {
+            setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
+            return;
+        }
+        const [dobYear, dobMonth, dobDay] = form.dateOfBirth.split("-").map(Number);
+        const dateOfBirth = new Date(dobYear, dobMonth - 1, dobDay);
+        if (
+            dateOfBirth.getFullYear() !== dobYear ||
+            dateOfBirth.getMonth() + 1 !== dobMonth ||
+            dateOfBirth.getDate() !== dobDay ||
+            dateOfBirth >= new Date(new Date().toDateString())
+        ) {
+            setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
             return;
         }
 
@@ -513,10 +522,6 @@ export default function CompleteProfileForm() {
 
             await patchMyPrivacy(token, {
                 locationSharingEnabled: form.shareLocation,
-            });
-
-            await patchMyProfession(token, {
-                profession: form.profession.trim() || null,
             });
 
             await putMyExpertiseAreas(token, {
@@ -644,14 +649,10 @@ export default function CompleteProfileForm() {
             </ProfileInfoRow>
 
             <ProfileInfoRow label="Date of Birth">
-                <TextInput
+                <DateInput
                     id="dateOfBirth"
-                    type="date"
                     value={form.dateOfBirth}
-                    max={new Date().toISOString().slice(0, 10)}
-                    onChange={(e) =>
-                        setForm({ ...form, dateOfBirth: e.target.value })
-                    }
+                    onChange={(v) => setForm({ ...form, dateOfBirth: v })}
                 />
             </ProfileInfoRow>
 
@@ -699,20 +700,8 @@ export default function CompleteProfileForm() {
                 />
             </ProfileInfoRow>
 
-            <ProfileInfoRow label="Profession">
-                <SelectInput
-                    id="profession"
-                    options={professionOptions}
-                    value={form.profession}
-                    onChange={(e) =>
-                        setForm({ ...form, profession: e.target.value })
-                    }
-                />
-
+            <ProfileInfoRow label="First Aid">
                 <div className="flex flex-col gap-3">
-                    <p className="text-sm font-medium text-[color:var(--text-primary)]">
-                        Expertise (optional)
-                    </p>
                     {expertiseOptions.map((option) => (
                         <Checkbox
                             key={option}

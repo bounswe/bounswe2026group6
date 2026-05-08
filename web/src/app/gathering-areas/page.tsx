@@ -6,6 +6,7 @@ import { SectionCard } from "@/components/ui/display/SectionCard";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { GatheringAreasMap } from "@/components/feature/location/GatheringAreasMap";
 import { fetchNearbyGatheringAreas } from "@/lib/gatheringAreas";
+import { openDirections } from "@/lib/mapDirections";
 import { reverseLocation } from "@/lib/location";
 import type { GatheringAreaCategoryMeta, GatheringAreaFeature, NearbyGatheringAreasResponse } from "@/types/location";
 import type { GatheringAreaMapFeature } from "@/components/feature/location/LeafletGatheringAreasMap";
@@ -334,6 +335,7 @@ export default function GatheringAreasPage() {
     const [locationNote, setLocationNote] = React.useState("Resolving your current location...");
     const [dataNotice, setDataNotice] = React.useState("");
     const [dataNoticeTitle, setDataNoticeTitle] = React.useState("");
+    const [directionsMessage, setDirectionsMessage] = React.useState("");
     const [lastUpdated, setLastUpdated] = React.useState("");
     const requestIdRef = React.useRef(0);
     const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
@@ -415,6 +417,7 @@ export default function GatheringAreasPage() {
     const handleSelectArea = React.useCallback((featureId: string) => {
         setSelectedAreaId(featureId);
         setIsDetailsOpen(true);
+        setDirectionsMessage("");
     }, []);
 
     const loadNearbyAreas = React.useCallback(
@@ -478,7 +481,7 @@ export default function GatheringAreasPage() {
                     );
                     setLastUpdated(savedAt);
                     setFetchState("fallback");
-                    setSelectedAreaId(fallbackAreas[0]?.featureKey || null);
+                    setSelectedAreaId(null);
                     return;
                 } else {
                     setDataNotice("");
@@ -499,7 +502,7 @@ export default function GatheringAreasPage() {
                         return current;
                     }
 
-                    return mapped[0].featureKey;
+                    return null;
                 });
             } catch (err) {
                 if (currentRequestId !== requestIdRef.current) {
@@ -530,7 +533,7 @@ export default function GatheringAreasPage() {
                     setAreas(cachedAreas);
                     setCategoryOptions(cachedCategoryOptions);
                     setSelectedCategoryKeys(cachedCategoryOptions.map((item) => item.key));
-                    setSelectedAreaId(cachedAreas[0].featureKey);
+                    setSelectedAreaId(null);
                     setError("");
                     setDataNoticeTitle("Using cached gathering areas");
                     setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing your last saved result.`);
@@ -547,7 +550,7 @@ export default function GatheringAreasPage() {
                 const fallbackCategoryOptions = deriveCategoryOptions(fallbackAreas);
                 setCategoryOptions(fallbackCategoryOptions);
                 setSelectedCategoryKeys(fallbackCategoryOptions.map((item) => item.key));
-                setSelectedAreaId(fallbackAreas[0]?.featureKey || null);
+                setSelectedAreaId(null);
                 setError("");
                 setDataNoticeTitle("Using demo gathering areas");
                 setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing demo Istanbul areas and guidance.`);
@@ -615,7 +618,8 @@ export default function GatheringAreasPage() {
 
         const stillVisible = filteredAreas.some((item) => item.featureKey === selectedAreaId);
         if (!stillVisible) {
-            setSelectedAreaId(filteredAreas[0]?.featureKey || null);
+            setSelectedAreaId(null);
+            setDirectionsMessage("");
         }
     }, [filteredAreas, selectedAreaId]);
 
@@ -629,9 +633,9 @@ export default function GatheringAreasPage() {
         ? "Fallback content may not match your exact location; follow official guidance during a real emergency."
         : `Searching within ${SEARCH_RADIUS_KM} km of your current location.`;
 
-    const selectedArea =
-        filteredAreas.find((item) => item.featureKey === selectedAreaId) ||
-        (filteredAreas.length ? filteredAreas[0] : null);
+    const selectedArea = selectedAreaId
+        ? filteredAreas.find((item) => item.featureKey === selectedAreaId) || null
+        : null;
 
     const toggleCategoryFilter = React.useCallback((key: string) => {
         const normalized = normalizeCategoryKey(key);
@@ -646,6 +650,13 @@ export default function GatheringAreasPage() {
     const clearCategoryFilters = React.useCallback(() => {
         setSelectedCategoryKeys(categoryOptions.map((item) => item.key));
     }, [categoryOptions]);
+
+    const handleGetDirections = React.useCallback((area: GatheringAreaMapFeature) => {
+        const opened = openDirections(area.latitude, area.longitude, area.name || "Gathering area");
+        setDirectionsMessage(
+            opened ? "" : "Directions are unavailable for this gathering area."
+        );
+    }, []);
 
     return (
         <AppShell
@@ -714,6 +725,16 @@ export default function GatheringAreasPage() {
                                         <p className="gathering-areas-selected-meta">
                                             Address: {selectedArea.address}
                                         </p>
+                                        <PrimaryButton
+                                            type="button"
+                                            className="mt-1 h-10 w-auto"
+                                            onClick={() => handleGetDirections(selectedArea)}
+                                        >
+                                            Get Directions
+                                        </PrimaryButton>
+                                        {directionsMessage ? (
+                                            <p className="gathering-areas-selected-meta">{directionsMessage}</p>
+                                        ) : null}
                                     </article>
                                 ) : (
                                     <p className="gathering-areas-empty-detail">

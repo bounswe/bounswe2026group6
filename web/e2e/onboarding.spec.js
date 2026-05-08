@@ -36,11 +36,10 @@ test('new user can sign up, verify email, complete their profile, and see persis
   await page.locator('#height').fill('168');
   await page.locator('#weight').fill('58');
   await page.locator('#gender').selectOption('female');
-  await page.locator('#dateOfBirth').fill('1998-01-15');
+  await page.locator('#dateOfBirth').fill('19980115');
   await page.locator('#bloodType').selectOption('a_pos');
   await page.locator('#medicalHistory').fill('Seasonal asthma');
-  await page.locator('#profession').selectOption('Engineer');
-  await page.getByLabel('First Aid').check();
+  await page.getByLabel('Do you know first aid?').check();
   await page.locator('#country').selectOption('tr');
   await page.locator('#city').selectOption('istanbul');
   await page.locator('#district').selectOption('kadikoy');
@@ -74,6 +73,5 @@ test('new user can sign up, verify email, complete their profile, and see persis
   expect(profile.locationProfile.city?.toLocaleLowerCase('tr')).toBe('istanbul');
   expect(profile.locationProfile.address).toContain('Test Apartment 7');
   expect(profile.privacySettings.locationSharingEnabled).toBe(false);
-  expect(profile.expertise[0].profession).toBe('Engineer');
-  expect(profile.expertise[0].expertiseAreas).toContain('First Aid');
+  expect(profile.expertise[0].expertiseAreas).toContain('Do you know first aid?');
 });

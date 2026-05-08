@@ -34,7 +34,6 @@ import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizeDateOfBirth
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseListField
-import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.toEditableString
 import com.neph.features.requesthelp.data.RequestHelpRepository
@@ -500,56 +499,34 @@ fun EditProfileScreen(
                         label = "Allergies"
                     )
 
-                    HelperText(text = "Document upload is still unavailable because the backend upload flow does not exist yet.")
                 }
             }
 
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                    SectionHeader(title = "Profession")
+                    SectionHeader(title = "First Aid")
 
-                    AppDropdown(
-                        value = profile.profession.orEmpty(),
-                        onValueChange = { value ->
-                            profile = profile.copy(profession = value.takeIf(String::isNotBlank))
-                        },
-                        label = "Profession",
-                        options = professionOptionsFor(profile.profession),
-                        placeholder = "Select your profession"
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-                        Text(
-                            text = "Expertise (optional)",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                    expertiseOptionsFor(profile.expertise).forEach { option ->
+                        AppCheckbox(
+                            checked = option in profile.expertise,
+                            onCheckedChange = { checked ->
+                                profile = profile.copy(
+                                    expertise = if (checked) {
+                                        profile.expertise + option
+                                    } else {
+                                        profile.expertise - option
+                                    }
+                                )
+                            },
+                            label = option
                         )
-
-                        expertiseOptionsFor(profile.expertise).forEach { option ->
-                            AppCheckbox(
-                                checked = option in profile.expertise,
-                                onCheckedChange = { checked ->
-                                    profile = profile.copy(
-                                        expertise = if (checked) {
-                                            profile.expertise + option
-                                        } else {
-                                            profile.expertise - option
-                                        }
-                                    )
-                                },
-                                label = option
-                            )
-                        }
                     }
                 }
             }
 
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                    SectionHeader(
-                        title = "Residential Location",
-                        subtitle = "This is your home/neighborhood location. It is not automatically updated by GPS."
-                    )
+                    SectionHeader(title = "Residential Location")
 
                     if (locationLoading) {
                         HelperText(text = "Loading location options...")
