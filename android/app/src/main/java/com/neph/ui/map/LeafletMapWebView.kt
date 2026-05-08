@@ -131,7 +131,7 @@ internal fun buildLeafletDocumentHead(): String {
     return """
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <!-- Keep embedded maps limited to Leaflet assets, OSM tiles, and inline map scripts. -->
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; style-src 'self' $LeafletAssetOrigin 'unsafe-inline'; script-src $LeafletAssetOrigin 'unsafe-inline'; img-src https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; connect-src 'none'; font-src 'none'; media-src 'none'; navigate-to 'none'" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; style-src 'self' $LeafletAssetOrigin 'unsafe-inline'; script-src $LeafletAssetOrigin 'unsafe-inline'; img-src https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; connect-src 'none'; font-src 'none'; media-src 'none'" />
         <link rel="stylesheet" href="$LeafletCssUrl" />
         <script src="$LeafletJsUrl" onerror="window.__leafletScriptLoadFailed = true;"></script>
         <style>
@@ -341,6 +341,9 @@ private class LeafletMapWebViewClient : WebViewClient() {
     }
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+        if (request?.isForMainFrame == true) {
+            return null
+        }
         val uri = request?.url ?: return emptyBlockedResponse()
         return if (isAllowedLeafletMapResource(uri)) {
             null
@@ -456,13 +459,21 @@ private fun isAllowedLeafletMapResource(
     host: String?,
     path: String
 ): Boolean {
-    if (url == LeafletMapBaseUrl || isAllowedLeafletAsset(scheme, host, path)) {
+    if (
+        url == LeafletMapBaseUrl ||
+        isAllowedLeafletMapDataDocument(url, scheme) ||
+        isAllowedLeafletAsset(scheme, host, path)
+    ) {
         return true
     }
 
     return scheme == "https" &&
         host in AllowedOpenStreetMapTileHosts &&
         OpenStreetMapTilePathPattern.matches(path)
+}
+
+private fun isAllowedLeafletMapDataDocument(url: String, scheme: String?): Boolean {
+    return scheme == "data" && url.startsWith("data:text/html", ignoreCase = true)
 }
 
 private fun isAllowedLeafletAsset(scheme: String?, host: String?, path: String): Boolean {
