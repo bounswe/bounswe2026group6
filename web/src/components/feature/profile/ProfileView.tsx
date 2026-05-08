@@ -491,11 +491,17 @@ export default function ProfileView() {
 
         if (profile.dateOfBirth) {
             const dobPattern = /^\d{4}-\d{2}-\d{2}$/;
-            const dateOfBirth = new Date(profile.dateOfBirth);
+            if (!dobPattern.test(profile.dateOfBirth)) {
+                setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
+                return;
+            }
+            const [dobYear, dobMonth, dobDay] = profile.dateOfBirth.split("-").map(Number);
+            const dateOfBirth = new Date(dobYear, dobMonth - 1, dobDay);
             if (
-                !dobPattern.test(profile.dateOfBirth) ||
-                Number.isNaN(dateOfBirth.getTime()) ||
-                dateOfBirth > new Date()
+                dateOfBirth.getFullYear() !== dobYear ||
+                dateOfBirth.getMonth() + 1 !== dobMonth ||
+                dateOfBirth.getDate() !== dobDay ||
+                dateOfBirth >= new Date(new Date().toDateString())
             ) {
                 setError("Please enter a valid date of birth (YYYY-MM-DD) that is not in the future.");
                 return;
