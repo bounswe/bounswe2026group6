@@ -78,7 +78,6 @@ import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
-import com.neph.ui.map.formatMapCoordinate
 import com.neph.ui.map.requestHelpMapPickerFeedbackMessage
 import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
@@ -540,7 +539,7 @@ fun RequestHelpScreen(
         clearAdministrativeFields: Boolean
     ): RequestHelpFormState {
         val snapshot = RequestHelpRepository.consumePendingCoordinateSnapshot() ?: return baseState
-        infoMessage = "Current coordinates were saved for this request. Please complete the emergency location fields manually."
+        infoMessage = "Current emergency point saved. Please complete the address fields manually."
         return baseState.copy(
             country = if (clearAdministrativeFields) "" else baseState.country,
             city = if (clearAdministrativeFields) "" else baseState.city,
@@ -562,7 +561,7 @@ fun RequestHelpScreen(
         mapPickerSelection = null
         mapActionMessage = ""
         if (hadCoordinateSnapshot) {
-            infoMessage = "Coordinate snapshot cleared because the emergency location fields changed."
+            infoMessage = "Selected emergency point cleared because the address fields changed."
         }
     }
 
@@ -620,7 +619,7 @@ fun RequestHelpScreen(
                 )
                 if (reverseLocation == null) {
                     formState = formState.copy(country = "", city = "", district = "", neighborhood = "", shortAddress = "")
-                    infoMessage = "Current coordinates were saved for this request. Please complete the location fields manually."
+                    infoMessage = "Current emergency point saved. Please complete the address fields manually."
                     return@launch
                 }
 
@@ -643,7 +642,7 @@ fun RequestHelpScreen(
                         coordinateAccuracyMeters = location.accuracyMeters,
                         locationWasManuallyChanged = false
                     )
-                    infoMessage = "Current coordinates were saved for this request. Please complete the location fields manually."
+                    infoMessage = "Current emergency point saved. Please complete the address fields manually."
                     return@launch
                 }
 
@@ -670,7 +669,7 @@ fun RequestHelpScreen(
                 throw cancellationException
             } catch (_: Exception) {
                 infoMessage = if (capturedSnapshot) {
-                    "Current coordinates were saved for this request. Please complete the location fields manually."
+                    "Current emergency point saved. Please complete the address fields manually."
                 } else {
                     "Could not retrieve your current location. You can continue with manual location entry."
                 }
@@ -747,6 +746,19 @@ fun RequestHelpScreen(
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
+                formState = formState.copy(
+                    country = "",
+                    city = "",
+                    district = "",
+                    neighborhood = "",
+                    shortAddress = "",
+                    latitude = selection.latitude,
+                    longitude = selection.longitude,
+                    coordinateSource = RequestHelpMapCoordinateSource,
+                    coordinateCapturedAt = selectedCapturedAt,
+                    coordinateAccuracyMeters = null,
+                    locationWasManuallyChanged = false
+                )
                 mapActionMessage = "Could not resolve the selected point. You can still enter the emergency address manually."
             } finally {
                 mapPickerSelection = selection
@@ -1075,11 +1087,9 @@ fun RequestHelpScreen(
                         enabled = !locationLoading && !loading
                     )
 
-                    val requestLatitude = formState.latitude
-                    val requestLongitude = formState.longitude
-                    if (requestLatitude != null && requestLongitude != null) {
+                    if (formState.latitude != null && formState.longitude != null) {
                         HelperText(
-                            text = "Request coordinate snapshot: ${formatMapCoordinate(requestLatitude)}, ${formatMapCoordinate(requestLongitude)}"
+                            text = "Emergency location point selected. Please verify the address fields before sending."
                         )
                     }
 
@@ -1104,6 +1114,7 @@ fun RequestHelpScreen(
 
                     if (mapPickerOpen) {
                         MapPickerDialog(
+                            title = "Select Emergency Location on Map",
                             initialLatitude = mapPickerSelection?.latitude ?: formState.latitude,
                             initialLongitude = mapPickerSelection?.longitude ?: formState.longitude,
                             loading = mapPickerLoading,

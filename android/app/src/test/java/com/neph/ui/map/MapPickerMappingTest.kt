@@ -3,6 +3,7 @@ package com.neph.ui.map
 import com.neph.features.profile.data.locationData
 import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -360,5 +361,50 @@ class MapPickerMappingTest {
         assertEquals("Existing Address", result.extraAddress)
         assertEquals(false, result.hasStructuredMatch)
         assertEquals(false, result.isMeaningfulMapping)
+    }
+
+    @Test
+    fun requestHelpMapPickerFeedbackMessage_usesEmergencyWordingForPartialResults() {
+        val reverseLocation = RequestHelpReverseLocation(
+            countryCode = "TR",
+            country = "Turkey",
+            city = null,
+            district = null,
+            neighborhood = null,
+            extraAddress = "Pinned Address"
+        )
+        val message = requestHelpMapPickerFeedbackMessage(
+            reverseLocation = reverseLocation,
+            update = resolveMapPickerLocationUpdate(
+                currentCountry = "",
+                currentCity = "",
+                currentDistrict = "",
+                currentNeighborhood = "",
+                currentExtraAddress = "",
+                reverseLocation = reverseLocation,
+                locations = locationData
+            )
+        )
+
+        assertEquals(
+            "We found part of the emergency address. Please complete the remaining fields manually.",
+            message
+        )
+        assertFalse(message.lowercase().contains("home"))
+        assertFalse(message.lowercase().contains("residential"))
+    }
+
+    @Test
+    fun requestHelpMapPickerFeedbackMessage_fallbackAvoidsCoordinateFocusedWording() {
+        val message = requestHelpMapPickerFeedbackMessage(
+            reverseLocation = null,
+            update = null
+        )
+
+        assertEquals(
+            "Could not resolve the selected point. You can still enter the emergency address manually.",
+            message
+        )
+        assertFalse(message.lowercase().contains("coordinate"))
     }
 }
