@@ -19,6 +19,70 @@ class LeafletMapWebViewTest {
     }
 
     @Test
+    fun leafletMapInstanceState_readySuppressesErrorAndTimeout() {
+        assertTrue(isLeafletMapReadyForInstance("map-current", "map-current"))
+        assertEquals(
+            "",
+            leafletMapErrorForInstance(
+                activeInstanceId = "map-current",
+                readyInstanceId = "map-current",
+                errorInstanceId = "map-current",
+                errorMessage = LeafletMapInitializationTimeoutMessage
+            )
+        )
+        assertFalse(
+            shouldApplyLeafletMapTimeout(
+                activeInstanceId = "map-current",
+                currentInstanceId = "map-current",
+                readyInstanceId = "map-current",
+                errorInstanceId = null
+            )
+        )
+    }
+
+    @Test
+    fun leafletMapInstanceState_staleTimeoutAndErrorDoNotAffectActiveInstance() {
+        assertEquals(
+            "",
+            leafletMapErrorForInstance(
+                activeInstanceId = "map-current",
+                readyInstanceId = null,
+                errorInstanceId = "map-stale",
+                errorMessage = LeafletMapInitializationTimeoutMessage
+            )
+        )
+        assertFalse(
+            shouldApplyLeafletMapTimeout(
+                activeInstanceId = "map-stale",
+                currentInstanceId = "map-current",
+                readyInstanceId = null,
+                errorInstanceId = null
+            )
+        )
+    }
+
+    @Test
+    fun leafletMapInstanceState_activeUnreadyInstanceCanTimeout() {
+        assertEquals(
+            LeafletMapInitializationTimeoutMessage,
+            leafletMapErrorForInstance(
+                activeInstanceId = "map-current",
+                readyInstanceId = null,
+                errorInstanceId = "map-current",
+                errorMessage = LeafletMapInitializationTimeoutMessage
+            )
+        )
+        assertTrue(
+            shouldApplyLeafletMapTimeout(
+                activeInstanceId = "map-current",
+                currentInstanceId = "map-current",
+                readyInstanceId = null,
+                errorInstanceId = null
+            )
+        )
+    }
+
+    @Test
     fun buildLeafletDocumentHead_allowsLeafletOriginWithoutQuotedUrlSources() {
         val head = buildLeafletDocumentHead()
 

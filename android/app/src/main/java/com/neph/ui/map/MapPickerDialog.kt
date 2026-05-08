@@ -62,23 +62,34 @@ fun MapPickerDialog(
     var selection by remember(initialLatitude, initialLongitude, centerLatitude, centerLongitude) {
         mutableStateOf<MapPickerSelection?>(null)
     }
-    var mapReady by remember(mapInstanceId) {
-        mutableStateOf(false)
-    }
-    var mapError by remember(mapInstanceId) {
+    val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
+    var mapError by remember {
         mutableStateOf("")
     }
+    val activeMapReady = isLeafletMapReadyForInstance(
+        activeInstanceId = mapInstanceId,
+        readyInstanceId = readyInstanceIdState.value
+    )
+    val activeMapError = leafletMapErrorForInstance(
+        activeInstanceId = mapInstanceId,
+        readyInstanceId = readyInstanceIdState.value,
+        errorInstanceId = errorInstanceIdState.value,
+        errorMessage = mapError
+    )
 
-    LaunchedEffect(mapInstanceId, mapReady, mapError) {
-        if (mapReady || mapError.isNotBlank()) {
-            return@LaunchedEffect
-        }
+    LaunchedEffect(mapInstanceId) {
+        errorInstanceIdState.value = null
+        mapError = ""
         delay(LeafletMapInitializationTimeoutMillis)
-        if (
-            currentMapInstanceIdState.value == mapInstanceId &&
-            !mapReady &&
-            mapError.isBlank()
+        if (shouldApplyLeafletMapTimeout(
+                activeInstanceId = mapInstanceId,
+                currentInstanceId = currentMapInstanceIdState.value,
+                readyInstanceId = readyInstanceIdState.value,
+                errorInstanceId = errorInstanceIdState.value
+            )
         ) {
+            errorInstanceIdState.value = mapInstanceId
             mapError = LeafletMapInitializationTimeoutMessage
         }
     }
@@ -113,7 +124,8 @@ fun MapPickerDialog(
                     },
                     onMapReady = { readyInstanceId ->
                         if (readyInstanceId == currentMapInstanceIdState.value) {
-                            mapReady = true
+                            readyInstanceIdState.value = readyInstanceId
+                            errorInstanceIdState.value = null
                             mapError = ""
                         } else {
                             Log.d(
@@ -123,7 +135,11 @@ fun MapPickerDialog(
                         }
                     },
                     onMapError = { errorInstanceId, message ->
-                        if (errorInstanceId == currentMapInstanceIdState.value) {
+                        if (
+                            errorInstanceId == currentMapInstanceIdState.value &&
+                            !isLeafletMapReadyForInstance(mapInstanceId, readyInstanceIdState.value)
+                        ) {
+                            errorInstanceIdState.value = errorInstanceId
                             mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                         } else {
                             Log.d(
@@ -134,12 +150,12 @@ fun MapPickerDialog(
                     }
                 )
 
-                if (!mapReady && mapError.isBlank()) {
+                if (!activeMapReady && activeMapError.isBlank()) {
                     HelperText(text = "Loading map...")
                 }
 
-                if (!mapReady && mapError.isNotBlank()) {
-                    HelperText(text = mapError)
+                if (!activeMapReady && activeMapError.isNotBlank()) {
+                    HelperText(text = activeMapError)
                 }
 
                 selection?.let {

@@ -48,7 +48,10 @@ import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.formatMapCoordinate
+import com.neph.ui.map.isLeafletMapReadyForInstance
+import com.neph.ui.map.leafletMapErrorForInstance
 import com.neph.ui.map.newLeafletMapInstanceId
+import com.neph.ui.map.shouldApplyLeafletMapTimeout
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -509,10 +512,9 @@ private fun GatheringAreasMapCard(
     onOpenAreaInMap: (GatheringAreaItem) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
-    var mapReady by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
-        mutableStateOf(false)
-    }
-    var mapError by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
+    val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
+    var mapError by remember {
         mutableStateOf("")
     }
     val mapInstanceId = remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
@@ -520,17 +522,29 @@ private fun GatheringAreasMapCard(
     }
     val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
     currentMapInstanceIdState.value = mapInstanceId
+    val activeMapReady = isLeafletMapReadyForInstance(
+        activeInstanceId = mapInstanceId,
+        readyInstanceId = readyInstanceIdState.value
+    )
+    val activeMapError = leafletMapErrorForInstance(
+        activeInstanceId = mapInstanceId,
+        readyInstanceId = readyInstanceIdState.value,
+        errorInstanceId = errorInstanceIdState.value,
+        errorMessage = mapError
+    )
 
-    LaunchedEffect(mapInstanceId, mapReady, mapError) {
-        if (mapReady || mapError.isNotBlank()) {
-            return@LaunchedEffect
-        }
+    LaunchedEffect(mapInstanceId) {
+        errorInstanceIdState.value = null
+        mapError = ""
         delay(LeafletMapInitializationTimeoutMillis)
-        if (
-            currentMapInstanceIdState.value == mapInstanceId &&
-            !mapReady &&
-            mapError.isBlank()
+        if (shouldApplyLeafletMapTimeout(
+                activeInstanceId = mapInstanceId,
+                currentInstanceId = currentMapInstanceIdState.value,
+                readyInstanceId = readyInstanceIdState.value,
+                errorInstanceId = errorInstanceIdState.value
+            )
         ) {
+            errorInstanceIdState.value = mapInstanceId
             mapError = LeafletMapInitializationTimeoutMessage
         }
     }
@@ -575,12 +589,17 @@ private fun GatheringAreasMapCard(
                 },
                 onMapReady = { readyInstanceId ->
                     if (readyInstanceId == currentMapInstanceIdState.value) {
-                        mapReady = true
+                        readyInstanceIdState.value = readyInstanceId
+                        errorInstanceIdState.value = null
                         mapError = ""
                     }
                 },
                 onMapError = { errorInstanceId, message ->
-                    if (errorInstanceId == currentMapInstanceIdState.value) {
+                    if (
+                        errorInstanceId == currentMapInstanceIdState.value &&
+                        !isLeafletMapReadyForInstance(mapInstanceId, readyInstanceIdState.value)
+                    ) {
+                        errorInstanceIdState.value = errorInstanceId
                         mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                     }
                 },
@@ -589,12 +608,12 @@ private fun GatheringAreasMapCard(
                     .height(GatheringAreasMapHeightCssPx.dp)
             )
 
-            if (!mapReady && mapError.isBlank()) {
+            if (!activeMapReady && activeMapError.isBlank()) {
                 HelperText(text = "Loading map...")
             }
 
-            if (!mapReady && mapError.isNotBlank()) {
-                HelperText(text = mapError)
+            if (!activeMapReady && activeMapError.isNotBlank()) {
+                HelperText(text = activeMapError)
             }
 
             if (markers.isEmpty()) {

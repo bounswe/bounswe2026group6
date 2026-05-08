@@ -66,6 +66,40 @@ internal fun coerceLeafletMapHeightCssPx(cssPx: Int): Int {
     return cssPx.coerceAtLeast(LeafletMapFallbackHeightCssPx)
 }
 
+internal fun isLeafletMapReadyForInstance(
+    activeInstanceId: String,
+    readyInstanceId: String?
+): Boolean {
+    return activeInstanceId == readyInstanceId
+}
+
+internal fun leafletMapErrorForInstance(
+    activeInstanceId: String,
+    readyInstanceId: String?,
+    errorInstanceId: String?,
+    errorMessage: String
+): String {
+    return if (
+        !isLeafletMapReadyForInstance(activeInstanceId, readyInstanceId) &&
+        activeInstanceId == errorInstanceId
+    ) {
+        errorMessage
+    } else {
+        ""
+    }
+}
+
+internal fun shouldApplyLeafletMapTimeout(
+    activeInstanceId: String,
+    currentInstanceId: String,
+    readyInstanceId: String?,
+    errorInstanceId: String?
+): Boolean {
+    return activeInstanceId == currentInstanceId &&
+        !isLeafletMapReadyForInstance(activeInstanceId, readyInstanceId) &&
+        activeInstanceId != errorInstanceId
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun LeafletMapWebView(
