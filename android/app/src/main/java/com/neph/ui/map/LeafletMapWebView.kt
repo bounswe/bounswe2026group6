@@ -152,8 +152,9 @@ fun LeafletMarkerMap(
     markers: List<LeafletMapMarker>,
     selectedMarkerId: String?,
     mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx,
+    zoom: Int = 13,
     onMarkerSelected: (String, String) -> Unit,
-    onMapReady: (String) -> Unit,
+    onMapReady: (String, String) -> Unit,
     onMapError: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -161,7 +162,7 @@ fun LeafletMarkerMap(
     val latestOnMapReady by rememberUpdatedState(onMapReady)
     val latestOnMapError by rememberUpdatedState(onMapError)
     val latestCurrentMapInstanceId by rememberUpdatedState(currentMapInstanceId)
-    val html = remember(mapInstanceId, centerLatitude, centerLongitude, markers, selectedMarkerId) {
+    val html = remember(mapInstanceId, centerLatitude, centerLongitude, markers, selectedMarkerId, zoom) {
         buildLeafletMarkerMapHtml(
             mapInstanceId = mapInstanceId,
             centerLatitude = centerLatitude,
@@ -169,6 +170,7 @@ fun LeafletMarkerMap(
             markers = markers,
             selectedMarkerId = selectedMarkerId,
             bridgeName = LeafletMarkerMapBridgeName,
+            zoom = zoom,
             mapHeightCssPx = mapHeightCssPx
         )
     }
@@ -176,7 +178,7 @@ fun LeafletMarkerMap(
         LeafletMarkerMapBridge(
             currentMapInstanceId = { latestCurrentMapInstanceId() },
             onMarkerSelected = { instanceId, markerId -> latestOnMarkerSelected(instanceId, markerId) },
-            onMapReady = { latestOnMapReady(it) },
+            onMapReady = { instanceId, source -> latestOnMapReady(instanceId, source) },
             onMapError = { instanceId, message -> latestOnMapError(instanceId, message) }
         )
     }
@@ -310,6 +312,14 @@ internal fun buildLeafletErrorScript(
             }
         }
 
+        function notifyMapAlive(source) {
+            var readySource = String(source || 'alive');
+            logNephMapBreadcrumb('NEPH_MAP: alive source=' + readySource);
+            if (window.$bridgeName && window.$bridgeName.onMapAlive) {
+                window.$bridgeName.onMapAlive(nephMapInstanceId, readySource);
+            }
+        }
+
         function scheduleMapInvalidateSize(map, mapElement) {
             function invalidateMapSize() {
                 if (map && map.invalidateSize) {
@@ -374,6 +384,7 @@ internal fun buildLeafletMarkerMapHtml(
                 logNephMapSize('before L.map', mapElement);
                 var map = L.map('map').setView(center, $zoom);
                 logNephMapBreadcrumb('NEPH_MAP: map created');
+                notifyMapAlive('map-created');
                 logNephMapSize('after L.map', mapElement);
                 scheduleMapInvalidateSize(map, mapElement);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -384,10 +395,12 @@ internal fun buildLeafletMarkerMapHtml(
 
                 tiles.on('tileloadstart', function() {
                     logNephMapBreadcrumb('NEPH_MAP: tileloadstart');
+                    notifyMapAlive('tileloadstart');
                 });
 
                 tiles.on('tileload', function() {
                     logNephMapBreadcrumb('NEPH_MAP: tileload');
+                    notifyMapAlive('tileload');
                 });
 
                 tiles.on('tileerror', function() {
@@ -455,11 +468,12 @@ internal fun buildLeafletMarkerMapHtml(
 private class LeafletMarkerMapBridge(
     private val currentMapInstanceId: () -> String,
     private val onMarkerSelected: (String, String) -> Unit,
-    private val onMapReady: (String) -> Unit,
+    private val onMapReady: (String, String) -> Unit,
     private val onMapError: (String, String) -> Unit
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var readyDeliveredInstanceId: String? = null
+    private val aliveDeliveredSignals = mutableSetOf<String>()
 
     @JavascriptInterface
     fun onMarkerSelected(instanceId: String?, id: String?) {
@@ -481,6 +495,9 @@ private class LeafletMarkerMapBridge(
                     "native onMarkerSelected ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
                 )
                 return@post
+            }
+            if (markAliveSignalForDelivery(incomingInstanceId, "marker-selected")) {
+                dispatchMapAliveFromMain(incomingInstanceId, "marker-selected")
             }
             onMarkerSelected(incomingInstanceId, trimmed)
         }
@@ -522,9 +539,33 @@ private class LeafletMarkerMapBridge(
             }
             Log.d(
                 LeafletMapWebViewLogTag,
-                "native LeafletMarkerMapBridge.onMapReady dispatched instance=$incomingInstanceId"
+                "native LeafletMarkerMapBridge.onMapReady dispatched source=whenReady instance=$incomingInstanceId"
             )
-            onMapReady(incomingInstanceId)
+            onMapReady(incomingInstanceId, "whenReady")
+        }
+    }
+
+    @JavascriptInterface
+    fun onMapAlive(instanceId: String?, source: String?) {
+        val incomingInstanceId = instanceId.orEmpty()
+        val currentInstanceId = currentMapInstanceId()
+        val readySource = source?.trim().orEmpty().ifBlank { "alive" }
+        if (incomingInstanceId != currentInstanceId) {
+            Log.d(
+                LeafletMapWebViewLogTag,
+                "native onMapAlive ignored stale source=$readySource instance=$incomingInstanceId current=$currentInstanceId"
+            )
+            return
+        }
+        if (!markAliveSignalForDelivery(incomingInstanceId, readySource)) {
+            Log.d(
+                LeafletMapWebViewLogTag,
+                "native onMapAlive ignored duplicate source=$readySource instance=$incomingInstanceId"
+            )
+            return
+        }
+        mainHandler.post {
+            dispatchMapAliveFromMain(incomingInstanceId, readySource)
         }
     }
 
@@ -549,6 +590,28 @@ private class LeafletMarkerMapBridge(
                 return@post
             }
             onMapError(incomingInstanceId, trimmed)
+        }
+    }
+
+    private fun dispatchMapAliveFromMain(instanceId: String, source: String) {
+        val currentInstanceId = currentMapInstanceId()
+        if (instanceId != currentInstanceId) {
+            Log.d(
+                LeafletMapWebViewLogTag,
+                "native onMapAlive ignored stale source=$source instance=$instanceId current=$currentInstanceId"
+            )
+            return
+        }
+        Log.d(
+            LeafletMapWebViewLogTag,
+            "native LeafletMarkerMapBridge.onMapAlive dispatched source=$source instance=$instanceId"
+        )
+        onMapReady(instanceId, source)
+    }
+
+    private fun markAliveSignalForDelivery(instanceId: String, source: String): Boolean {
+        return synchronized(this) {
+            aliveDeliveredSignals.add("$instanceId:$source")
         }
     }
 }

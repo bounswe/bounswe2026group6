@@ -192,6 +192,10 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("NEPH_MAP: tileloadstart"))
         assertTrue(html.contains("NEPH_MAP: tileload"))
         assertTrue(html.contains("NEPH_MAP: tile error"))
+        assertTrue(html.contains("function notifyMapAlive(source)"))
+        assertTrue(html.contains("notifyMapAlive('map-created');"))
+        assertTrue(html.contains("notifyMapAlive('tileloadstart');"))
+        assertTrue(html.contains("notifyMapAlive('tileload');"))
         assertTrue(html.contains("function notifyMapReadyOnce()"))
         assertTrue(html.contains("setTimeout(notifyMapReadyOnce, 1000);"))
     }

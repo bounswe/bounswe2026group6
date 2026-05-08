@@ -8,6 +8,12 @@ import org.junit.Test
 
 class GatheringAreasRepositoryTest {
     @Test
+    fun fetchNearbyGatheringAreas_usesDemoFriendlyDefaultsWithinBackendLimits() {
+        assertEquals(10000, GatheringAreasRepository.DefaultRadiusMeters)
+        assertEquals(50, GatheringAreasRepository.DefaultLimit)
+    }
+
+    @Test
     fun parseNearbyGatheringAreasResponse_mapsValidFeaturesAndSkipsMalformedOnes() {
         val response = JSONObject(
             """

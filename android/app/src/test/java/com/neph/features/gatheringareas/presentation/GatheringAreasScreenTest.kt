@@ -55,4 +55,14 @@ class GatheringAreasScreenTest {
 
         assertEquals("Something went wrong", message)
     }
+
+    @Test
+    fun gatheringAreasFilterCopy_clarifiesSelectedCategoriesAreVisible() {
+        assertEquals("Visible Categories", GatheringAreasVisibleCategoriesTitle)
+        assertEquals(
+            "Selected categories are shown on the map and in the list.",
+            GatheringAreasVisibleCategoriesSubtitle
+        )
+        assertEquals("Show All Categories", GatheringAreasShowAllCategoriesText)
+    }
 }

@@ -1,5 +1,6 @@
 package com.neph.features.gatheringareas.presentation
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -8,8 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -46,8 +45,8 @@ import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
+import com.neph.ui.map.LeafletMapWebViewLogTag
 import com.neph.ui.map.NephMapIntegration
-import com.neph.ui.map.formatMapCoordinate
 import com.neph.ui.map.isLeafletMapReadyForInstance
 import com.neph.ui.map.leafletMapErrorForInstance
 import com.neph.ui.map.newLeafletMapInstanceId
@@ -65,6 +64,13 @@ private enum class GatheringAreasSearchOrigin {
 }
 
 private const val GatheringAreasMapHeightCssPx = 280
+private const val TurkeyOverviewLatitude = 39.0
+private const val TurkeyOverviewLongitude = 35.0
+private const val TurkeyOverviewZoom = 5
+internal const val GatheringAreasVisibleCategoriesTitle = "Visible Categories"
+internal const val GatheringAreasVisibleCategoriesSubtitle =
+    "Selected categories are shown on the map and in the list."
+internal const val GatheringAreasShowAllCategoriesText = "Show All Categories"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -252,7 +258,7 @@ fun GatheringAreasScreen(
 
                     if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
                         HelperText(
-                            text = "Showing results around $sourceLabel (${formatMapCoordinate(lastCenterLatitude!!)}, ${formatMapCoordinate(lastCenterLongitude!!)})."
+                            text = "Showing results around $sourceLabel."
                         )
                     } else {
                         HelperText(text = "Use your current location to find nearby gathering areas.")
@@ -316,12 +322,16 @@ fun GatheringAreasScreen(
                 }
 
                 !hasSearchCenter -> {
-                    SectionCard {
-                        SectionHeader(
-                            title = "No Search Location Selected",
-                            subtitle = "No search location selected yet. Tap \"Use Current Location\" to search nearby gathering areas."
-                        )
-                    }
+                    GatheringAreasMapCard(
+                        result = turkeyOverviewGatheringAreasResult(),
+                        visibleAreas = emptyList(),
+                        selectedAreaId = null,
+                        onAreaSelected = { selectedAreaId = it },
+                        onOpenAreaInMap = ::openAreaInMap,
+                        emptyMarkersMessage = "Use your device location to find nearby gathering areas.",
+                        emptyMapSubtitle = "Turkey overview. Nearby markers will appear after using your device location.",
+                        mapZoom = TurkeyOverviewZoom
+                    )
                 }
 
                 nearbyResult?.areas?.isEmpty() == true -> {
@@ -387,15 +397,17 @@ fun GatheringAreasScreen(
                     SectionCard {
                         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
                             SectionHeader(
-                                title = "Category Filters",
-                                subtitle = "Select one or more categories to filter map markers and list results."
+                                title = GatheringAreasVisibleCategoriesTitle,
+                                subtitle = GatheringAreasVisibleCategoriesSubtitle
                             )
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                                 verticalArrangement = Arrangement.spacedBy(spacing.xs)
                             ) {
+                                val categoryCounts = areaCountsByCategory(currentResult)
                                 categoryOptions.forEach { category ->
                                     val selected = activeFilterKeys.contains(category.key)
+                                    val count = categoryCounts[category.key] ?: 0
                                     FilterChip(
                                         selected = selected,
                                         onClick = {
@@ -405,7 +417,8 @@ fun GatheringAreasScreen(
                                                 activeFilterKeys + category.key
                                             }
                                         },
-                                        label = { Text(category.label) }
+                                        enabled = count > 0,
+                                        label = { Text("${category.label} ($count)") }
                                     )
                                 }
                             }
@@ -414,7 +427,7 @@ fun GatheringAreasScreen(
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 TextActionButton(
-                                    text = "Clear Filters",
+                                    text = GatheringAreasShowAllCategoriesText,
                                     onClick = {
                                         categoryFilters = categoryOptions.map { it.key }.toSet()
                                     }
@@ -456,15 +469,9 @@ fun GatheringAreasScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
 
-                                Text(
-                                    text = "Coordinates: ${formatMapCoordinate(area.latitude)}, ${formatMapCoordinate(area.longitude)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
                                 area.addressLine?.takeIf { it.isNotBlank() }?.let { address ->
                                     Text(
-                                        text = "Address: $address",
+                                        text = address,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -509,7 +516,10 @@ private fun GatheringAreasMapCard(
     visibleAreas: List<GatheringAreaItem>,
     selectedAreaId: String?,
     onAreaSelected: (String) -> Unit,
-    onOpenAreaInMap: (GatheringAreaItem) -> Unit
+    onOpenAreaInMap: (GatheringAreaItem) -> Unit,
+    emptyMarkersMessage: String = "No gathering area markers are available for this search center.",
+    emptyMapSubtitle: String = "Showing the searched area. No gathering area markers were returned.",
+    mapZoom: Int = 13
 ) {
     val spacing = LocalNephSpacing.current
     val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
@@ -533,6 +543,20 @@ private fun GatheringAreasMapCard(
         errorMessage = mapError
     )
 
+    fun markMapAlive(instanceId: String, source: String) {
+        if (instanceId == currentMapInstanceIdState.value) {
+            Log.d(LeafletMapWebViewLogTag, "native GatheringAreas ready source=$source instance=$instanceId")
+            readyInstanceIdState.value = instanceId
+            errorInstanceIdState.value = null
+            mapError = ""
+        } else {
+            Log.d(
+                LeafletMapWebViewLogTag,
+                "native GatheringAreas ready ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
+            )
+        }
+    }
+
     LaunchedEffect(mapInstanceId) {
         errorInstanceIdState.value = null
         mapError = ""
@@ -544,8 +568,14 @@ private fun GatheringAreasMapCard(
                 errorInstanceId = errorInstanceIdState.value
             )
         ) {
+            Log.d(LeafletMapWebViewLogTag, "native GatheringAreas timeout applied instance=$mapInstanceId")
             errorInstanceIdState.value = mapInstanceId
             mapError = LeafletMapInitializationTimeoutMessage
+        } else {
+            Log.d(
+                LeafletMapWebViewLogTag,
+                "native GatheringAreas timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} ready=${readyInstanceIdState.value} error=${errorInstanceIdState.value}"
+            )
         }
     }
 
@@ -568,7 +598,7 @@ private fun GatheringAreasMapCard(
             SectionHeader(
                 title = "Gathering Areas Map",
                 subtitle = if (markers.isEmpty()) {
-                    "Showing the searched area. No gathering area markers were returned."
+                    emptyMapSubtitle
                 } else {
                     "Tap a marker to preview that gathering area."
                 }
@@ -582,17 +612,14 @@ private fun GatheringAreasMapCard(
                 markers = markers,
                 selectedMarkerId = selectedAreaId,
                 mapHeightCssPx = GatheringAreasMapHeightCssPx,
+                zoom = mapZoom,
                 onMarkerSelected = { markerInstanceId, markerId ->
                     if (markerInstanceId == currentMapInstanceIdState.value) {
                         onAreaSelected(markerId)
                     }
                 },
-                onMapReady = { readyInstanceId ->
-                    if (readyInstanceId == currentMapInstanceIdState.value) {
-                        readyInstanceIdState.value = readyInstanceId
-                        errorInstanceIdState.value = null
-                        mapError = ""
-                    }
+                onMapReady = { readyInstanceId, source ->
+                    markMapAlive(readyInstanceId, source)
                 },
                 onMapError = { errorInstanceId, message ->
                     if (
@@ -618,7 +645,7 @@ private fun GatheringAreasMapCard(
 
             if (markers.isEmpty()) {
                 HelperText(
-                    text = "No gathering area markers are available for this search center."
+                    text = emptyMarkersMessage
                 )
             }
 
@@ -658,11 +685,13 @@ private fun GatheringAreaMapSelectionPreview(
         )
 
         val address = area.addressLine?.takeIf { it.isNotBlank() }
-        Text(
-            text = address ?: "Coordinates: ${formatMapCoordinate(area.latitude)}, ${formatMapCoordinate(area.longitude)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (address != null) {
+            Text(
+                text = address,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -704,13 +733,13 @@ private data class MarkerStyle(
 
 private fun categoryMarkerStyle(categoryKey: String): MarkerStyle {
     return when (categoryKey.trim().lowercase()) {
-        "assembly_point" -> MarkerStyle("#C73D2A", "#E35F4F", Color(0xFFE35F4F))
-        "shelter" -> MarkerStyle("#D08A1F", "#F3B545", Color(0xFFF3B545))
-        "hospital" -> MarkerStyle("#B91C1C", "#EF4444", Color(0xFFEF4444))
-        "police" -> MarkerStyle("#1E40AF", "#3B82F6", Color(0xFF3B82F6))
-        "fire_station" -> MarkerStyle("#9A3412", "#F97316", Color(0xFFF97316))
-        "pharmacy" -> MarkerStyle("#166534", "#22C55E", Color(0xFF22C55E))
-        else -> MarkerStyle("#2B7FC8", "#4DA2EA", Color(0xFF4DA2EA))
+        "assembly_point" -> MarkerStyle("#B42318", "#EF4444", Color(0xFFDC2626))
+        "shelter" -> MarkerStyle("#6D28D9", "#8B5CF6", Color(0xFF8B5CF6))
+        "hospital" -> MarkerStyle("#BE123C", "#F43F5E", Color(0xFFF43F5E))
+        "police" -> MarkerStyle("#1D4ED8", "#3B82F6", Color(0xFF3B82F6))
+        "fire_station" -> MarkerStyle("#C2410C", "#F97316", Color(0xFFF97316))
+        "pharmacy" -> MarkerStyle("#15803D", "#22C55E", Color(0xFF22C55E))
+        else -> MarkerStyle("#0F766E", "#14B8A6", Color(0xFF14B8A6))
     }
 }
 
@@ -730,6 +759,27 @@ private fun resolveCategoryOptions(result: NearbyGatheringAreasResult?): List<Ga
     return mapped.entries.map { (key, label) ->
         GatheringAreaCategoryMeta(key = key, label = label)
     }
+}
+
+private fun areaCountsByCategory(result: NearbyGatheringAreasResult?): Map<String, Int> {
+    if (result == null) return emptyMap()
+    return result.areas
+        .groupingBy { it.category.trim().lowercase() }
+        .eachCount()
+}
+
+private fun turkeyOverviewGatheringAreasResult(): NearbyGatheringAreasResult {
+    return NearbyGatheringAreasResult(
+        centerLatitude = TurkeyOverviewLatitude,
+        centerLongitude = TurkeyOverviewLongitude,
+        radiusMeters = 0,
+        source = "overview",
+        requestedLimit = 0,
+        returnedCount = 0,
+        skippedCount = 0,
+        categories = emptyList(),
+        areas = emptyList()
+    )
 }
 
 private fun formatDistance(distanceMeters: Int): String {
