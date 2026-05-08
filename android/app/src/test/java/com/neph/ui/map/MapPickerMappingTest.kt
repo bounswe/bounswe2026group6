@@ -3,9 +3,21 @@ package com.neph.ui.map
 import com.neph.features.profile.data.locationData
 import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class MapPickerMappingTest {
+    @Test
+    fun initialMapPickerSelection_requiresFiniteLatitudeAndLongitude() {
+        assertEquals(
+            MapPickerSelection(latitude = 41.0, longitude = 29.0),
+            initialMapPickerSelection(latitude = 41.0, longitude = 29.0)
+        )
+        assertNull(initialMapPickerSelection(latitude = 41.0, longitude = null))
+        assertNull(initialMapPickerSelection(latitude = Double.NaN, longitude = 29.0))
+        assertNull(initialMapPickerSelection(latitude = 41.0, longitude = Double.POSITIVE_INFINITY))
+    }
+
     @Test
     fun resolveMapPickerLocationUpdate_mapsFullReverseLocationLabels() {
         val result = resolveMapPickerLocationUpdate(

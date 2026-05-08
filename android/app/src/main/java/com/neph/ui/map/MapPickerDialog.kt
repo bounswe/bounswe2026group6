@@ -36,6 +36,14 @@ data class MapPickerSelection(
     val longitude: Double
 )
 
+internal fun initialMapPickerSelection(latitude: Double?, longitude: Double?): MapPickerSelection? {
+    return if (latitude != null && longitude != null && latitude.isFinite() && longitude.isFinite()) {
+        MapPickerSelection(latitude = latitude, longitude = longitude)
+    } else {
+        null
+    }
+}
+
 @Composable
 fun MapPickerDialog(
     title: String = "Select Location on Map",
@@ -59,8 +67,8 @@ fun MapPickerDialog(
     }
     val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
     currentMapInstanceIdState.value = mapInstanceId
-    var selection by remember(initialLatitude, initialLongitude, centerLatitude, centerLongitude) {
-        mutableStateOf<MapPickerSelection?>(null)
+    var selection by remember(effectiveInitialLatitude, effectiveInitialLongitude) {
+        mutableStateOf(initialMapPickerSelection(effectiveInitialLatitude, effectiveInitialLongitude))
     }
     val readyInstanceIdState = remember { mutableStateOf<String?>(null) }
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
@@ -359,6 +367,11 @@ private fun buildMapHtml(
     val zoom = if (hasInitial) 15 else 6
     val formattedLat = String.format(Locale.US, "%.6f", centerLat)
     val formattedLon = String.format(Locale.US, "%.6f", centerLon)
+    val initialSelectionScript = if (hasInitial) {
+        "setMarker($formattedLat, $formattedLon);"
+    } else {
+        ""
+    }
 
     return """
         <!DOCTYPE html>
@@ -424,6 +437,8 @@ private fun buildMapHtml(
                         }).addTo(map);
                     }
                 }
+
+                $initialSelectionScript
 
                 map.on('click', function(e) {
                     var lat = e.latlng.lat;

@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileRepository
@@ -48,6 +50,7 @@ import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.layout.AuthScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
@@ -104,6 +107,10 @@ fun CompleteProfileScreen(
     var mapActionInfo by rememberSaveable { mutableStateOf("") }
     var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
     var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapCenterLoading by rememberSaveable { mutableStateOf(false) }
+    var mapCenterInfo by rememberSaveable { mutableStateOf("") }
+    var mapCenterLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
+    var mapCenterLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var availableLocationData by remember { mutableStateOf<LocationData>(locationData) }
     var locationLoading by remember { mutableStateOf(true) }
@@ -166,6 +173,81 @@ fun CompleteProfileScreen(
                 mapPickerLoading = false
                 mapPickerOpen = false
             }
+        }
+    }
+
+    fun openProfileMapPickerWithFallback(message: String) {
+        mapCenterLatitude = null
+        mapCenterLongitude = null
+        mapCenterInfo = message
+        mapCenterLoading = false
+        mapPickerOpen = true
+    }
+
+    fun captureCurrentLocationForProfileMap(fromPermissionResult: Boolean = false) {
+        if (mapCenterLoading && !fromPermissionResult) return
+
+        mapCenterLoading = true
+        mapCenterInfo = ""
+
+        scope.launch {
+            try {
+                val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                val location = attempt.location
+                if (location == null) {
+                    val fallbackMessage = when (attempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission was denied. You can still choose your home location manually."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. You can still choose your home location manually."
+                    }
+                    openProfileMapPickerWithFallback(fallbackMessage)
+                    return@launch
+                }
+
+                mapCenterLatitude = location.latitude
+                mapCenterLongitude = location.longitude
+                mapCenterInfo = "Map opened near your current location. Please verify the selected home location."
+                mapPickerOpen = true
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                openProfileMapPickerWithFallback(
+                    "Current location is unavailable. You can still choose your home location manually."
+                )
+            } finally {
+                mapCenterLoading = false
+            }
+        }
+    }
+
+    val mapLocationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
+            captureCurrentLocationForProfileMap(fromPermissionResult = true)
+        } else {
+            openProfileMapPickerWithFallback(
+                "Location permission was denied. You can still choose your home location manually."
+            )
+        }
+    }
+
+    fun prepareAndOpenProfileMapPicker() {
+        if (mapCenterLoading) return
+
+        mapActionInfo = ""
+        mapCenterLatitude = null
+        mapCenterLongitude = null
+        mapCenterInfo = ""
+
+        if (mapLocationPermissionRequester.refreshPermissionState()) {
+            captureCurrentLocationForProfileMap()
+        } else {
+            mapCenterLoading = true
+            mapLocationPermissionRequester.requestPermission()
         }
     }
 
@@ -445,8 +527,8 @@ fun CompleteProfileScreen(
 
             SecondaryButton(
                 text = "Select Home Location on Map",
-                onClick = { mapPickerOpen = true },
-                enabled = !locationLoading && !loading
+                onClick = ::prepareAndOpenProfileMapPicker,
+                enabled = !locationLoading && !loading && !mapCenterLoading
             )
 
             AppTextField(
@@ -473,6 +555,10 @@ fun CompleteProfileScreen(
                     title = "Select Home Location on Map",
                     initialLatitude = mapPickerSelection?.latitude,
                     initialLongitude = mapPickerSelection?.longitude,
+                    centerLatitude = mapCenterLatitude,
+                    centerLongitude = mapCenterLongitude,
+                    centerActionLoading = mapCenterLoading,
+                    centerActionMessage = mapCenterInfo,
                     loading = mapPickerLoading,
                     onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
                     onConfirm = ::handleMapSelection
