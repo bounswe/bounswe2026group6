@@ -46,6 +46,7 @@ import com.neph.ui.components.display.SaveActionBar
 import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
+import com.neph.ui.components.inputs.DateInput
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.map.MapPickerDialog
@@ -338,13 +339,11 @@ fun CompleteProfileScreen(
 
             GenderSelector(value = gender, onValueChange = { gender = it })
 
-            AppTextField(
+            DateInput(
                 value = dateOfBirth,
                 onValueChange = { dateOfBirth = it },
                 label = "Date of Birth",
-                testTag = "complete_profile_date_of_birth",
-                placeholder = "YYYY-MM-DD",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                testTag = "complete_profile_date_of_birth"
             )
 
             Text("Medical Information (optional)", style = MaterialTheme.typography.titleMedium)
