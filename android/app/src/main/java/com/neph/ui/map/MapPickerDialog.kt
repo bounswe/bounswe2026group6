@@ -3,6 +3,7 @@ package com.neph.ui.map
 import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.webkit.JavascriptInterface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -99,7 +100,10 @@ fun MapPickerDialog(
                     onLocationSelected = { lat, lon ->
                         selection = MapPickerSelection(lat, lon)
                     },
-                    onMapReady = { mapReady = true },
+                    onMapReady = {
+                        mapReady = true
+                        mapError = ""
+                    },
                     onMapError = { message ->
                         mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                     }
@@ -109,7 +113,7 @@ fun MapPickerDialog(
                     HelperText(text = "Loading map...")
                 }
 
-                if (mapError.isNotBlank()) {
+                if (!mapReady && mapError.isNotBlank()) {
                     HelperText(text = mapError)
                 }
 
@@ -208,7 +212,11 @@ private class MapPickerBridge(
 
     @JavascriptInterface
     fun onMapReady() {
-        mainHandler.post { onMapReady() }
+        Log.d(LeafletMapWebViewLogTag, "native MapPickerBridge.onMapReady received")
+        mainHandler.post {
+            Log.d(LeafletMapWebViewLogTag, "native MapPickerBridge.onMapReady dispatched")
+            onMapReady()
+        }
     }
 
     @JavascriptInterface

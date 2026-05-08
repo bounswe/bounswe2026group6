@@ -554,7 +554,10 @@ private fun GatheringAreasMapCard(
                 markers = markers,
                 selectedMarkerId = selectedAreaId,
                 onMarkerSelected = onAreaSelected,
-                onMapReady = { mapReady = true },
+                onMapReady = {
+                    mapReady = true
+                    mapError = ""
+                },
                 onMapError = { message ->
                     mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                 },
@@ -567,7 +570,7 @@ private fun GatheringAreasMapCard(
                 HelperText(text = "Loading map...")
             }
 
-            if (mapError.isNotBlank()) {
+            if (!mapReady && mapError.isNotBlank()) {
                 HelperText(text = mapError)
             }
 

@@ -1,10 +1,16 @@
 package com.neph.ui.map
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LeafletMapWebViewTest {
+    @Test
+    fun leafletMapInitializationTimeout_usesSlowEmulatorFallbackWindow() {
+        assertEquals(15_000L, LeafletMapInitializationTimeoutMillis)
+    }
+
     @Test
     fun buildLeafletDocumentHead_allowsLeafletOriginWithoutQuotedUrlSources() {
         val head = buildLeafletDocumentHead()

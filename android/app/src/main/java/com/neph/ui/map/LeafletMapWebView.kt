@@ -41,8 +41,8 @@ data class LeafletMapMarker(
 
 private const val LeafletMarkerMapBridgeName = "AndroidLeafletMarkerMap"
 private const val LeafletMapBaseUrl = "https://neph.app/android-map/"
-private const val LeafletMapWebViewLogTag = "NephMapWebView"
-internal const val LeafletMapInitializationTimeoutMillis = 8_000L
+internal const val LeafletMapWebViewLogTag = "NephMapWebView"
+internal const val LeafletMapInitializationTimeoutMillis = 15_000L
 internal const val LeafletMapInitializationTimeoutMessage =
     "Map failed to initialize. Please check WebView and network access."
 internal const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -343,7 +343,11 @@ private class LeafletMarkerMapBridge(
 
     @JavascriptInterface
     fun onMapReady() {
-        mainHandler.post { onMapReady() }
+        Log.d(LeafletMapWebViewLogTag, "native LeafletMarkerMapBridge.onMapReady received")
+        mainHandler.post {
+            Log.d(LeafletMapWebViewLogTag, "native LeafletMarkerMapBridge.onMapReady dispatched")
+            onMapReady()
+        }
     }
 
     @JavascriptInterface
