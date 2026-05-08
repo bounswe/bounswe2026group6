@@ -392,7 +392,6 @@ fun CompleteProfileScreen(
             }
 
             Text("Residential Location", style = MaterialTheme.typography.titleMedium)
-            HelperText(text = "This is your home/neighborhood location. It is not automatically updated by GPS.")
 
             if (locationLoading) {
                 HelperText(text = "Loading location options...")

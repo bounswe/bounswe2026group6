@@ -453,7 +453,6 @@ fun EditProfileScreen(
                         label = "Allergies"
                     )
 
-                    HelperText(text = "Document upload is still unavailable because the backend upload flow does not exist yet.")
                 }
             }
 
@@ -481,10 +480,7 @@ fun EditProfileScreen(
 
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                    SectionHeader(
-                        title = "Residential Location",
-                        subtitle = "This is your home/neighborhood location. It is not automatically updated by GPS."
-                    )
+                    SectionHeader(title = "Residential Location")
 
                     if (locationLoading) {
                         HelperText(text = "Loading location options...")
