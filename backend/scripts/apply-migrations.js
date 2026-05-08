@@ -64,14 +64,7 @@ async function applySingleMigrationAtomically(client, migration) {
   }
 }
 
-async function run() {
-  const migrationSources = [
-    {
-      dir: path.resolve(__dirname, '../migrations'),
-      keyPrefix: 'backend/migrations',
-    },
-  ];
-
+async function runMigrations(migrationSources) {
   const client = await pool.connect();
 
   try {
@@ -112,11 +105,29 @@ async function run() {
   }
 }
 
-run()
-  .catch((error) => {
-    console.error('Migration step failed:', error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await pool.end();
-  });
+function backendMigrationSource() {
+  return {
+    dir: path.resolve(__dirname, '../migrations'),
+    keyPrefix: 'backend/migrations',
+  };
+}
+
+async function run() {
+  await runMigrations([backendMigrationSource()]);
+}
+
+if (require.main === module) {
+  run()
+    .catch((error) => {
+      console.error('Migration step failed:', error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await pool.end();
+    });
+}
+
+module.exports = {
+  backendMigrationSource,
+  runMigrations,
+};

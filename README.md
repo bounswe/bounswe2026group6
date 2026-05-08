@@ -169,9 +169,19 @@ Notes:
 - the backend waits for PostgreSQL to become healthy before starting
 - the web container is configured to talk to the backend in the local Docker setup
 
-### Demo data seed
+### Optional demo data seed
 
-Demo-ready data is inserted by the backend SQL migrations. It is clearly marked with `[DEMO]` in user-facing records and uses deterministic `demo_*` IDs so local and deployment databases get the same presentation dataset when migrations run.
+Demo-ready data is stored as SQL seed migrations under `backend/demo-migrations/`, but it is not applied by the normal backend migration flow. This keeps regular `npm run migrate` and `start:with-migrations` safe for normal environments.
+
+To apply the demo dataset intentionally, run the regular migrations first and then run the guarded demo seed command:
+
+```bash
+cd backend
+npm run migrate
+ENABLE_DEMO_SEED=true npm run seed:demo
+```
+
+The demo seed is clearly marked with `[DEMO]` in user-facing records and uses deterministic `demo_*` IDs so local and deployment demo databases get the same presentation dataset. The demo seed command refuses to run unless `ENABLE_DEMO_SEED=true` is set. It includes 24 demo people: 1 admin, 9 requesters, 9 volunteers, and 5 additional community residents.
 
 Demo login password for `*@neph.test` users:
 
@@ -187,10 +197,12 @@ Demo accounts:
 | Requester | `requester_ayse@neph.test` | `DemoPass123!` |
 | Requester | `requester_mert@neph.test` | `DemoPass123!` |
 | Requester | `requester_fatma@neph.test` | `DemoPass123!` |
+| Requester | `requester_orhan@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_elif@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_can@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_sarp@neph.test` | `DemoPass123!` |
 | Volunteer | `volunteer_zeynep@neph.test` | `DemoPass123!` |
+| Mixed requester/volunteer/resident demos | `resident_nazan@neph.test` through `resident_lale@neph.test` | `DemoPass123!` |
 
 ### Optional non-Docker development
 
