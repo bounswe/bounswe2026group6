@@ -42,6 +42,9 @@ data class LeafletMapMarker(
 private const val LeafletMarkerMapBridgeName = "AndroidLeafletMarkerMap"
 private const val LeafletMapBaseUrl = "https://neph.app/android-map/"
 private const val LeafletMapWebViewLogTag = "NephMapWebView"
+internal const val LeafletMapInitializationTimeoutMillis = 8_000L
+internal const val LeafletMapInitializationTimeoutMessage =
+    "Map failed to initialize. Please check WebView and network access."
 internal const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 internal const val LeafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 private const val LeafletAssetOrigin = "https://unpkg.com"
@@ -142,6 +145,14 @@ internal fun buildLeafletDocumentHead(): String {
 
 internal fun buildLeafletErrorScript(bridgeName: String): String {
     return """
+        console.log('NEPH_MAP: script started');
+
+        function logNephMapBreadcrumb(message) {
+            if (window.console && window.console.log) {
+                window.console.log(message);
+            }
+        }
+
         function notifyMapError(message) {
             var errorMessage = String(message || 'Map failed to load.');
             if (window.__lastMapErrorMessage === errorMessage) {
@@ -172,6 +183,18 @@ internal fun buildLeafletErrorScript(bridgeName: String): String {
 
         if (window.__leafletScriptLoadFailed || !window.L) {
             failMap('Map library could not be loaded.');
+        }
+        logNephMapBreadcrumb('NEPH_MAP: Leaflet available');
+
+        function notifyMapReadyOnce() {
+            if (window.__nephMapReadyNotified) {
+                return;
+            }
+            window.__nephMapReadyNotified = true;
+            logNephMapBreadcrumb('NEPH_MAP: notifying Android ready');
+            if (window.$bridgeName && window.$bridgeName.onMapReady) {
+                window.$bridgeName.onMapReady();
+            }
         }
 
         function scheduleMapInvalidateSize(map) {
@@ -230,14 +253,18 @@ internal fun buildLeafletMarkerMapHtml(
                 if (!mapElement) {
                     failMap('Map failed to load.');
                 }
+                logNephMapBreadcrumb('NEPH_MAP: map element found');
                 var map = L.map('map').setView(center, $zoom);
+                logNephMapBreadcrumb('NEPH_MAP: map created');
                 scheduleMapInvalidateSize(map);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '(c) OpenStreetMap'
                 }).addTo(map);
+                logNephMapBreadcrumb('NEPH_MAP: tile layer added');
 
                 tiles.on('tileerror', function() {
+                    logNephMapBreadcrumb('NEPH_MAP: tile error');
                     notifyMapError('Map tiles could not be loaded.');
                 });
 
@@ -287,11 +314,11 @@ internal fun buildLeafletMarkerMapHtml(
                     map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
                 }
 
-                if (window.$bridgeName && window.$bridgeName.onMapReady) {
-                    map.whenReady(function() {
-                        window.$bridgeName.onMapReady();
-                    });
-                }
+                map.whenReady(function() {
+                    logNephMapBreadcrumb('NEPH_MAP: whenReady fired');
+                    notifyMapReadyOnce();
+                });
+                setTimeout(notifyMapReadyOnce, 1000);
             </script>
         </body>
         </html>

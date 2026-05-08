@@ -13,6 +13,7 @@ class LeafletMapWebViewTest {
         assertTrue(head.contains("style-src 'self' https://unpkg.com 'unsafe-inline'"))
         assertFalse(head.contains("script-src 'https://unpkg.com"))
         assertFalse(head.contains("style-src 'self' 'https://unpkg.com"))
+        assertFalse(head.contains("navigate-to"))
     }
 
     @Test
@@ -77,5 +78,27 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("window.AndroidLeafletMarkerMap.onMarkerSelected(marker.id);"))
         assertTrue(html.contains("map.fitBounds(bounds"))
         assertTrue(html.contains("scheduleMapInvalidateSize(map);"))
+    }
+
+    @Test
+    fun buildLeafletMarkerMapHtml_includesReadyBreadcrumbsAndFallback() {
+        val html = buildLeafletMarkerMapHtml(
+            centerLatitude = 41.0,
+            centerLongitude = 29.0,
+            markers = emptyList(),
+            selectedMarkerId = null,
+            bridgeName = "AndroidLeafletMarkerMap"
+        )
+
+        assertTrue(html.contains("NEPH_MAP: script started"))
+        assertTrue(html.contains("NEPH_MAP: Leaflet available"))
+        assertTrue(html.contains("NEPH_MAP: map element found"))
+        assertTrue(html.contains("NEPH_MAP: map created"))
+        assertTrue(html.contains("NEPH_MAP: tile layer added"))
+        assertTrue(html.contains("NEPH_MAP: whenReady fired"))
+        assertTrue(html.contains("NEPH_MAP: notifying Android ready"))
+        assertTrue(html.contains("NEPH_MAP: tile error"))
+        assertTrue(html.contains("function notifyMapReadyOnce()"))
+        assertTrue(html.contains("setTimeout(notifyMapReadyOnce, 1000);"))
     }
 }

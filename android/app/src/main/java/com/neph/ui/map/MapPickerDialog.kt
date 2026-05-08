@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,7 @@ import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.theme.LocalNephSpacing
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 data class MapPickerSelection(
@@ -54,8 +56,22 @@ fun MapPickerDialog(
     var selection by remember(initialLatitude, initialLongitude, centerLatitude, centerLongitude) {
         mutableStateOf<MapPickerSelection?>(null)
     }
-    var mapReady by remember { mutableStateOf(false) }
-    var mapError by remember { mutableStateOf("") }
+    var mapReady by remember(effectiveInitialLatitude, effectiveInitialLongitude) {
+        mutableStateOf(false)
+    }
+    var mapError by remember(effectiveInitialLatitude, effectiveInitialLongitude) {
+        mutableStateOf("")
+    }
+
+    LaunchedEffect(effectiveInitialLatitude, effectiveInitialLongitude, mapReady, mapError) {
+        if (mapReady || mapError.isNotBlank()) {
+            return@LaunchedEffect
+        }
+        delay(LeafletMapInitializationTimeoutMillis)
+        if (!mapReady && mapError.isBlank()) {
+            mapError = LeafletMapInitializationTimeoutMessage
+        }
+    }
 
     Dialog(onDismissRequest = { if (!loading) onDismiss() }) {
         Surface(
@@ -227,23 +243,27 @@ private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): S
                 if (!mapElement) {
                     failMap('Map failed to load.');
                 }
+                logNephMapBreadcrumb('NEPH_MAP: map element found');
                 var map = L.map('map').setView([$formattedLat, $formattedLon], $zoom);
+                logNephMapBreadcrumb('NEPH_MAP: map created');
                 scheduleMapInvalidateSize(map);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '(c) OpenStreetMap'
                 }).addTo(map);
+                logNephMapBreadcrumb('NEPH_MAP: tile layer added');
 
                 var marker = null;
 
-                if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapReady) {
-                    map.whenReady(function() {
-                        window.$MapPickerBridgeName.onMapReady();
-                    });
-                }
+                map.whenReady(function() {
+                    logNephMapBreadcrumb('NEPH_MAP: whenReady fired');
+                    notifyMapReadyOnce();
+                });
+                setTimeout(notifyMapReadyOnce, 1000);
 
                 if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapError) {
                     tiles.on('tileerror', function() {
+                        logNephMapBreadcrumb('NEPH_MAP: tile error');
                         notifyMapError('Map tiles could not be loaded.');
                     });
                 }

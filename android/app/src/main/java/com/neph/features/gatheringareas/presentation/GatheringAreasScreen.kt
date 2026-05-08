@@ -15,6 +15,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,11 +44,14 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMarkerMap
+import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
+import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.formatMapCoordinate
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -508,6 +512,17 @@ private fun GatheringAreasMapCard(
     var mapError by remember(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId) {
         mutableStateOf("")
     }
+
+    LaunchedEffect(result.centerLatitude, result.centerLongitude, visibleAreas, selectedAreaId, mapReady, mapError) {
+        if (mapReady || mapError.isNotBlank()) {
+            return@LaunchedEffect
+        }
+        delay(LeafletMapInitializationTimeoutMillis)
+        if (!mapReady && mapError.isBlank()) {
+            mapError = LeafletMapInitializationTimeoutMessage
+        }
+    }
+
     val selectedArea = visibleAreas.firstOrNull { it.id == selectedAreaId }
     val markers = visibleAreas.map { area ->
         val markerStyle = categoryMarkerStyle(area.category)
