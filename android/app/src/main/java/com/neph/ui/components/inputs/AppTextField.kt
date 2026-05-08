@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -12,7 +11,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.neph.ui.theme.LocalNephSpacing
@@ -29,8 +27,7 @@ fun AppTextField(
     singleLine: Boolean = true,
     error: String? = null,
     testTag: String? = null,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    onClick: (() -> Unit)? = null
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
 ) {
     val spacing = LocalNephSpacing.current
     val isError = !error.isNullOrBlank()
@@ -54,15 +51,6 @@ fun AppTextField(
                         Modifier
                     } else {
                         Modifier.testTag(testTag)
-                    }
-                )
-                .then(
-                    if (onClick == null || !enabled) {
-                        Modifier
-                    } else {
-                        Modifier.pointerInput(onClick) {
-                            detectTapGestures(onTap = { onClick() })
-                        }
                     }
                 )
                 .fillMaxWidth()
