@@ -618,7 +618,8 @@ export default function GatheringAreasPage() {
 
         const stillVisible = filteredAreas.some((item) => item.featureKey === selectedAreaId);
         if (!stillVisible) {
-            setSelectedAreaId(filteredAreas[0]?.featureKey || null);
+            setSelectedAreaId(null);
+            setDirectionsMessage("");
         }
     }, [filteredAreas, selectedAreaId]);
 
