@@ -278,8 +278,21 @@ function writeToCache(cacheKey, value) {
 	pruneCache();
 }
 
+function firstAddressValue(address, keys) {
+	for (const key of keys) {
+		const value = address[key];
+		if (typeof value === 'string' && value.trim()) {
+			return value.trim();
+		}
+	}
+
+	return '';
+}
+
 function mapNominatimItem(item) {
 	const address = item.address || {};
+	const street = firstAddressValue(address, ['road', 'pedestrian', 'footway', 'path']);
+	const houseNumber = firstAddressValue(address, ['house_number']);
 
 	return {
 		placeId: String(item.place_id || ''),
@@ -289,13 +302,18 @@ function mapNominatimItem(item) {
 		administrative: {
 			countryCode: (address.country_code || '').toUpperCase(),
 			country: address.country || '',
-			city: address.city || address.town || address.village || '',
-			district: address.county || address.state_district || address.municipality || '',
-			neighborhood: address.neighbourhood || address.suburb || '',
-			extraAddress: [
-				address.road || address.pedestrian || address.footway || address.path || '',
-				address.house_number || '',
-			]
+			city: firstAddressValue(address, ['province', 'state', 'city', 'town', 'village']),
+			district: firstAddressValue(address, [
+				'city_district',
+				'district',
+				'county',
+				'town',
+				'municipality',
+				'state_district',
+				'borough',
+			]),
+			neighborhood: firstAddressValue(address, ['neighbourhood', 'suburb', 'quarter', 'city_block', 'residential']),
+			extraAddress: [street, houseNumber]
 				.filter(Boolean)
 				.join(' ')
 				.trim(),

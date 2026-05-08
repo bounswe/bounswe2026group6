@@ -54,6 +54,7 @@ import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
+import com.neph.ui.map.residentialMapPickerFeedbackMessage
 import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
@@ -187,18 +188,11 @@ fun EditProfileScreen(
                     neighborhood = update.neighborhood,
                     extraAddress = update.extraAddress
                 )
-                mapActionInfo = when {
-                    reverseLocation == null ->
-                        "Could not resolve selected coordinates. You can continue with manual location entry."
-                    update.isMeaningfulMapping ->
-                        "Selected location applied."
-                    else ->
-                        "Selected coordinates were detected. Please verify the location fields manually."
-                }
+                mapActionInfo = residentialMapPickerFeedbackMessage(reverseLocation, update)
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                mapActionInfo = "Could not resolve selected coordinates. You can continue with manual location entry."
+                mapActionInfo = "Could not resolve the selected point. You can still enter the address manually."
             } finally {
                 mapPickerSelection = selection
                 mapPickerLoading = false

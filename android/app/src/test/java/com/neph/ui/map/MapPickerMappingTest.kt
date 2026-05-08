@@ -47,6 +47,111 @@ class MapPickerMappingTest {
     }
 
     @Test
+    fun resolveMapPickerLocationUpdate_matchesTurkishLabelsWithAccentsAndSuffixes() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "",
+            currentCity = "",
+            currentDistrict = "",
+            currentNeighborhood = "",
+            currentExtraAddress = "",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = "Turkey",
+                city = "İstanbul",
+                district = "Besiktas Belediyesi",
+                neighborhood = "Balmumcu Mh.",
+                extraAddress = "Aytekin Kotil Caddesi 12"
+            ),
+            locations = locationData
+        )
+
+        assertEquals("tr", result.country)
+        assertEquals("istanbul", result.city)
+        assertEquals("besiktas", result.district)
+        assertEquals("balmumcu", result.neighborhood)
+        assertEquals("Aytekin Kotil Caddesi 12", result.extraAddress)
+        assertEquals(true, result.isMeaningfulMapping)
+    }
+
+    @Test
+    fun resolveMapPickerLocationUpdate_mapsNeighborhoodMahallesiSuffix() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "",
+            currentCity = "",
+            currentDistrict = "",
+            currentNeighborhood = "",
+            currentExtraAddress = "",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = null,
+                city = "Istanbul",
+                district = "Beşiktaş İlçesi",
+                neighborhood = "Balmumcu Mahallesi",
+                extraAddress = null
+            ),
+            locations = locationData
+        )
+
+        assertEquals("istanbul", result.city)
+        assertEquals("besiktas", result.district)
+        assertEquals("balmumcu", result.neighborhood)
+    }
+
+    @Test
+    fun resolveMapPickerLocationUpdate_keepsUsefulPartialCityAndDistrictWhenNeighborhoodMissing() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "",
+            currentCity = "",
+            currentDistrict = "",
+            currentNeighborhood = "bostanci",
+            currentExtraAddress = "",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = "Turkey",
+                city = "Istanbul",
+                district = "Besiktas",
+                neighborhood = "Unknown Mahallesi",
+                extraAddress = "Aytekin Kotil Caddesi 12"
+            ),
+            locations = locationData
+        )
+
+        assertEquals("tr", result.country)
+        assertEquals("istanbul", result.city)
+        assertEquals("besiktas", result.district)
+        assertEquals("", result.neighborhood)
+        assertEquals("Aytekin Kotil Caddesi 12", result.extraAddress)
+        assertEquals(true, result.hasStructuredMatch)
+        assertEquals(false, result.isMeaningfulMapping)
+    }
+
+    @Test
+    fun resolveMapPickerLocationUpdate_keepsUsefulPartialCityWhenDistrictMissing() {
+        val result = resolveMapPickerLocationUpdate(
+            currentCountry = "tr",
+            currentCity = "ankara",
+            currentDistrict = "cankaya",
+            currentNeighborhood = "anittepe",
+            currentExtraAddress = "Old Address",
+            reverseLocation = RequestHelpReverseLocation(
+                countryCode = "TR",
+                country = "Turkey",
+                city = "Istanbul",
+                district = "Unknown District",
+                neighborhood = "Unknown Neighborhood",
+                extraAddress = "New Address"
+            ),
+            locations = locationData
+        )
+
+        assertEquals("tr", result.country)
+        assertEquals("istanbul", result.city)
+        assertEquals("", result.district)
+        assertEquals("", result.neighborhood)
+        assertEquals("New Address", result.extraAddress)
+    }
+
+    @Test
     fun resolveMapPickerLocationUpdate_mapsCountryAndCityAndClearsDependentOnCityChange() {
         val result = resolveMapPickerLocationUpdate(
             currentCountry = "tr",

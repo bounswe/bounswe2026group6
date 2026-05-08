@@ -79,6 +79,7 @@ import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
 import com.neph.ui.map.formatMapCoordinate
+import com.neph.ui.map.requestHelpMapPickerFeedbackMessage
 import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
@@ -711,7 +712,7 @@ fun RequestHelpScreen(
                         locations = availableLocationData
                     )
                 }
-                val mappedUpdate = reverseUpdate?.takeIf { it.country.isNotBlank() && it.city.isNotBlank() && it.district.isNotBlank() }
+                val mappedUpdate = reverseUpdate?.takeIf { it.hasStructuredMatch }
                 if (mappedUpdate == null) {
                     formState = formState.copy(
                         country = "",
@@ -726,7 +727,7 @@ fun RequestHelpScreen(
                         coordinateAccuracyMeters = null,
                         locationWasManuallyChanged = false
                     )
-                    mapActionMessage = "Could not resolve selected coordinates. You can continue with manual location entry."
+                    mapActionMessage = requestHelpMapPickerFeedbackMessage(reverseLocation, mappedUpdate)
                     return@launch
                 }
                 formState = formState.copy(
@@ -742,16 +743,11 @@ fun RequestHelpScreen(
                     coordinateAccuracyMeters = null,
                     locationWasManuallyChanged = false
                 )
-                mapActionMessage = when {
-                    mappedUpdate.isMeaningfulMapping ->
-                        "Selected location applied."
-                    else ->
-                        "Selected coordinates were detected. Please verify the location fields manually."
-                }
+                mapActionMessage = requestHelpMapPickerFeedbackMessage(reverseLocation, mappedUpdate)
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                mapActionMessage = "Could not resolve selected coordinates. You can continue with manual location entry."
+                mapActionMessage = "Could not resolve the selected point. You can still enter the emergency address manually."
             } finally {
                 mapPickerSelection = selection
                 mapPickerLoading = false
