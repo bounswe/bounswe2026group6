@@ -24,6 +24,9 @@ class GatheringAreasRepositoryTest {
               "meta": {
                 "requestedLimit": 10,
                 "returnedCount": 3,
+                "providerErrorCode": "OVERPASS_TIMEOUT",
+                "stale": true,
+                "fallbackReason": "Provider temporarily unavailable",
                 "categories": [
                   { "key": "assembly_point", "label": "Assembly Point" },
                   { "key": "shelter", "label": "Shelter" },
@@ -81,6 +84,9 @@ class GatheringAreasRepositoryTest {
         assertEquals(1500, parsed.radiusMeters)
         assertEquals("overpass", parsed.source)
         assertEquals(10, parsed.requestedLimit)
+        assertEquals("OVERPASS_TIMEOUT", parsed.providerErrorCode)
+        assertEquals(true, parsed.stale)
+        assertEquals("Provider temporarily unavailable", parsed.fallbackReason)
         assertEquals(3, parsed.categories.size)
 
         assertEquals("node-1", parsed.areas[0].id)

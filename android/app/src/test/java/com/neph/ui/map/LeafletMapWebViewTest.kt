@@ -157,6 +157,31 @@ class LeafletMapWebViewTest {
     }
 
     @Test
+    fun shouldFetchLeafletViewport_skipsSameViewportUnlessManualRefresh() {
+        assertFalse(
+            shouldFetchLeafletViewport(
+                viewportKey = "29.000,40.900,29.100,41.100",
+                lastFetchedViewportKey = "29.000,40.900,29.100,41.100",
+                manualRefresh = false
+            )
+        )
+        assertTrue(
+            shouldFetchLeafletViewport(
+                viewportKey = "29.000,40.900,29.100,41.100",
+                lastFetchedViewportKey = "29.000,40.900,29.100,41.100",
+                manualRefresh = true
+            )
+        )
+        assertTrue(
+            shouldFetchLeafletViewport(
+                viewportKey = "29.001,40.900,29.101,41.100",
+                lastFetchedViewportKey = "29.000,40.900,29.100,41.100",
+                manualRefresh = false
+            )
+        )
+    }
+
+    @Test
     fun buildLeafletDocumentHead_allowsLeafletOriginWithoutQuotedUrlSources() {
         val head = buildLeafletDocumentHead()
 
@@ -167,6 +192,9 @@ class LeafletMapWebViewTest {
         assertFalse(head.contains("navigate-to"))
         assertTrue(head.contains("min-height: ${LeafletMapFallbackHeightCssPx}px"))
         assertTrue(head.contains("height: ${LeafletMapFallbackHeightCssPx}px"))
+        assertTrue(head.contains("touch-action: none;"))
+        assertTrue(head.contains("overscroll-behavior: contain;"))
+        assertTrue(head.contains("user-select: none;"))
     }
 
     @Test
