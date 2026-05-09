@@ -1,12 +1,14 @@
 package com.neph.features.gatheringareas.presentation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -20,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +48,7 @@ import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.LeafletMapViewport
+import com.neph.ui.map.MapLocationControl
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.effectiveLeafletViewportKey
 import com.neph.ui.map.isLeafletMapInitializedForInstance
@@ -322,6 +326,14 @@ fun GatheringAreasScreen(
         }
     }
 
+    fun showCurrentLocationOnMap() {
+        if (locationPermissionRequester.refreshPermissionState()) {
+            requestCurrentLocationAndRefresh()
+        } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
     fun openAreaInMap(item: GatheringAreaItem) {
         val opened = NephMapIntegration.openCoordinates(
             context = context,
@@ -426,18 +438,6 @@ fun GatheringAreasScreen(
                     )
 
                     SecondaryButton(
-                        text = "Use Current Location",
-                        onClick = {
-                            if (locationPermissionRequester.refreshPermissionState()) {
-                                requestCurrentLocationAndRefresh()
-                            } else {
-                                locationPermissionRequester.requestPermission()
-                            }
-                        },
-                        enabled = !loading
-                    )
-
-                    SecondaryButton(
                         text = "Refresh Visible Area",
                         onClick = {
                             val viewport = currentViewport
@@ -471,6 +471,8 @@ fun GatheringAreasScreen(
                 showCenterMarker = false,
                 loadingResources = loading,
                 updatingResources = backgroundUpdating,
+                onShowCurrentLocation = ::showCurrentLocationOnMap,
+                showCurrentLocationEnabled = !loading,
                 onViewportChanged = ::handleViewportChanged
             )
 
@@ -688,7 +690,9 @@ private fun GatheringAreasMapCard(
     mapResetToken: Int = 0,
     showCenterMarker: Boolean = true,
     loadingResources: Boolean = false,
-    updatingResources: Boolean = false
+    updatingResources: Boolean = false,
+    onShowCurrentLocation: (() -> Unit)? = null,
+    showCurrentLocationEnabled: Boolean = true
 ) {
     val spacing = LocalNephSpacing.current
     val initializedInstanceIdState = remember { mutableStateOf<String?>(null) }
@@ -777,47 +781,58 @@ private fun GatheringAreasMapCard(
                 }
             )
 
-            LeafletMarkerMap(
-                mapInstanceId = mapInstanceId,
-                currentMapInstanceId = { currentMapInstanceIdState.value },
-                centerLatitude = mapCenterLatitude,
-                centerLongitude = mapCenterLongitude,
-                markers = markers,
-                selectedMarkerId = selectedAreaId,
-                mapHeightCssPx = GatheringAreasMapHeightCssPx,
-                zoom = mapZoom,
-                showCenterMarker = showCenterMarker,
-                fitBoundsToMarkers = false,
-                onMarkerSelected = { markerInstanceId, markerId ->
-                    if (markerInstanceId == currentMapInstanceIdState.value) {
-                        onAreaSelected(markerId)
-                    }
-                },
-                onMapReady = { initializedInstanceId, source ->
-                    markMapAlive(initializedInstanceId, source)
-                },
-                onMapError = { errorInstanceId, message ->
-                    if (
-                        shouldApplyLeafletMapError(
-                            activeInstanceId = errorInstanceId,
-                            currentInstanceId = currentMapInstanceIdState.value,
-                            tileLoadedInstanceId = tileLoadedInstanceIdState.value,
-                            errorMessage = message
-                        )
-                    ) {
-                        errorInstanceIdState.value = errorInstanceId
-                        mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
-                    }
-                },
-                onViewportChanged = { viewportInstanceId, viewport ->
-                    if (viewportInstanceId == currentMapInstanceIdState.value) {
-                        onViewportChanged(viewport)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(GatheringAreasMapHeightCssPx.dp)
-            )
+            Box {
+                LeafletMarkerMap(
+                    mapInstanceId = mapInstanceId,
+                    currentMapInstanceId = { currentMapInstanceIdState.value },
+                    centerLatitude = mapCenterLatitude,
+                    centerLongitude = mapCenterLongitude,
+                    markers = markers,
+                    selectedMarkerId = selectedAreaId,
+                    mapHeightCssPx = GatheringAreasMapHeightCssPx,
+                    zoom = mapZoom,
+                    showCenterMarker = showCenterMarker,
+                    fitBoundsToMarkers = false,
+                    onMarkerSelected = { markerInstanceId, markerId ->
+                        if (markerInstanceId == currentMapInstanceIdState.value) {
+                            onAreaSelected(markerId)
+                        }
+                    },
+                    onMapReady = { initializedInstanceId, source ->
+                        markMapAlive(initializedInstanceId, source)
+                    },
+                    onMapError = { errorInstanceId, message ->
+                        if (
+                            shouldApplyLeafletMapError(
+                                activeInstanceId = errorInstanceId,
+                                currentInstanceId = currentMapInstanceIdState.value,
+                                tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                                errorMessage = message
+                            )
+                        ) {
+                            errorInstanceIdState.value = errorInstanceId
+                            mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                        }
+                    },
+                    onViewportChanged = { viewportInstanceId, viewport ->
+                        if (viewportInstanceId == currentMapInstanceIdState.value) {
+                            onViewportChanged(viewport)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(GatheringAreasMapHeightCssPx.dp)
+                )
+                onShowCurrentLocation?.let { showCurrentLocation ->
+                    MapLocationControl(
+                        onClick = showCurrentLocation,
+                        enabled = showCurrentLocationEnabled,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(spacing.sm)
+                    )
+                }
+            }
 
             if (!activeMapInitialized && activeMapError.isBlank()) {
                 HelperText(text = "Loading map...")

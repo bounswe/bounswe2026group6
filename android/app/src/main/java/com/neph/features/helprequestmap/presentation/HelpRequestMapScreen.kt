@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
@@ -53,6 +54,7 @@ import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMapViewport
 import com.neph.ui.map.LeafletMarkerMap
+import com.neph.ui.map.MapLocationControl
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.effectiveLeafletViewportKey
 import com.neph.ui.map.isLeafletMapInitializedForInstance
@@ -392,6 +394,14 @@ fun HelpRequestMapScreen(
         }
     }
 
+    fun showCurrentLocationOnMap() {
+        if (locationPermissionRequester.refreshPermissionState()) {
+            requestCurrentLocationAndRefresh()
+        } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
     val visibleRequests = filterVisibleRequests(requests, selectedTypes)
 
     LaunchedEffect(visibleRequests, selectedRequestId) {
@@ -461,18 +471,6 @@ fun HelpRequestMapScreen(
                     )
 
                     SecondaryButton(
-                        text = "Use Current Location",
-                        onClick = {
-                            if (locationPermissionRequester.refreshPermissionState()) {
-                                requestCurrentLocationAndRefresh()
-                            } else {
-                                locationPermissionRequester.requestPermission()
-                            }
-                        },
-                        enabled = !loading
-                    )
-
-                    SecondaryButton(
                         text = "Refresh Help Request Map",
                         onClick = { queueViewportRefresh() },
                         enabled = !loading
@@ -491,6 +489,8 @@ fun HelpRequestMapScreen(
                     mapCenterLongitude = mapCenterLongitude,
                     mapZoom = mapZoom,
                     mapResetToken = mapResetNonce,
+                    onShowCurrentLocation = ::showCurrentLocationOnMap,
+                    showCurrentLocationEnabled = !loading,
                     onViewportChanged = ::handleViewportChanged,
                     onSelectRequest = { selectedRequestId = it }
                 )
@@ -860,6 +860,8 @@ private fun CrisisRequestMapPanel(
     mapCenterLongitude: Double = TurkeyOverviewLongitude,
     mapZoom: Int = TurkeyOverviewZoom,
     mapResetToken: Int = 0,
+    onShowCurrentLocation: (() -> Unit)? = null,
+    showCurrentLocationEnabled: Boolean = true,
     onViewportChanged: (LeafletMapViewport) -> Unit,
     onSelectRequest: (String) -> Unit
 ) {
@@ -935,47 +937,58 @@ private fun CrisisRequestMapPanel(
             }
         )
 
-        LeafletMarkerMap(
-            mapInstanceId = mapInstanceId,
-            currentMapInstanceId = { currentMapInstanceIdState.value },
-            centerLatitude = mapCenterLatitude,
-            centerLongitude = mapCenterLongitude,
-            markers = markers,
-            selectedMarkerId = selectedRequestId,
-            mapHeightCssPx = HelpRequestMapHeightCssPx,
-            zoom = mapZoom,
-            showCenterMarker = false,
-            fitBoundsToMarkers = false,
-            onMarkerSelected = { markerInstanceId, markerId ->
-                if (markerInstanceId == currentMapInstanceIdState.value) {
-                    onSelectRequest(markerId)
-                }
-            },
-            onMapReady = { initializedInstanceId, source ->
-                markMapAlive(initializedInstanceId, source)
-            },
-            onMapError = { errorInstanceId, message ->
-                if (
-                    shouldApplyLeafletMapError(
-                        activeInstanceId = errorInstanceId,
-                        currentInstanceId = currentMapInstanceIdState.value,
-                        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
-                        errorMessage = message
-                    )
-                ) {
-                    errorInstanceIdState.value = errorInstanceId
-                    mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
-                }
-            },
-            onViewportChanged = { viewportInstanceId, viewport ->
-                if (viewportInstanceId == currentMapInstanceIdState.value) {
-                    onViewportChanged(viewport)
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(HelpRequestMapHeightCssPx.dp)
-        )
+        Box {
+            LeafletMarkerMap(
+                mapInstanceId = mapInstanceId,
+                currentMapInstanceId = { currentMapInstanceIdState.value },
+                centerLatitude = mapCenterLatitude,
+                centerLongitude = mapCenterLongitude,
+                markers = markers,
+                selectedMarkerId = selectedRequestId,
+                mapHeightCssPx = HelpRequestMapHeightCssPx,
+                zoom = mapZoom,
+                showCenterMarker = false,
+                fitBoundsToMarkers = false,
+                onMarkerSelected = { markerInstanceId, markerId ->
+                    if (markerInstanceId == currentMapInstanceIdState.value) {
+                        onSelectRequest(markerId)
+                    }
+                },
+                onMapReady = { initializedInstanceId, source ->
+                    markMapAlive(initializedInstanceId, source)
+                },
+                onMapError = { errorInstanceId, message ->
+                    if (
+                        shouldApplyLeafletMapError(
+                            activeInstanceId = errorInstanceId,
+                            currentInstanceId = currentMapInstanceIdState.value,
+                            tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                            errorMessage = message
+                        )
+                    ) {
+                        errorInstanceIdState.value = errorInstanceId
+                        mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                    }
+                },
+                onViewportChanged = { viewportInstanceId, viewport ->
+                    if (viewportInstanceId == currentMapInstanceIdState.value) {
+                        onViewportChanged(viewport)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(HelpRequestMapHeightCssPx.dp)
+            )
+            onShowCurrentLocation?.let { showCurrentLocation ->
+                MapLocationControl(
+                    onClick = showCurrentLocation,
+                    enabled = showCurrentLocationEnabled,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(spacing.sm)
+                )
+            }
+        }
 
         if (!activeMapInitialized && activeMapError.isBlank()) {
             HelperText(text = "Loading map...")
