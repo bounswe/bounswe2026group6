@@ -3,17 +3,15 @@ package com.neph.features.helprequestmap.presentation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,17 +30,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.helprequestmap.data.ActiveHelpRequestMapItem
@@ -55,11 +46,29 @@ import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
+import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
+import com.neph.ui.map.LeafletMapMarker
+import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.NephMapIntegration
+import com.neph.ui.map.isLeafletMapInitializedForInstance
+import com.neph.ui.map.isLeafletTileLoadedSignal
+import com.neph.ui.map.leafletMapErrorForInstance
+import com.neph.ui.map.logMapDebug
+import com.neph.ui.map.newLeafletMapInstanceId
+import com.neph.ui.map.shouldApplyLeafletMapError
+import com.neph.ui.map.shouldApplyLeafletMapTimeout
+import com.neph.ui.map.shouldClearLeafletMapErrorForSignal
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val HelpRequestMapHeightCssPx = 280
+private const val TurkeyOverviewLatitude = 39.0
+private const val TurkeyOverviewLongitude = 35.0
+private const val TurkeyOverviewZoom = 5
 
 private val RequestTypeFilterOrder = listOf(
     CrisisRequestType.FIRST_AID,
@@ -89,6 +98,63 @@ internal fun reconcileSelectedRequestId(
     return selectedRequestId.takeIf { selected ->
         visibleRequests.any { it.requestId == selected }
     }
+}
+
+internal data class HelpRequestMapCenter(
+    val latitude: Double,
+    val longitude: Double
+)
+
+internal data class HelpRequestMapInstanceKey(
+    val centerLatitude: Double,
+    val centerLongitude: Double,
+    val markers: List<LeafletMapMarker>
+)
+
+internal fun helpRequestMapCenter(
+    requests: List<ActiveHelpRequestMapItem>
+): HelpRequestMapCenter {
+    if (requests.isEmpty()) {
+        return HelpRequestMapCenter(
+            latitude = TurkeyOverviewLatitude,
+            longitude = TurkeyOverviewLongitude
+        )
+    }
+
+    return HelpRequestMapCenter(
+        latitude = requests.sumOf { it.latitude } / requests.size,
+        longitude = requests.sumOf { it.longitude } / requests.size
+    )
+}
+
+internal fun helpRequestLeafletMarkers(
+    requests: List<ActiveHelpRequestMapItem>
+): List<LeafletMapMarker> {
+    return requests.map { request ->
+        val style = requestMarkerStyle(request.type)
+        val subtitle = "Priority: ${ActiveHelpRequestsRepository.formatPriority(request.priorityLevel)} - " +
+            "${request.district}, ${request.city}"
+        LeafletMapMarker(
+            id = request.requestId,
+            latitude = request.latitude,
+            longitude = request.longitude,
+            title = request.typeLabel,
+            subtitle = subtitle,
+            strokeColorHex = style.strokeHex,
+            fillColorHex = style.fillHex
+        )
+    }
+}
+
+internal fun helpRequestMapInstanceKey(
+    requests: List<ActiveHelpRequestMapItem>
+): HelpRequestMapInstanceKey {
+    val center = helpRequestMapCenter(requests)
+    return HelpRequestMapInstanceKey(
+        centerLatitude = center.latitude,
+        centerLongitude = center.longitude,
+        markers = helpRequestLeafletMarkers(requests)
+    )
 }
 
 @Composable
@@ -295,6 +361,8 @@ fun HelpRequestMapScreen(
                                     onOpenMap = { openRequestInMap(selectedRequest) },
                                     onGetDirections = { openRequestDirections(selectedRequest) }
                                 )
+                            } else {
+                                HelperText(text = "Tap a request marker or list item to see details.")
                             }
                         }
                     }
@@ -346,6 +414,7 @@ fun HelpRequestMapScreen(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun RequestTypeFiltersCard(
     selectedTypes: Set<CrisisRequestType>,
     onToggleType: (CrisisRequestType) -> Unit,
@@ -372,13 +441,13 @@ private fun RequestTypeFiltersCard(
             )
         }
 
-        androidx.compose.foundation.layout.FlowRow(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalArrangement = Arrangement.spacedBy(spacing.sm)
         ) {
             RequestTypeFilterOrder.forEach { type ->
-                val style = markerStyle(type)
+                val style = requestMarkerStyle(type)
                 val selected = type in selectedTypes
                 FilterChip(
                     selected = selected,
@@ -392,7 +461,7 @@ private fun RequestTypeFiltersCard(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(RoundedCornerShape(999.dp))
-                                    .background(style.color)
+                                    .background(style.dotColor)
                             )
                             Text(text = ActiveHelpRequestsRepository.labelForType(type))
                         }
@@ -411,13 +480,13 @@ private fun RequestTypeFiltersCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.SemiBold
         )
-        androidx.compose.foundation.layout.FlowRow(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.sm)
         ) {
             RequestTypeFilterOrder.forEach { type ->
-                val style = markerStyle(type)
+                val style = requestMarkerStyle(type)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                     verticalAlignment = Alignment.CenterVertically
@@ -426,7 +495,7 @@ private fun RequestTypeFiltersCard(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(RoundedCornerShape(999.dp))
-                            .background(style.color)
+                            .background(style.dotColor)
                     )
                     Text(
                         text = ActiveHelpRequestsRepository.labelForType(type),
@@ -558,244 +627,148 @@ private fun CrisisRequestMapPanel(
     onSelectRequest: (String) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
-    var zoom by remember { mutableStateOf(1f) }
-    var panX by remember { mutableStateOf(0f) }
-    var panY by remember { mutableStateOf(0f) }
-    val minLatitude = requests.minOfOrNull { it.latitude } ?: 0.0
-    val maxLatitude = requests.maxOfOrNull { it.latitude } ?: minLatitude
-    val minLongitude = requests.minOfOrNull { it.longitude } ?: 0.0
-    val maxLongitude = requests.maxOfOrNull { it.longitude } ?: minLongitude
-    val latSpan = (maxLatitude - minLatitude).takeIf { it > 0.000001 } ?: 0.01
-    val lonSpan = (maxLongitude - minLongitude).takeIf { it > 0.000001 } ?: 0.01
+    val initializedInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
+    var mapError by remember { mutableStateOf("") }
+    val mapInstanceKey = helpRequestMapInstanceKey(requests)
+    val mapInstanceId = remember(mapInstanceKey) {
+        newLeafletMapInstanceId()
+    }
+    val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
+    currentMapInstanceIdState.value = mapInstanceId
+    val activeMapInitialized = isLeafletMapInitializedForInstance(
+        activeInstanceId = mapInstanceId,
+        initializedInstanceId = initializedInstanceIdState.value
+    )
+    val activeMapError = leafletMapErrorForInstance(
+        activeInstanceId = mapInstanceId,
+        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+        errorInstanceId = errorInstanceIdState.value,
+        errorMessage = mapError
+    )
     val selectedRequest = requests.firstOrNull { it.requestId == selectedRequestId }
-    val density = LocalDensity.current
+    val markers = mapInstanceKey.markers
+
+    fun markMapAlive(instanceId: String, source: String) {
+        if (instanceId == currentMapInstanceIdState.value) {
+            logMapDebug("native HelpRequestMap initialized source=$source instance=$instanceId")
+            initializedInstanceIdState.value = instanceId
+            if (isLeafletTileLoadedSignal(source)) {
+                tileLoadedInstanceIdState.value = instanceId
+            }
+            if (shouldClearLeafletMapErrorForSignal(source, mapError)) {
+                errorInstanceIdState.value = null
+                mapError = ""
+            }
+        } else {
+            logMapDebug(
+                "native HelpRequestMap initialized ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
+            )
+        }
+    }
+
+    LaunchedEffect(mapInstanceId) {
+        errorInstanceIdState.value = null
+        mapError = ""
+        delay(LeafletMapInitializationTimeoutMillis)
+        if (shouldApplyLeafletMapTimeout(
+                activeInstanceId = mapInstanceId,
+                currentInstanceId = currentMapInstanceIdState.value,
+                initializedInstanceId = initializedInstanceIdState.value,
+                errorInstanceId = errorInstanceIdState.value
+            )
+        ) {
+            logMapDebug("native HelpRequestMap timeout applied instance=$mapInstanceId")
+            errorInstanceIdState.value = mapInstanceId
+            mapError = LeafletMapInitializationTimeoutMessage
+        } else {
+            logMapDebug(
+                "native HelpRequestMap timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} initialized=${initializedInstanceIdState.value} error=${errorInstanceIdState.value}"
+            )
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
         SectionHeader(
-            title = "Live Crisis Map",
-            subtitle = "Pinch or drag the map, then tap a marker to see request details."
+            title = "Live Help Request Map",
+            subtitle = if (markers.isEmpty()) {
+                "No request markers match the selected filters."
+            } else {
+                "Tap a marker to preview that help request."
+            }
         )
 
-        BoxWithConstraints(
+        LeafletMarkerMap(
+            mapInstanceId = mapInstanceId,
+            currentMapInstanceId = { currentMapInstanceIdState.value },
+            centerLatitude = mapInstanceKey.centerLatitude,
+            centerLongitude = mapInstanceKey.centerLongitude,
+            markers = markers,
+            selectedMarkerId = selectedRequestId,
+            mapHeightCssPx = HelpRequestMapHeightCssPx,
+            zoom = if (markers.isEmpty()) TurkeyOverviewZoom else 13,
+            showCenterMarker = false,
+            onMarkerSelected = { markerInstanceId, markerId ->
+                if (markerInstanceId == currentMapInstanceIdState.value) {
+                    onSelectRequest(markerId)
+                }
+            },
+            onMapReady = { initializedInstanceId, source ->
+                markMapAlive(initializedInstanceId, source)
+            },
+            onMapError = { errorInstanceId, message ->
+                if (
+                    shouldApplyLeafletMapError(
+                        activeInstanceId = errorInstanceId,
+                        currentInstanceId = currentMapInstanceIdState.value,
+                        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                        errorMessage = message
+                    )
+                ) {
+                    errorInstanceIdState.value = errorInstanceId
+                    mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.18f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.surfaceVariant,
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                        )
-                    )
-                )
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp))
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, gestureZoom, _ ->
-                        val nextZoom = (zoom * gestureZoom).coerceIn(1f, 2.6f)
-                        zoom = nextZoom
-                        panX = (panX + pan.x).coerceIn(-220f * nextZoom, 220f * nextZoom)
-                        panY = (panY + pan.y).coerceIn(-220f * nextZoom, 220f * nextZoom)
-                    }
-                }
-        ) {
-            val availableHeight = maxHeight
-            val availableWidth = maxWidth
+                .height(HelpRequestMapHeightCssPx.dp)
+        )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(availableHeight)
-                    .graphicsLayer {
-                        scaleX = zoom
-                        scaleY = zoom
-                        translationX = panX
-                        translationY = panY
-                    }
-            ) {
-                MapRoad(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                0,
-                                with(density) { (availableHeight * 0.22f).roundToPx() }
-                            )
-                        }
-                        .fillMaxWidth()
-                        .height(12.dp)
-                )
-                MapRoad(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                0,
-                                with(density) { (availableHeight * 0.58f).roundToPx() }
-                            )
-                        }
-                        .fillMaxWidth()
-                        .height(9.dp)
-                )
-                MapRoad(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                with(density) { (availableWidth * 0.30f).roundToPx() },
-                                0
-                            )
-                        }
-                        .size(11.dp, availableHeight)
-                )
-                MapRoad(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                with(density) { (availableWidth * 0.70f).roundToPx() },
-                                0
-                            )
-                        }
-                        .size(8.dp, availableHeight)
-                )
-                MapNeighborhoodPatch(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                with(density) { (availableWidth * 0.08f).roundToPx() },
-                                with(density) { (availableHeight * 0.10f).roundToPx() }
-                            )
-                        }
-                        .size(width = availableWidth * 0.24f, height = availableHeight * 0.18f)
-                )
-                MapNeighborhoodPatch(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                with(density) { (availableWidth * 0.58f).roundToPx() },
-                                with(density) { (availableHeight * 0.68f).roundToPx() }
-                            )
-                        }
-                        .size(width = availableWidth * 0.28f, height = availableHeight * 0.16f)
-                )
+        if (!activeMapInitialized && activeMapError.isBlank()) {
+            HelperText(text = "Loading map...")
+        }
 
-                requests.forEach { item ->
-                    val xFraction = ((item.longitude - minLongitude) / lonSpan).coerceIn(0.08, 0.92)
-                    val yFraction = (1.0 - ((item.latitude - minLatitude) / latSpan)).coerceIn(0.10, 0.88)
-                    val x = with(density) {
-                        (availableWidth * xFraction.toFloat()).roundToPx()
-                    } - 21
-                    val y = with(density) {
-                        (availableHeight * yFraction.toFloat()).roundToPx()
-                    } - 42
+        if (activeMapError.isNotBlank()) {
+            HelperText(text = activeMapError)
+        }
 
-                    MapMarker(
-                        item = item,
-                        selected = item.requestId == selectedRequestId,
-                        modifier = Modifier.offset {
-                            IntOffset(x, y)
-                        },
-                        onClick = { onSelectRequest(item.requestId) }
-                    )
-                }
-            }
+        if (markers.isEmpty()) {
+            HelperText(text = "No help request markers are available for the selected filters.")
+        }
 
-            if (selectedRequest != null) {
-                MapTooltip(
-                    item = selectedRequest,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(spacing.md)
-                )
-            }
+        selectedRequest?.let { request ->
+            HelpRequestMapSelectionPreview(item = request)
         }
     }
 }
 
 @Composable
-private fun MapRoad(modifier: Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.70f), RoundedCornerShape(999.dp))
-    )
-}
-
-@Composable
-private fun MapNeighborhoodPatch(modifier: Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
-    )
-}
-
-@Composable
-private fun MapTooltip(
-    item: ActiveHelpRequestMapItem,
-    modifier: Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        Text(
-            text = item.typeLabel,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            text = "Priority: ${ActiveHelpRequestsRepository.formatPriority(item.priorityLevel)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = priorityColor(item.priorityLevel)
-        )
-        Text(
-            text = "${item.district}, ${item.city}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun MapMarker(
-    item: ActiveHelpRequestMapItem,
-    selected: Boolean,
-    modifier: Modifier,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .semantics {
-                contentDescription = "Crisis marker ${item.typeLabel}"
-            }
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        PinGlyph(type = item.type, selected = selected)
-        Box(
-            modifier = Modifier
-                .padding(top = 3.dp)
-                .size(width = 16.dp, height = 5.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color.Black.copy(alpha = if (selected) 0.30f else 0.18f))
-        )
-    }
-}
-
-@Composable
 private fun PinGlyph(type: CrisisRequestType, selected: Boolean = false) {
-    val style = markerStyle(type)
+    val style = requestMarkerStyle(type)
 
     Box(
         modifier = Modifier
             .size(if (selected) 40.dp else 34.dp)
-            .background(style.color, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 5.dp))
+            .background(
+                color = style.dotColor,
+                shape = RoundedCornerShape(
+                    topStart = 14.dp,
+                    topEnd = 14.dp,
+                    bottomEnd = 14.dp,
+                    bottomStart = 5.dp
+                )
+            )
             .border(
                 width = if (selected) 3.dp else 2.dp,
                 color = if (selected) MaterialTheme.colorScheme.onSurface else Color.White,
@@ -812,18 +785,46 @@ private fun PinGlyph(type: CrisisRequestType, selected: Boolean = false) {
     }
 }
 
-private data class MarkerStyle(
-    val color: Color,
+@Composable
+private fun HelpRequestMapSelectionPreview(
+    item: ActiveHelpRequestMapItem
+) {
+    val spacing = LocalNephSpacing.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Text(
+            text = item.typeLabel,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "Priority: ${ActiveHelpRequestsRepository.formatPriority(item.priorityLevel)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = priorityColor(item.priorityLevel)
+        )
+        Text(
+            text = "${item.district}, ${item.city}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+internal data class RequestMarkerStyle(
+    val strokeHex: String,
+    val fillHex: String,
+    val dotColor: Color,
     val glyph: String
 )
 
-private fun markerStyle(type: CrisisRequestType): MarkerStyle {
+internal fun requestMarkerStyle(type: CrisisRequestType): RequestMarkerStyle {
     return when (type) {
-        CrisisRequestType.SHELTER -> MarkerStyle(Color(0xFF3B66D8), "SH")
-        CrisisRequestType.FIRST_AID -> MarkerStyle(Color(0xFFD94141), "+")
-        CrisisRequestType.SEARCH_AND_RESCUE -> MarkerStyle(Color(0xFFF08C00), "SR")
-        CrisisRequestType.FOOD_WATER -> MarkerStyle(Color(0xFF2F9E67), "FW")
-        CrisisRequestType.OTHER -> MarkerStyle(Color(0xFF687280), "?")
+        CrisisRequestType.SHELTER -> RequestMarkerStyle("#1D4ED8", "#3B66D8", Color(0xFF3B66D8), "SH")
+        CrisisRequestType.FIRST_AID -> RequestMarkerStyle("#B42318", "#D94141", Color(0xFFD94141), "+")
+        CrisisRequestType.SEARCH_AND_RESCUE -> RequestMarkerStyle("#C2410C", "#F08C00", Color(0xFFF08C00), "SR")
+        CrisisRequestType.FOOD_WATER -> RequestMarkerStyle("#15803D", "#2F9E67", Color(0xFF2F9E67), "FW")
+        CrisisRequestType.OTHER -> RequestMarkerStyle("#4B5563", "#687280", Color(0xFF687280), "?")
     }
 }
 
