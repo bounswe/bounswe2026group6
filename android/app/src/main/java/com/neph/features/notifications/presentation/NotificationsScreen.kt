@@ -39,6 +39,9 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 @Composable
 fun NotificationsScreen(
@@ -240,7 +243,7 @@ fun NotificationsScreen(
 
                                 notification.createdAt?.let { createdAt ->
                                     Text(
-                                        text = createdAt,
+                                        text = formatNotificationTimestamp(createdAt),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -264,7 +267,6 @@ fun NotificationsScreen(
                                         )
                                         notifications = notifications + page.items
                                         unreadCount = page.unreadCount
-                                        NotificationsBadge.set(page.unreadCount)
                                         nextCursor = page.nextCursor
                                     } catch (error: Exception) {
                                         errorMessage = error.message ?: "Failed to load more notifications."
@@ -280,6 +282,42 @@ fun NotificationsScreen(
                 }
             }
         }
+    }
+}
+
+private fun formatNotificationTimestamp(raw: String): String {
+    val isoWithMillis = requireNotNull(NotificationIsoWithMillis.get())
+    val isoNoMillis = requireNotNull(NotificationIsoNoMillis.get())
+    val displayFormatter = requireNotNull(NotificationDisplayFormat.get())
+
+    val parsed = runCatching {
+        isoWithMillis.parse(raw)
+    }.recoverCatching {
+        isoNoMillis.parse(raw)
+    }.getOrNull() ?: return raw
+
+    return displayFormatter.format(parsed)
+}
+
+private val NotificationIsoWithMillis = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+    }
+}
+
+private val NotificationIsoNoMillis = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+    }
+}
+
+private val NotificationDisplayFormat = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue(): SimpleDateFormat {
+        return SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.US)
     }
 }
 
