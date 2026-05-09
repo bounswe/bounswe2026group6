@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import com.neph.core.database.NephDatabaseProvider
 import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.onboarding.data.MobileOnboardingStore
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.requesthelp.data.RequestHelpRepository
@@ -44,6 +45,7 @@ class NephE2ETestEnvironmentRule(
         ProfileRepository.resetForTesting()
         AvailabilityRepository.resetForTesting()
         RequestHelpRepository.resetForTesting()
+        runCatching { MobileOnboardingStore.resetForTesting() }
         runCatching { WorkManager.getInstance(context).cancelAllWork() }
         NephDatabaseProvider.resetForTesting(context)
 
@@ -51,7 +53,8 @@ class NephE2ETestEnvironmentRule(
             "neph_auth",
             "neph_profile",
             "neph_availability",
-            "neph_guest_help_requests"
+            "neph_guest_help_requests",
+            "neph_mobile_onboarding"
         ).forEach { prefsName ->
             runCatching {
                 context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
@@ -64,6 +67,17 @@ class NephE2ETestEnvironmentRule(
     }
 
     private fun grantRuntimePermissions(context: Context) {
+        listOf(
+            "android.permission.ACCESS_COARSE_LOCATION",
+            "android.permission.ACCESS_FINE_LOCATION"
+        ).forEach { permission ->
+            runCatching {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+                    "pm grant ${context.packageName} $permission"
+                ).close()
+            }
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             runCatching {
                 InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(

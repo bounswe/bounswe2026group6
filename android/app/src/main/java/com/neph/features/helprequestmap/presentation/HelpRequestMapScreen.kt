@@ -31,11 +31,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.helprequestmap.data.ActiveHelpRequestMapItem
+import com.neph.features.helprequestmap.data.ActiveHelpRequestsResult
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsRepository
 import com.neph.features.helprequestmap.data.CrisisRequestType
 import com.neph.navigation.Routes
@@ -193,6 +196,20 @@ fun HelpRequestMapScreen(
     var viewportRefreshNonce by remember { mutableStateOf(0) }
     var viewportRequestSerial by remember { mutableStateOf(0) }
 
+    fun applyRequestResult(result: ActiveHelpRequestsResult, viewportKey: String?) {
+        requests = result.requests
+        viewportKey?.let { lastFetchedViewportKey = it }
+        viewportRefreshNonce = 0
+        selectedRequestId = selectedRequestId
+            ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
+        infoMessage = when {
+            result.requests.isEmpty() -> ResourceEmptyMessage
+            result.skippedCount > 0 ->
+                "${result.skippedCount} inactive or malformed request entries were hidden."
+            else -> ""
+        }
+    }
+
     fun queueViewportRefresh() {
         val viewport = currentViewport
         if (!isLeafletViewportDiscoverable(viewport)) {
@@ -232,6 +249,31 @@ fun HelpRequestMapScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        loading = true
+        errorMessage = ""
+        infoMessage = ResourceLoadingMessage
+
+        try {
+            val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests()
+            applyRequestResult(result, viewportKey = null)
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (error: ApiException) {
+            errorMessage = error.message.ifBlank { ResourceErrorMessage }
+            requests = emptyList()
+            selectedRequestId = null
+            infoMessage = ""
+        } catch (_: Exception) {
+            errorMessage = ResourceErrorMessage
+            requests = emptyList()
+            selectedRequestId = null
+            infoMessage = ""
+        } finally {
+            loading = false
+        }
+    }
+
     LaunchedEffect(effectiveLeafletViewportKey(pendingViewport), viewportRefreshNonce) {
         val viewport = pendingViewport ?: return@LaunchedEffect
         if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
@@ -251,17 +293,7 @@ fun HelpRequestMapScreen(
                 bbox = leafletViewportBboxString(viewport)
             )
             if (requestSerial == viewportRequestSerial) {
-                requests = result.requests
-                lastFetchedViewportKey = viewportKey
-                viewportRefreshNonce = 0
-                selectedRequestId = selectedRequestId
-                    ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
-                infoMessage = when {
-                    result.requests.isEmpty() -> ResourceEmptyMessage
-                    result.skippedCount > 0 ->
-                        "${result.skippedCount} inactive or malformed request entries were hidden."
-                    else -> ""
-                }
+                applyRequestResult(result, viewportKey = viewportKey)
             }
         } catch (cancellationException: CancellationException) {
             throw cancellationException
@@ -710,7 +742,7 @@ private fun CrisisRequestMapPanel(
     val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
     var mapError by remember { mutableStateOf("") }
-    val mapInstanceKey = HelpRequestMapInstanceKey(TurkeyOverviewLatitude, TurkeyOverviewLongitude)
+    val mapInstanceKey = helpRequestMapInstanceKey(requests)
     val mapInstanceId = remember(mapInstanceKey) {
         newLeafletMapInstanceId()
     }
@@ -788,7 +820,7 @@ private fun CrisisRequestMapPanel(
             mapHeightCssPx = HelpRequestMapHeightCssPx,
             zoom = if (markers.isEmpty()) TurkeyOverviewZoom else 13,
             showCenterMarker = false,
-            fitBoundsToMarkers = false,
+            fitBoundsToMarkers = markers.isNotEmpty(),
             onMarkerSelected = { markerInstanceId, markerId ->
                 if (markerInstanceId == currentMapInstanceIdState.value) {
                     onSelectRequest(markerId)
@@ -849,6 +881,7 @@ private fun PinGlyph(type: CrisisRequestType, selected: Boolean = false) {
     Box(
         modifier = Modifier
             .size(if (selected) 40.dp else 34.dp)
+            .semantics { contentDescription = "Crisis marker: ${ActiveHelpRequestsRepository.labelForType(type)}" }
             .background(
                 color = style.dotColor,
                 shape = RoundedCornerShape(

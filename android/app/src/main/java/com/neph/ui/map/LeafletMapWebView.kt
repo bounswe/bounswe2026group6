@@ -15,6 +15,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -298,7 +299,7 @@ fun LeafletMarkerMap(
             mapHeightCssPx = mapHeightCssPx
         )
     }
-    val bridge = remember {
+    val bridge = remember(mapInstanceId) {
         LeafletMarkerMapBridge(
             currentMapInstanceId = { latestCurrentMapInstanceId() },
             onMarkerSelected = { instanceId, markerId -> latestOnMarkerSelected(instanceId, markerId) },
@@ -308,6 +309,10 @@ fun LeafletMarkerMap(
                 latestOnViewportChanged?.invoke(instanceId, viewport)
             }
         )
+    }
+
+    DisposableEffect(bridge) {
+        onDispose { bridge.dispose() }
     }
 
     LeafletMapWebView(
@@ -711,11 +716,14 @@ private class LeafletMarkerMapBridge(
     private val onViewportChanged: (String, LeafletMapViewport) -> Unit
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var disposed = false
     private var readyDeliveredInstanceId: String? = null
     private val aliveDeliveredSignals = mutableSetOf<String>()
 
     @JavascriptInterface
     fun onMarkerSelected(instanceId: String?, id: String?) {
+        if (disposed) return
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
@@ -727,6 +735,7 @@ private class LeafletMarkerMapBridge(
         val trimmed = id?.trim().orEmpty()
         if (trimmed.isBlank()) return
         mainHandler.post {
+            if (disposed) return@post
             if (incomingInstanceId != currentMapInstanceId()) {
                 logMapDebug(
                     "native onMarkerSelected ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
@@ -742,6 +751,7 @@ private class LeafletMarkerMapBridge(
 
     @JavascriptInterface
     fun onMapReady(instanceId: String?) {
+        if (disposed) return
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         logMapDebug(
@@ -763,6 +773,7 @@ private class LeafletMarkerMapBridge(
             readyDeliveredInstanceId = incomingInstanceId
         }
         mainHandler.post {
+            if (disposed) return@post
             val postedCurrentInstanceId = currentMapInstanceId()
             if (incomingInstanceId != postedCurrentInstanceId) {
                 logMapDebug(
@@ -779,6 +790,7 @@ private class LeafletMarkerMapBridge(
 
     @JavascriptInterface
     fun onMapAlive(instanceId: String?, source: String?) {
+        if (disposed) return
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         val readySource = source?.trim().orEmpty().ifBlank { "alive" }
@@ -795,12 +807,14 @@ private class LeafletMarkerMapBridge(
             return
         }
         mainHandler.post {
+            if (disposed) return@post
             dispatchMapAliveFromMain(incomingInstanceId, readySource)
         }
     }
 
     @JavascriptInterface
     fun onMapError(instanceId: String?, message: String?) {
+        if (disposed) return
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
@@ -811,6 +825,7 @@ private class LeafletMarkerMapBridge(
         }
         val trimmed = message?.trim().orEmpty()
         mainHandler.post {
+            if (disposed) return@post
             if (incomingInstanceId != currentMapInstanceId()) {
                 logMapDebug(
                     "native onMapError ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
@@ -835,6 +850,7 @@ private class LeafletMarkerMapBridge(
         heightKm: Double,
         widestVisibleDimensionKm: Double
     ) {
+        if (disposed) return
         val incomingInstanceId = instanceId.orEmpty()
         val currentInstanceId = currentMapInstanceId()
         if (incomingInstanceId != currentInstanceId) {
@@ -856,6 +872,7 @@ private class LeafletMarkerMapBridge(
             widestVisibleDimensionKm = widestVisibleDimensionKm
         )
         mainHandler.post {
+            if (disposed) return@post
             if (incomingInstanceId != currentMapInstanceId()) {
                 logMapDebug(
                     "native onViewportChanged ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
@@ -866,7 +883,13 @@ private class LeafletMarkerMapBridge(
         }
     }
 
+    fun dispose() {
+        disposed = true
+        mainHandler.removeCallbacksAndMessages(null)
+    }
+
     private fun dispatchMapAliveFromMain(instanceId: String, source: String) {
+        if (disposed) return
         val currentInstanceId = currentMapInstanceId()
         if (instanceId != currentInstanceId) {
             logMapDebug(
@@ -881,6 +904,7 @@ private class LeafletMarkerMapBridge(
     }
 
     private fun markAliveSignalForDelivery(instanceId: String, source: String): Boolean {
+        if (disposed) return false
         return synchronized(this) {
             aliveDeliveredSignals.add("$instanceId:$source")
         }

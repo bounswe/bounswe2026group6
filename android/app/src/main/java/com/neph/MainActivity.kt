@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,8 @@ import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsBadge
+import com.neph.features.onboarding.data.MobileOnboardingStore
+import com.neph.features.onboarding.presentation.MobileOnboardingTutorial
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.AppNavGraph
@@ -61,6 +64,7 @@ class MainActivity : ComponentActivity() {
         NephAppContext.initialize(applicationContext)
         NephDatabaseProvider.initialize(applicationContext)
         AuthSessionStore.initialize(applicationContext)
+        MobileOnboardingStore.initialize(applicationContext)
         ThemePreferenceStore.initialize(applicationContext)
         AvailabilityRepository.initialize(applicationContext)
         OperationalLocationRepository.initialize(applicationContext)
@@ -163,11 +167,17 @@ fun NephApp() {
         val navController = rememberNavController()
         val currentBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = currentBackStackEntry?.destination?.route
+        val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
+        var showMobileOnboarding by remember { mutableStateOf(false) }
         var showExitDialog by remember { mutableStateOf(false) }
         val canPopBackStack = navController.previousBackStackEntry != null
         val shouldConfirmExit = !canPopBackStack && (
             currentRoute == Routes.Home.route || currentRoute == Routes.Welcome.route
         )
+
+        LaunchedEffect(accessToken, currentRoute) {
+            showMobileOnboarding = shouldShowMobileOnboardingForRoute(currentRoute)
+        }
 
         BackHandler(enabled = canPopBackStack || shouldConfirmExit) {
             if (canPopBackStack) {
@@ -210,7 +220,41 @@ fun NephApp() {
                 else -> Routes.Welcome.route
             }
         )
+
+        if (showMobileOnboarding) {
+            MobileOnboardingTutorial(
+                onDismissCompleted = {
+                    MobileOnboardingStore.markSeenForCurrentUser()
+                    showMobileOnboarding = false
+                }
+            )
+        }
     }
+}
+
+private fun shouldShowMobileOnboardingForRoute(currentRoute: String?): Boolean {
+    if (currentRoute.isNullOrBlank()) {
+        return false
+    }
+
+    val routeBase = currentRoute.substringBefore('?')
+    val onboardingSuppressedRoutes = setOf(
+        Routes.Welcome.route,
+        Routes.Login.route,
+        Routes.Signup.route,
+        Routes.VerifyEmail.route,
+        Routes.CompleteProfile.route,
+        Routes.ForgotPassword.route,
+        Routes.ResetPassword.route,
+        Routes.TermsOfService.route,
+        Routes.PrivacyPolicy.route
+    )
+
+    if (routeBase in onboardingSuppressedRoutes) {
+        return false
+    }
+
+    return MobileOnboardingStore.shouldShowForCurrentUser()
 }
 
 @Preview(showBackground = true, showSystemUi = true)
