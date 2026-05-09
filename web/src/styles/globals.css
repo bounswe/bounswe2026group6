@@ -263,10 +263,17 @@ textarea::placeholder {
 }
 
 .top-navbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-size: 1.25rem;
     font-weight: 800;
     letter-spacing: -0.02em;
     color: var(--text-primary);
+}
+
+.top-navbar-brand-logo {
+    border-radius: 4px;
 }
 
 .top-navbar-nav {

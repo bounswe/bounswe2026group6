@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
@@ -215,6 +216,13 @@ export function TopNavbar() {
             <PageContainer className="top-navbar-inner">
                 <Link href="/home" className="top-navbar-brand">
                     NEPH
+                    <Image
+                        src="/neph_logo_only.png"
+                        alt="NEPH icon"
+                        width={48}
+                        height={48}
+                        className="top-navbar-brand-logo"
+                    />
                 </Link>
 
                 <nav className="top-navbar-nav">
