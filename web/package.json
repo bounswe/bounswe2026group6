@@ -7,6 +7,7 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "next": "^16.2.3",

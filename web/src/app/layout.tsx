@@ -4,6 +4,24 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { getThemeInitScript } from "@/lib/theme";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
+function ConditionalGoogleProvider({
+    clientId,
+    children,
+}: {
+    clientId: string;
+    children: React.ReactNode;
+}) {
+    if (!clientId) return <>{children}</>;
+    return (
+        <GoogleOAuthProvider clientId={clientId} locale="en">
+            {children}
+        </GoogleOAuthProvider>
+    );
+}
 
 export const metadata: Metadata = {
     title: "NEPH",
@@ -24,11 +42,13 @@ export default function RootLayout({
                 />
             </head>
             <body className="root-layout-body">
-                <ThemeProvider>
-                    <ThemeToggle />
-                    <main className="root-layout-content">{children}</main>
-                    <SiteFooter />
-                </ThemeProvider>
+                <ConditionalGoogleProvider clientId={GOOGLE_CLIENT_ID}>
+                    <ThemeProvider>
+                        <ThemeToggle />
+                        <main className="root-layout-content">{children}</main>
+                        <SiteFooter />
+                    </ThemeProvider>
+                </ConditionalGoogleProvider>
             </body>
         </html>
     );

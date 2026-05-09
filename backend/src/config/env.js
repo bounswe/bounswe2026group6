@@ -53,8 +53,10 @@ const env = {
     ),
     pendingRequestTtlHours: readNumber(process.env.NOTIFICATION_PENDING_REQUEST_TTL_HOURS, 72),
   },
-  helpRequests: {
-    guestCreateEnabled: (process.env.HELP_REQUEST_GUEST_CREATE_ENABLED || 'true').toLowerCase() === 'true',
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+  },
+  helpRequests: {    guestCreateEnabled: (process.env.HELP_REQUEST_GUEST_CREATE_ENABLED || 'true').toLowerCase() === 'true',
     guestMatchingEnabled: (process.env.HELP_REQUEST_GUEST_MATCHING_ENABLED || 'false').toLowerCase() === 'true',
     guestTokenTtl: process.env.HELP_REQUEST_GUEST_TOKEN_TTL || '2h',
   },

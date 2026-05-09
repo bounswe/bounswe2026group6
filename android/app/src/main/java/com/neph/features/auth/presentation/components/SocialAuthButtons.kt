@@ -32,11 +32,12 @@ enum class SocialAuthMode {
 @Composable
 fun SocialAuthButtons(
     mode: SocialAuthMode,
-    onProviderClick: (String) -> Unit,
+    onGoogleClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
-    val verb = if (mode == SocialAuthMode.LOGIN) "Continue" else "Sign up"
+    val verb = if (mode == SocialAuthMode.LOGIN) "Sign in" else "Sign up"
 
     Column(
         modifier = modifier,
@@ -44,29 +45,12 @@ fun SocialAuthButtons(
     ) {
         BrandAuthButton(
             text = "$verb with Google",
-            onClick = { onProviderClick("Google") },
+            onClick = onGoogleClick,
+            enabled = enabled,
             background = Color(0xFFFFFFFF),
             contentColor = Color(0xFF1F1F1F),
             border = BorderStroke(1.dp, Color(0xFFDADCE0)),
             logo = BrandLogos.Google,
-            logoTint = Color.Unspecified
-        )
-        BrandAuthButton(
-            text = "$verb with Apple",
-            onClick = { onProviderClick("Apple") },
-            background = Color(0xFF000000),
-            contentColor = Color(0xFFFFFFFF),
-            border = null,
-            logo = BrandLogos.Apple,
-            logoTint = Color(0xFFFFFFFF)
-        )
-        BrandAuthButton(
-            text = "$verb with Facebook",
-            onClick = { onProviderClick("Facebook") },
-            background = Color(0xFF1877F2),
-            contentColor = Color(0xFFFFFFFF),
-            border = null,
-            logo = BrandLogos.Facebook,
             logoTint = Color.Unspecified
         )
     }
@@ -76,6 +60,7 @@ fun SocialAuthButtons(
 private fun BrandAuthButton(
     text: String,
     onClick: () -> Unit,
+    enabled: Boolean,
     background: Color,
     contentColor: Color,
     border: BorderStroke?,
@@ -86,6 +71,7 @@ private fun BrandAuthButton(
 
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp),

@@ -52,6 +52,7 @@ const {
   resetPasswordHandler,
   logout,
   deleteMe,
+  googleLogin,
 } = require('./controller');
 const { requireAuth } = require('./middleware');
 
@@ -67,6 +68,7 @@ authRouter.post('/reset-password', authLimiter, resetPasswordHandler);
 authRouter.post('/logout', requireAuth, logout);
 authRouter.get('/me', requireAuth, getMe);
 authRouter.delete('/me', requireAuth, deleteMe);
+authRouter.post('/google', authLimiter, googleLogin);
 
 // Backward-compatibility alias for legacy admin paths under /api/auth/admin/*
 authRouter.use('/admin', adminRouter);
