@@ -55,7 +55,20 @@ test('new user can sign up, verify email, complete their profile, and see persis
   await page.getByRole('button', { name: 'Save' }).click();
 
   await expect(page).toHaveURL(/\/profile$/);
-  await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
+  const tutorialDialog = page.getByRole('dialog', { name: 'Home Overview' });
+  await expect(tutorialDialog.getByRole('heading', { name: 'Home Overview' })).toBeVisible();
+  await tutorialDialog.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'News and Announcements' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'News and Announcements' }).getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Emergency Tools' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Emergency Tools' }).getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Help Request Map' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Help Request Map' }).getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Gathering Areas' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Gathering Areas' }).getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your Profile and Privacy' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Your Profile and Privacy' }).getByRole('button', { name: 'Finish' }).click();
+  await expect(page.getByRole('heading', { name: 'Home Overview' })).toHaveCount(0);
   await expect(page.getByText('Jane Onboard')).toBeVisible();
   await expect(page.locator('p, span').filter({ hasText: email }).first()).toBeVisible();
 

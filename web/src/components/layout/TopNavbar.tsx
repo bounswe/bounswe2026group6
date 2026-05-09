@@ -21,7 +21,13 @@ const navItemsOrdered = [
     { label: "Privacy & Security", href: "/privacy-security" },
 ];
 
-const guestAllowedPaths = new Set(["/home", "/news", "/emergency-numbers", "/crisis-map", "/gathering-areas"]);
+const guestAllowedPaths = new Set([
+    "/home",
+    "/news",
+    "/emergency-numbers",
+    "/crisis-map",
+    "/gathering-areas",
+]);
 
 function resolveUserInitials(email: string | null | undefined) {
     const localPart = (email || "").trim().split("@")[0] || "";

@@ -19,7 +19,11 @@ import { bloodTypeOptions } from "@/lib/bloodTypes";
 import { countryCodeOptions } from "@/lib/countryCodes";
 import { DateInput } from "@/components/ui/inputs/DateInput";
 import { expertiseOptions } from "@/lib/profileOptions";
-import { getAccessToken, SIGNUP_DRAFT_KEY } from "@/lib/auth";
+import {
+    getAccessToken,
+    SIGNUP_DRAFT_KEY,
+    WEB_TUTORIAL_PENDING_KEY,
+} from "@/lib/auth";
 import { fetchLocationTree, searchLocations } from "@/lib/location";
 import {
     LocationTreeByCountry,
@@ -529,6 +533,7 @@ export default function CompleteProfileForm() {
             });
 
             sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
+            window.localStorage.setItem(WEB_TUTORIAL_PENDING_KEY, "1");
             router.push("/profile");
         } catch (err) {
             const baseMessage =
