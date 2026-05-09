@@ -3,7 +3,7 @@
 import * as React from "react";
 import L from "leaflet";
 import { LeafletMapCanvas } from "@/components/feature/location/LeafletMapCanvas";
-import type { LatLng } from "@/components/feature/location/LeafletMapCanvas";
+import type { LatLng, MapBounds } from "@/components/feature/location/LeafletMapCanvas";
 
 type GatheringAreaMapFeature = {
     featureKey: string;
@@ -23,6 +23,7 @@ type LeafletGatheringAreasMapProps = {
     features: GatheringAreaMapFeature[];
     selectedFeatureId: string | null;
     onSelectFeature: (featureId: string) => void;
+    onViewportChange?: (bounds: MapBounds) => void;
     heightClassName?: string;
     zoom?: number;
 };
@@ -121,6 +122,7 @@ export function LeafletGatheringAreasMap({
     features,
     selectedFeatureId,
     onSelectFeature,
+    onViewportChange,
     heightClassName = "h-[380px] md:h-[500px]",
     zoom = 14,
 }: LeafletGatheringAreasMapProps) {
@@ -220,6 +222,7 @@ export function LeafletGatheringAreasMap({
             zoom={zoom}
             heightClassName={heightClassName}
             ariaLabel="Nearby gathering areas map"
+            onViewportChange={onViewportChange}
             onMapReady={(map) => {
                 mapRef.current = map;
                 setMapReadyVersion((version) => version + 1);

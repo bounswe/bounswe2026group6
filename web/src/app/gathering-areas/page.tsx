@@ -4,24 +4,35 @@ import * as React from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { GatheringAreasMap } from "@/components/feature/location/GatheringAreasMap";
-import { fetchNearbyGatheringAreas } from "@/lib/gatheringAreas";
+import { fetchViewportGatheringAreas } from "@/lib/gatheringAreas";
 import { openDirections } from "@/lib/mapDirections";
 import { reverseLocation } from "@/lib/location";
 import type { GatheringAreaCategoryMeta, GatheringAreaFeature, NearbyGatheringAreasResponse } from "@/types/location";
 import type { GatheringAreaMapFeature } from "@/components/feature/location/LeafletGatheringAreasMap";
+import type { MapBounds } from "@/components/feature/location/LeafletMapCanvas";
+import {
+    effectiveViewportKey,
+    isViewportDiscoverable,
+    viewportBoundsToBbox,
+} from "@/lib/viewportDiscovery";
 
 const DEFAULT_CENTER = {
-    latitude: 41.0082,
-    longitude: 28.9784,
+    latitude: 39.0,
+    longitude: 35.0,
 };
-
-const DEFAULT_RADIUS = 2000;
+const DEFAULT_ZOOM = 5;
+const CURRENT_LOCATION_ZOOM = 13;
 const DEFAULT_LIMIT = 20;
-const SEARCH_RADIUS_KM = DEFAULT_RADIUS / 1000;
 const ADDRESS_UNAVAILABLE = "Address unavailable";
 const GATHERING_AREAS_CACHE_KEY = "neph.nearbyGatheringAreas.cache.v1";
 type FetchState = "idle" | "loading" | "success" | "empty" | "error" | "fallback";
+const ResourceInitialMessage = "Zoom in or use your device location to see resources in this area.";
+const ResourceZoomedOutMessage = "Zoom in to see resources in this area.";
+const ResourceLoadingMessage = "Loading resources in this area...";
+const ResourceEmptyMessage = "No resources were found in this visible area.";
+const ResourceErrorMessage = "Resources could not be loaded for this area. Please try again.";
 
 type GatheringAreasCache = {
     response: NearbyGatheringAreasResponse;
@@ -324,19 +335,26 @@ function getFallbackMapFeatures() {
 
 export default function GatheringAreasPage() {
     const [center, setCenter] = React.useState(DEFAULT_CENTER);
+    const [mapZoom, setMapZoom] = React.useState(DEFAULT_ZOOM);
     const [areas, setAreas] = React.useState<GatheringAreaMapFeature[]>([]);
     const [categoryOptions, setCategoryOptions] = React.useState<CategoryOption[]>([]);
     const [selectedCategoryKeys, setSelectedCategoryKeys] = React.useState<string[]>([]);
     const [selectedAreaId, setSelectedAreaId] = React.useState<string | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
     const [fetchState, setFetchState] = React.useState<FetchState>("idle");
-    const [resolvingLocation, setResolvingLocation] = React.useState(true);
     const [error, setError] = React.useState("");
-    const [locationNote, setLocationNote] = React.useState("Resolving your current location...");
+    const [infoMessage, setInfoMessage] = React.useState(ResourceInitialMessage);
+    const [locationNote, setLocationNote] = React.useState(
+        "Move around the map to discover resources in different cities."
+    );
     const [dataNotice, setDataNotice] = React.useState("");
     const [dataNoticeTitle, setDataNoticeTitle] = React.useState("");
     const [directionsMessage, setDirectionsMessage] = React.useState("");
     const [lastUpdated, setLastUpdated] = React.useState("");
+    const [currentViewport, setCurrentViewport] = React.useState<MapBounds | null>(null);
+    const [pendingViewport, setPendingViewport] = React.useState<MapBounds | null>(null);
+    const [lastFetchedViewportKey, setLastFetchedViewportKey] = React.useState<string | null>(null);
+    const [viewportRefreshNonce, setViewportRefreshNonce] = React.useState(0);
     const requestIdRef = React.useRef(0);
     const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
 
@@ -420,20 +438,19 @@ export default function GatheringAreasPage() {
         setDirectionsMessage("");
     }, []);
 
-    const loadNearbyAreas = React.useCallback(
-        async (sourceCenter: { latitude: number; longitude: number }) => {
+    const loadViewportAreas = React.useCallback(
+        async (viewport: MapBounds) => {
             const currentRequestId = ++requestIdRef.current;
 
             try {
                 setFetchState("loading");
                 setError("");
+                setInfoMessage(ResourceLoadingMessage);
                 setDataNotice("");
                 setDataNoticeTitle("");
 
-                const response = await fetchNearbyGatheringAreas({
-                    latitude: sourceCenter.latitude,
-                    longitude: sourceCenter.longitude,
-                    radius: DEFAULT_RADIUS,
+                const response = await fetchViewportGatheringAreas({
+                    bbox: viewportBoundsToBbox(viewport),
                     limit: DEFAULT_LIMIT,
                 });
 
@@ -464,7 +481,8 @@ export default function GatheringAreasPage() {
 
                     if (!mapped.length) {
                         setCenter(DEFAULT_CENTER);
-                        setLocationNote("Live provider unavailable. Showing demo gathering areas around Istanbul.");
+                        setMapZoom(DEFAULT_ZOOM);
+                        setLocationNote("Live provider unavailable. Showing demo gathering areas around Turkey overview.");
                     } else {
                         setLocationNote("Live provider unavailable. Showing backend fallback gathering areas.");
                     }
@@ -477,11 +495,14 @@ export default function GatheringAreasPage() {
                     setDataNotice(
                         mapped.length
                             ? `${fallbackReason} Showing fallback gathering areas so the page remains usable. Retry to refresh live results.`
-                            : `${fallbackReason} Showing demo Istanbul areas and guidance so the page remains usable.`
+                            : `${fallbackReason} Showing demo areas and guidance so the page remains usable.`
                     );
                     setLastUpdated(savedAt);
                     setFetchState("fallback");
                     setSelectedAreaId(null);
+                    setInfoMessage("");
+                    setLastFetchedViewportKey(effectiveViewportKey(viewport));
+                    setViewportRefreshNonce(0);
                     return;
                 } else {
                     setDataNotice("");
@@ -493,6 +514,9 @@ export default function GatheringAreasPage() {
                 setSelectedCategoryKeys(responseCategoryOptions.map((item) => item.key));
                 void hydrateMissingAddresses(mapped, currentRequestId);
                 setFetchState(mapped.length ? "success" : "empty");
+                setInfoMessage(mapped.length ? "Showing resources in this visible area." : ResourceEmptyMessage);
+                setLastFetchedViewportKey(effectiveViewportKey(viewport));
+                setViewportRefreshNonce(0);
                 setSelectedAreaId((current) => {
                     if (!mapped.length) {
                         return null;
@@ -545,7 +569,8 @@ export default function GatheringAreasPage() {
                 const fallbackAreas = getFallbackMapFeatures();
                 const savedAt = new Date().toISOString();
                 setCenter(DEFAULT_CENTER);
-                setLocationNote("Live provider unavailable. Showing demo gathering areas around Istanbul.");
+                setMapZoom(DEFAULT_ZOOM);
+                setLocationNote("Live provider unavailable. Showing demo gathering areas around Turkey overview.");
                 setAreas(fallbackAreas);
                 const fallbackCategoryOptions = deriveCategoryOptions(fallbackAreas);
                 setCategoryOptions(fallbackCategoryOptions);
@@ -553,9 +578,10 @@ export default function GatheringAreasPage() {
                 setSelectedAreaId(null);
                 setError("");
                 setDataNoticeTitle("Using demo gathering areas");
-                setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing demo Istanbul areas and guidance.`);
+                setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing demo areas and guidance.`);
                 setLastUpdated(savedAt);
                 setFetchState(fallbackAreas.length ? "fallback" : "error");
+                setInfoMessage("");
             } finally {
                 if (currentRequestId !== requestIdRef.current) {
                     return;
@@ -565,20 +591,34 @@ export default function GatheringAreasPage() {
         [hydrateMissingAddresses]
     );
 
-    const resolveCurrentLocationAndLoad = React.useCallback(() => {
-        setResolvingLocation(true);
-
-        if (!navigator.geolocation) {
-            setLocationNote(
-                "Current location is not supported in this browser. Showing nearby areas around Istanbul."
-            );
-            setCenter(DEFAULT_CENTER);
-            setResolvingLocation(false);
-            void loadNearbyAreas(DEFAULT_CENTER);
+    React.useEffect(() => {
+        const viewport = pendingViewport;
+        const viewportKey = effectiveViewportKey(viewport);
+        if (!viewport || !viewportKey) {
             return;
         }
 
-        setLocationNote("Resolving your current location...");
+        if (viewportKey === lastFetchedViewportKey && viewportRefreshNonce === 0) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            void loadViewportAreas(viewport);
+        }, 450);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [pendingViewport, lastFetchedViewportKey, viewportRefreshNonce, loadViewportAreas]);
+
+    const handleUseCurrentLocation = React.useCallback(() => {
+        setError("");
+        if (!navigator.geolocation) {
+            setInfoMessage("Current location is not supported in this browser.");
+            return;
+        }
+
+        setInfoMessage("Resolving your current location...");
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -588,28 +628,59 @@ export default function GatheringAreasPage() {
                 };
 
                 setCenter(nextCenter);
+                setMapZoom(CURRENT_LOCATION_ZOOM);
                 setLocationNote("Showing gathering areas around your current location.");
-                setResolvingLocation(false);
-                void loadNearbyAreas(nextCenter);
+                setInfoMessage("Showing resources around your current location.");
             },
             () => {
-                setLocationNote(
-                    "Location permission was denied or unavailable. Showing nearby areas around Istanbul."
+                setInfoMessage(
+                    "Location permission was denied or unavailable. Continue by moving the map manually."
                 );
-                setCenter(DEFAULT_CENTER);
-                setResolvingLocation(false);
-                void loadNearbyAreas(DEFAULT_CENTER);
             },
             {
                 enableHighAccuracy: true,
                 timeout: 10000,
             }
         );
-    }, [loadNearbyAreas]);
+    }, []);
 
-    React.useEffect(() => {
-        resolveCurrentLocationAndLoad();
-    }, [resolveCurrentLocationAndLoad]);
+    const queueViewportRefresh = React.useCallback(() => {
+        if (!isViewportDiscoverable(currentViewport)) {
+            requestIdRef.current += 1;
+            setAreas([]);
+            setSelectedAreaId(null);
+            setLastFetchedViewportKey(null);
+            setError("");
+            setFetchState("idle");
+            setInfoMessage(ResourceZoomedOutMessage);
+            return;
+        }
+
+        setError("");
+        setPendingViewport(currentViewport);
+        setViewportRefreshNonce((nonce) => nonce + 1);
+    }, [currentViewport]);
+
+    const handleViewportChange = React.useCallback((viewport: MapBounds) => {
+        setCurrentViewport(viewport);
+
+        if (isViewportDiscoverable(viewport)) {
+            setError("");
+            setPendingViewport(viewport);
+            setInfoMessage((current) =>
+                current === ResourceZoomedOutMessage ? "" : current
+            );
+            return;
+        }
+
+        requestIdRef.current += 1;
+        setAreas([]);
+        setSelectedAreaId(null);
+        setLastFetchedViewportKey(null);
+        setError("");
+        setFetchState("idle");
+        setInfoMessage(ResourceZoomedOutMessage);
+    }, []);
 
     React.useEffect(() => {
         if (!selectedAreaId) {
@@ -623,15 +694,18 @@ export default function GatheringAreasPage() {
         }
     }, [filteredAreas, selectedAreaId]);
 
-    const isInitialState = resolvingLocation && fetchState === "idle";
+    const isDiscoverable = isViewportDiscoverable(currentViewport);
+    const isInitialState = currentViewport == null && fetchState === "idle";
     const isLoading = fetchState === "loading";
     const isError = fetchState === "error";
-    const isEmpty = fetchState === "empty";
+    const isEmpty = fetchState === "empty" && isDiscoverable && Boolean(lastFetchedViewportKey);
     const isFallback = fetchState === "fallback";
-    const isFilterEmpty = !isLoading && !isError && areas.length > 0 && filteredAreas.length === 0;
+    const isFilterEmpty = !isLoading && !isError && isDiscoverable && areas.length > 0 && filteredAreas.length === 0;
     const searchContextLine = isFallback
         ? "Fallback content may not match your exact location; follow official guidance during a real emergency."
-        : `Searching within ${SEARCH_RADIUS_KM} km of your current location.`;
+        : isDiscoverable
+            ? "Showing resources in the visible map area."
+            : ResourceZoomedOutMessage;
 
     const selectedArea = selectedAreaId
         ? filteredAreas.find((item) => item.featureKey === selectedAreaId) || null
@@ -669,9 +743,11 @@ export default function GatheringAreasPage() {
                     <div className="gathering-areas-map-wrap">
                         <GatheringAreasMap
                             center={center}
-                            features={filteredAreas}
+                            zoom={mapZoom}
+                            features={isDiscoverable ? filteredAreas : []}
                             selectedFeatureId={selectedAreaId}
                             onSelectFeature={handleSelectArea}
+                            onViewportChange={handleViewportChange}
                             heightClassName="h-[460px] md:h-[620px]"
                         />
 
@@ -680,8 +756,8 @@ export default function GatheringAreasPage() {
                             aria-label="Retry Results"
                             title="Retry Results"
                             className="gathering-areas-map-retry"
-                            onClick={resolveCurrentLocationAndLoad}
-                            disabled={isLoading || resolvingLocation}
+                            onClick={queueViewportRefresh}
+                            disabled={isLoading}
                         >
                             <svg
                                 width="16"
@@ -778,11 +854,11 @@ export default function GatheringAreasPage() {
                                         </p>
                                     ) : isEmpty ? (
                                         <p className="gathering-areas-empty-detail">
-                                            No nearby areas in the current result.
+                                            {ResourceEmptyMessage}
                                         </p>
                                     ) : (
                                         <p className="gathering-areas-empty-detail">
-                                            Waiting for location and nearby results...
+                                            {infoMessage || ResourceInitialMessage}
                                         </p>
                                     )}
                                 </div>
@@ -793,6 +869,15 @@ export default function GatheringAreasPage() {
                     <div className="gathering-areas-context-note">
                         <p className="gathering-areas-context-line">{locationNote}</p>
                         <p className="gathering-areas-context-line">{searchContextLine}</p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                        <SecondaryButton type="button" onClick={handleUseCurrentLocation} disabled={isLoading}>
+                            Use Current Location
+                        </SecondaryButton>
+                        <SecondaryButton type="button" onClick={queueViewportRefresh} disabled={isLoading}>
+                            Refresh for Current View
+                        </SecondaryButton>
                     </div>
 
                     {categoryOptions.length ? (
@@ -843,7 +928,7 @@ export default function GatheringAreasPage() {
 
                     {isLoading ? (
                         <div className="gathering-areas-status-box">
-                            <p className="gathering-areas-status-title">Loading nearby gathering areas...</p>
+                            <p className="gathering-areas-status-title">{ResourceLoadingMessage}</p>
                             <div className="gathering-areas-loading-skeleton" aria-hidden="true">
                                 <span />
                                 <span />
@@ -864,7 +949,7 @@ export default function GatheringAreasPage() {
                                     <p>Last updated: cached by backend; exact timestamp unavailable.</p>
                                 )}
                             </div>
-                            <PrimaryButton className="w-auto" onClick={resolveCurrentLocationAndLoad}>
+                            <PrimaryButton className="w-auto" onClick={queueViewportRefresh}>
                                 Retry gathering areas
                             </PrimaryButton>
                         </div>
@@ -877,7 +962,7 @@ export default function GatheringAreasPage() {
                     {error ? (
                         <div className="gathering-areas-status-box is-error">
                             <p>{error}</p>
-                            <PrimaryButton className="w-auto" onClick={resolveCurrentLocationAndLoad}>
+                            <PrimaryButton className="w-auto" onClick={queueViewportRefresh}>
                                 Retry gathering areas
                             </PrimaryButton>
                         </div>
@@ -885,13 +970,13 @@ export default function GatheringAreasPage() {
 
                     {isEmpty ? (
                         <div className="gathering-areas-status-box">
-                            <p>No gathering areas were found for this location and radius.</p>
+                            <p>{ResourceEmptyMessage}</p>
                         </div>
                     ) : null}
 
                     {isInitialState ? (
                         <div className="gathering-areas-status-box">
-                            <p>Waiting for your location before first fetch.</p>
+                            <p>{ResourceInitialMessage}</p>
                         </div>
                     ) : null}
                 </SectionCard>
