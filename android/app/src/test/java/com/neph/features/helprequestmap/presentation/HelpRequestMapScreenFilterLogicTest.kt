@@ -197,6 +197,31 @@ class HelpRequestMapScreenFilterLogicTest {
         assertEquals("No request markers to display with these filters.", message)
     }
 
+    @Test
+    fun shouldShowPreviousHelpRequestsDuringViewportFetch_keepsMarkersForNormalPanOnly() {
+        assertEquals(
+            true,
+            shouldShowPreviousHelpRequestsDuringViewportFetch(
+                requests = listOf(firstAid),
+                manualRefresh = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowPreviousHelpRequestsDuringViewportFetch(
+                requests = listOf(firstAid),
+                manualRefresh = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowPreviousHelpRequestsDuringViewportFetch(
+                requests = emptyList(),
+                manualRefresh = false
+            )
+        )
+    }
+
     private fun request(
         requestId: String,
         type: CrisisRequestType,

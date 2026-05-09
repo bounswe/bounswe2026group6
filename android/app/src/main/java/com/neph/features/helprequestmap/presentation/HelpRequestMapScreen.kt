@@ -189,6 +189,13 @@ internal fun helpRequestMapEmptyMessage(
     }
 }
 
+internal fun shouldShowPreviousHelpRequestsDuringViewportFetch(
+    requests: List<ActiveHelpRequestMapItem>,
+    manualRefresh: Boolean
+): Boolean {
+    return requests.isNotEmpty() && !manualRefresh
+}
+
 private fun ActiveHelpRequestMapItem.hasValidMapCoordinates(): Boolean {
     return latitude.isFinite() &&
         longitude.isFinite() &&
@@ -256,6 +263,10 @@ fun HelpRequestMapScreen(
 
                 val location = attempt.location
                 if (location != null) {
+                    viewportRequestSerial += 1
+                    currentViewport = null
+                    pendingViewport = null
+                    requests = emptyList()
                     mapCenterLatitude = location.latitude
                     mapCenterLongitude = location.longitude
                     mapZoom = HelpRequestMapCurrentLocationZoom
@@ -263,6 +274,7 @@ fun HelpRequestMapScreen(
                     selectedRequestId = null
                     lastFetchedViewportKey = null
                     loading = false
+                    backgroundUpdating = false
                     return@launch
                 }
 
@@ -318,7 +330,10 @@ fun HelpRequestMapScreen(
         delay(450)
         val requestSerial = viewportRequestSerial + 1
         viewportRequestSerial = requestSerial
-        val blockingLoading = requests.isEmpty() || manualRefresh
+        val blockingLoading = !shouldShowPreviousHelpRequestsDuringViewportFetch(
+            requests = requests,
+            manualRefresh = manualRefresh
+        )
         loading = blockingLoading
         backgroundUpdating = !blockingLoading
         errorMessage = ""

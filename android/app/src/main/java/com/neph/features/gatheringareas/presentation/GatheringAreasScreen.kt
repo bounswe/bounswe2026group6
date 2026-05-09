@@ -153,6 +153,13 @@ internal fun gatheringAreasMapEmptyMessage(
     }
 }
 
+internal fun shouldShowPreviousGatheringAreasDuringViewportFetch(
+    currentResult: NearbyGatheringAreasResult?,
+    manualRefresh: Boolean
+): Boolean {
+    return currentResult != null && !manualRefresh
+}
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun GatheringAreasScreen(
@@ -214,6 +221,10 @@ fun GatheringAreasScreen(
 
                 val location = attempt.location
                 if (location != null) {
+                    viewportRequestSerial += 1
+                    currentViewport = null
+                    pendingViewport = null
+                    nearbyResult = null
                     mapCenterLatitude = location.latitude
                     mapCenterLongitude = location.longitude
                     mapZoom = GatheringAreasCurrentLocationZoom
@@ -221,6 +232,7 @@ fun GatheringAreasScreen(
                     selectedAreaId = null
                     lastFetchedViewportKey = null
                     loading = false
+                    backgroundUpdating = false
                     return@launch
                 }
 
@@ -252,7 +264,10 @@ fun GatheringAreasScreen(
         delay(450)
         val requestSerial = viewportRequestSerial + 1
         viewportRequestSerial = requestSerial
-        val blockingLoading = nearbyResult == null || manualRefresh
+        val blockingLoading = !shouldShowPreviousGatheringAreasDuringViewportFetch(
+            currentResult = nearbyResult,
+            manualRefresh = manualRefresh
+        )
         loading = blockingLoading
         backgroundUpdating = !blockingLoading
         errorMessage = ""
@@ -302,6 +317,7 @@ fun GatheringAreasScreen(
         } else {
             errorMessage = ""
             loading = false
+            backgroundUpdating = false
             infoMessage = "Location permission was denied. Nearby results were not updated."
         }
     }

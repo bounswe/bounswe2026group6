@@ -133,6 +133,28 @@ class GatheringAreasScreenTest {
     }
 
     @Test
+    fun shouldShowPreviousGatheringAreasDuringViewportFetch_keepsMarkersForNormalPanOnly() {
+        assertTrue(
+            shouldShowPreviousGatheringAreasDuringViewportFetch(
+                currentResult = sampleNearbyResult(),
+                manualRefresh = false
+            )
+        )
+        assertFalse(
+            shouldShowPreviousGatheringAreasDuringViewportFetch(
+                currentResult = sampleNearbyResult(),
+                manualRefresh = true
+            )
+        )
+        assertFalse(
+            shouldShowPreviousGatheringAreasDuringViewportFetch(
+                currentResult = null,
+                manualRefresh = false
+            )
+        )
+    }
+
+    @Test
     fun reconcileGatheringAreaCategoryFilters_whenPreviouslyShowingAll_selectsAllNewCategories() {
         val reconciled = reconcileGatheringAreaCategoryFilters(
             previousOptionKeys = setOf("assembly_point", "shelter"),
