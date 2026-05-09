@@ -132,6 +132,31 @@ class LeafletMapWebViewTest {
     }
 
     @Test
+    fun leafletViewportDiscovery_usesWidestVisibleDimension() {
+        val discoverable = viewport(widthKm = 20.0, heightKm = 50.0)
+        val tooWide = viewport(widthKm = 20.0, heightKm = 50.1)
+
+        assertTrue(isLeafletViewportDiscoverable(discoverable))
+        assertFalse(isLeafletViewportDiscoverable(tooWide))
+    }
+
+    @Test
+    fun leafletViewportDiscovery_rejectsInvalidBounds() {
+        assertFalse(isLeafletViewportDiscoverable(viewport(widthKm = 10.0, heightKm = 10.0, north = 91.0)))
+        assertFalse(isLeafletViewportDiscoverable(viewport(widthKm = Double.NaN, heightKm = 10.0)))
+        assertFalse(isLeafletViewportDiscoverable(viewport(widthKm = 10.0, heightKm = 10.0, west = 30.0, east = 29.0)))
+    }
+
+    @Test
+    fun effectiveLeafletViewportKey_roundsBoundsForDuplicateSuppression() {
+        val first = viewport(widthKm = 20.0, heightKm = 20.0, west = 29.0004, east = 29.1004)
+        val sameEffectiveViewport = viewport(widthKm = 20.0, heightKm = 20.0, west = 29.00049, east = 29.10049)
+
+        assertEquals(effectiveLeafletViewportKey(first), effectiveLeafletViewportKey(sameEffectiveViewport))
+        assertEquals("29.000,40.900,29.100,41.100", effectiveLeafletViewportKey(first))
+    }
+
+    @Test
     fun buildLeafletDocumentHead_allowsLeafletOriginWithoutQuotedUrlSources() {
         val head = buildLeafletDocumentHead()
 
@@ -269,5 +294,46 @@ class LeafletMapWebViewTest {
         assertTrue(html.contains("notifyMapAlive('tileload');"))
         assertTrue(html.contains("function notifyMapReadyOnce()"))
         assertTrue(html.contains("setTimeout(notifyMapReadyOnce, 1000);"))
+        assertTrue(html.contains("function notifyViewportChanged()"))
+        assertTrue(html.contains("window.AndroidLeafletMarkerMap.onViewportChanged("))
+        assertTrue(html.contains("map.on('moveend zoomend', notifyViewportChanged);"))
+    }
+
+    @Test
+    fun buildLeafletMarkerMapHtml_canDisableMarkerFitBoundsForViewportDiscovery() {
+        val html = buildLeafletMarkerMapHtml(
+            mapInstanceId = "test-map-discovery",
+            centerLatitude = 39.0,
+            centerLongitude = 35.0,
+            markers = emptyList(),
+            selectedMarkerId = null,
+            bridgeName = "AndroidLeafletMarkerMap",
+            fitBoundsToMarkers = false
+        )
+
+        assertTrue(html.contains("var fitBoundsToMarkers = false;"))
+        assertTrue(html.contains("if (fitBoundsToMarkers && bounds.length > 1)"))
+    }
+
+    private fun viewport(
+        widthKm: Double,
+        heightKm: Double,
+        north: Double = 41.1,
+        south: Double = 40.9,
+        east: Double = 29.1,
+        west: Double = 29.0
+    ): LeafletMapViewport {
+        return LeafletMapViewport(
+            centerLatitude = (north + south) / 2,
+            centerLongitude = (east + west) / 2,
+            north = north,
+            south = south,
+            east = east,
+            west = west,
+            zoom = 12,
+            widthKm = widthKm,
+            heightKm = heightKm,
+            widestVisibleDimensionKm = maxOf(widthKm, heightKm)
+        )
     }
 }

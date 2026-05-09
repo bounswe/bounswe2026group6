@@ -62,6 +62,107 @@ class HelpRequestMapScreenFilterLogicTest {
         assertEquals("req-shelter", selected)
     }
 
+    @Test
+    fun helpRequestLeafletMarkers_usesRequestCoordinatesAndStableTypeColors() {
+        val markers = helpRequestLeafletMarkers(listOf(firstAid, shelter))
+
+        assertEquals(listOf("req-first-aid", "req-shelter"), markers.map { it.id })
+        assertEquals(41.0, markers.first().latitude, 0.0)
+        assertEquals(29.0, markers.first().longitude, 0.0)
+        assertEquals("First Aid", markers.first().title)
+        assertEquals("#B42318", markers.first().strokeColorHex)
+        assertEquals("#D94141", markers.first().fillColorHex)
+        assertEquals("#1D4ED8", markers.last().strokeColorHex)
+        assertEquals("#3B66D8", markers.last().fillColorHex)
+    }
+
+    @Test
+    fun helpRequestLeafletMarkers_whenNoRequests_returnsEmptyList() {
+        val markers = helpRequestLeafletMarkers(emptyList())
+
+        assertEquals(emptyList<String>(), markers.map { it.id })
+    }
+
+    @Test
+    fun helpRequestLeafletMarkers_ignoresMalformedCoordinatesDefensively() {
+        val markers = helpRequestLeafletMarkers(
+            listOf(
+                firstAid,
+                shelter.copy(requestId = "req-invalid", latitude = Double.NaN, longitude = 29.0),
+                foodWater.copy(requestId = "req-out-of-range", latitude = 91.0, longitude = 29.0)
+            )
+        )
+
+        assertEquals(listOf("req-first-aid"), markers.map { it.id })
+    }
+
+    @Test
+    fun helpRequestMapInstanceKey_staysStableForSameVisibleMarkers() {
+        val visible = listOf(firstAid, shelter)
+
+        val firstKey = helpRequestMapInstanceKey(visible)
+        val afterSelectionOnlyKey = helpRequestMapInstanceKey(visible)
+
+        assertEquals(firstKey, afterSelectionOnlyKey)
+    }
+
+    @Test
+    fun helpRequestMapCenter_usesAverageRequestCoordinates() {
+        val visible = listOf(
+            firstAid.copy(latitude = 40.0, longitude = 28.0),
+            shelter.copy(latitude = 42.0, longitude = 30.0)
+        )
+
+        val center = helpRequestMapCenter(visible)
+
+        assertEquals(41.0, center.latitude, 0.0)
+        assertEquals(29.0, center.longitude, 0.0)
+    }
+
+    @Test
+    fun helpRequestMapCenter_whenNoRequests_usesTurkeyOverviewCenter() {
+        val center = helpRequestMapCenter(emptyList())
+
+        assertEquals(39.0, center.latitude, 0.0)
+        assertEquals(35.0, center.longitude, 0.0)
+    }
+
+    @Test
+    fun helpRequestMapCenter_ignoresMalformedCoordinatesDefensively() {
+        val visible = listOf(
+            firstAid.copy(latitude = 40.0, longitude = 28.0),
+            shelter.copy(latitude = Double.POSITIVE_INFINITY, longitude = 30.0),
+            foodWater.copy(latitude = 41.0, longitude = 181.0)
+        )
+
+        val center = helpRequestMapCenter(visible)
+
+        assertEquals(40.0, center.latitude, 0.0)
+        assertEquals(28.0, center.longitude, 0.0)
+    }
+
+    @Test
+    fun helpRequestMapCenter_whenOnlyMalformedCoordinates_usesTurkeyOverviewCenter() {
+        val visible = listOf(
+            firstAid.copy(latitude = Double.NaN, longitude = 28.0),
+            shelter.copy(latitude = 41.0, longitude = Double.NEGATIVE_INFINITY)
+        )
+
+        val center = helpRequestMapCenter(visible)
+
+        assertEquals(39.0, center.latitude, 0.0)
+        assertEquals(35.0, center.longitude, 0.0)
+    }
+
+    @Test
+    fun requestMarkerStyle_keepsRequestTypeVisualMappingStable() {
+        assertEquals("+", requestMarkerStyle(CrisisRequestType.FIRST_AID).glyph)
+        assertEquals("SH", requestMarkerStyle(CrisisRequestType.SHELTER).glyph)
+        assertEquals("FW", requestMarkerStyle(CrisisRequestType.FOOD_WATER).glyph)
+        assertEquals("SR", requestMarkerStyle(CrisisRequestType.SEARCH_AND_RESCUE).glyph)
+        assertEquals("?", requestMarkerStyle(CrisisRequestType.OTHER).glyph)
+    }
+
     private fun request(
         requestId: String,
         type: CrisisRequestType,

@@ -142,4 +142,54 @@ describe('gathering-areas service', () => {
       limit: 10,
     })).rejects.toThrow('unexpected transform failure');
   });
+
+  test('getViewportGatheringAreas uses bbox Overpass query and response metadata', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        elements: [
+          {
+            type: 'node',
+            id: 9201,
+            lat: 41.01,
+            lon: 29.02,
+            tags: { amenity: 'shelter', name: 'Viewport Shelter' },
+          },
+        ],
+      }),
+    });
+
+    const result = await gatheringAreasService.getViewportGatheringAreas({
+      bbox: {
+        minLon: 28.9,
+        minLat: 40.9,
+        maxLon: 29.2,
+        maxLat: 41.1,
+      },
+      center: {
+        lat: 41.0,
+        lon: 29.05,
+      },
+      radius: 40000,
+      limit: 10,
+      viewport: {
+        widthKm: 25,
+        heightKm: 22,
+        widestVisibleDimensionKm: 25,
+      },
+    });
+
+    const requestInit = global.fetch.mock.calls[0][1];
+    const queryText = decodeURIComponent(requestInit.body.toString());
+
+    expect(queryText).toContain('node(40.9,28.9,41.1,29.2)["amenity"="shelter"]');
+    expect(result.center).toEqual({ lat: 41.0, lon: 29.05 });
+    expect(result.radius).toBe(40000);
+    expect(result.meta.viewport).toEqual({
+      widthKm: 25,
+      heightKm: 22,
+      widestVisibleDimensionKm: 25,
+    });
+    expect(result.collection.features[0].properties.name).toBe('Viewport Shelter');
+  });
 });

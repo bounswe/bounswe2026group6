@@ -40,8 +40,22 @@ data class LeafletMapMarker(
     val fillColorHex: String = "#DC2626"
 )
 
+data class LeafletMapViewport(
+    val centerLatitude: Double,
+    val centerLongitude: Double,
+    val north: Double,
+    val south: Double,
+    val east: Double,
+    val west: Double,
+    val zoom: Int,
+    val widthKm: Double,
+    val heightKm: Double,
+    val widestVisibleDimensionKm: Double
+)
+
 private const val LeafletMarkerMapBridgeName = "AndroidLeafletMarkerMap"
 private const val LeafletMapBaseUrl = "https://neph.app/android-map/"
+const val DISCOVERY_VIEWPORT_MAX_KM = 50.0
 internal const val LeafletMapWebViewLogTag = "NephMapWebView"
 internal const val LeafletMapInitializationTimeoutMillis = 15_000L
 internal const val LeafletMapInitializationTimeoutMessage =
@@ -143,6 +157,54 @@ internal fun logMapWarning(message: String) {
     }
 }
 
+fun isLeafletViewportDiscoverable(viewport: LeafletMapViewport?): Boolean {
+    val current = viewport ?: return false
+    return current.centerLatitude.isFinite() &&
+        current.centerLongitude.isFinite() &&
+        current.north.isFinite() &&
+        current.south.isFinite() &&
+        current.east.isFinite() &&
+        current.west.isFinite() &&
+        current.widthKm.isFinite() &&
+        current.heightKm.isFinite() &&
+        current.widestVisibleDimensionKm.isFinite() &&
+        current.centerLatitude in -90.0..90.0 &&
+        current.centerLongitude in -180.0..180.0 &&
+        current.south in -90.0..90.0 &&
+        current.north in -90.0..90.0 &&
+        current.west in -180.0..180.0 &&
+        current.east in -180.0..180.0 &&
+        current.south <= current.north &&
+        current.west <= current.east &&
+        current.widthKm >= 0.0 &&
+        current.heightKm >= 0.0 &&
+        current.widestVisibleDimensionKm <= DISCOVERY_VIEWPORT_MAX_KM
+}
+
+fun effectiveLeafletViewportKey(viewport: LeafletMapViewport?): String? {
+    if (!isLeafletViewportDiscoverable(viewport)) return null
+    val current = viewport ?: return null
+    return String.format(
+        Locale.US,
+        "%.3f,%.3f,%.3f,%.3f",
+        current.west,
+        current.south,
+        current.east,
+        current.north
+    )
+}
+
+fun leafletViewportBboxString(viewport: LeafletMapViewport): String {
+    return String.format(
+        Locale.US,
+        "%.6f,%.6f,%.6f,%.6f",
+        viewport.west,
+        viewport.south,
+        viewport.east,
+        viewport.north
+    )
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun LeafletMapWebView(
@@ -203,22 +265,25 @@ fun LeafletMarkerMap(
     mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx,
     zoom: Int = 13,
     showCenterMarker: Boolean = true,
+    fitBoundsToMarkers: Boolean = true,
     onMarkerSelected: (String, String) -> Unit,
     onMapReady: (String, String) -> Unit,
     onMapError: (String, String) -> Unit,
+    onViewportChanged: ((String, LeafletMapViewport) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val latestOnMarkerSelected by rememberUpdatedState(onMarkerSelected)
     val latestOnMapReady by rememberUpdatedState(onMapReady)
     val latestOnMapError by rememberUpdatedState(onMapError)
+    val latestOnViewportChanged by rememberUpdatedState(onViewportChanged)
     val latestCurrentMapInstanceId by rememberUpdatedState(currentMapInstanceId)
     val html = remember(
         mapInstanceId,
         centerLatitude,
         centerLongitude,
-        markers,
         zoom,
-        showCenterMarker
+        showCenterMarker,
+        fitBoundsToMarkers
     ) {
         buildLeafletMarkerMapHtml(
             mapInstanceId = mapInstanceId,
@@ -229,6 +294,7 @@ fun LeafletMarkerMap(
             bridgeName = LeafletMarkerMapBridgeName,
             zoom = zoom,
             showCenterMarker = showCenterMarker,
+            fitBoundsToMarkers = fitBoundsToMarkers,
             mapHeightCssPx = mapHeightCssPx
         )
     }
@@ -237,7 +303,10 @@ fun LeafletMarkerMap(
             currentMapInstanceId = { latestCurrentMapInstanceId() },
             onMarkerSelected = { instanceId, markerId -> latestOnMarkerSelected(instanceId, markerId) },
             onMapReady = { instanceId, source -> latestOnMapReady(instanceId, source) },
-            onMapError = { instanceId, message -> latestOnMapError(instanceId, message) }
+            onMapError = { instanceId, message -> latestOnMapError(instanceId, message) },
+            onViewportChanged = { instanceId, viewport ->
+                latestOnViewportChanged?.invoke(instanceId, viewport)
+            }
         )
     }
 
@@ -246,14 +315,36 @@ fun LeafletMarkerMap(
         html = html,
         bridgeName = LeafletMarkerMapBridgeName,
         bridge = bridge,
-        javaScriptUpdate = buildSelectedMarkerUpdateScript(selectedMarkerId),
+        javaScriptUpdate = buildMarkerMapUpdateScript(markers, selectedMarkerId),
         modifier = modifier
     )
 }
 
-private fun buildSelectedMarkerUpdateScript(selectedMarkerId: String?): String {
+private fun buildMarkerMapUpdateScript(markers: List<LeafletMapMarker>, selectedMarkerId: String?): String {
+    val markersJson = leafletMarkersJson(markers)
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
-    return "if (window.nephSelectMarker) { window.nephSelectMarker($selectedMarkerJson); }"
+    return """
+        if (window.nephSetMarkers) {
+            window.nephSetMarkers($markersJson, $selectedMarkerJson);
+        } else if (window.nephSelectMarker) {
+            window.nephSelectMarker($selectedMarkerJson);
+        }
+    """.trimIndent()
+}
+
+private fun leafletMarkersJson(markers: List<LeafletMapMarker>): String {
+    return JSONArray(
+        markers.map { marker ->
+            JSONObject()
+                .put("id", marker.id)
+                .put("latitude", marker.latitude)
+                .put("longitude", marker.longitude)
+                .put("title", marker.title)
+                .put("subtitle", marker.subtitle)
+                .put("strokeColorHex", marker.strokeColorHex)
+                .put("fillColorHex", marker.fillColorHex)
+        }
+    ).toString()
 }
 
 internal fun buildLeafletDocumentHead(mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx): String {
@@ -410,23 +501,14 @@ internal fun buildLeafletMarkerMapHtml(
     bridgeName: String,
     zoom: Int = 13,
     showCenterMarker: Boolean = true,
+    fitBoundsToMarkers: Boolean = true,
     mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx
 ): String {
     val formattedLat = String.format(Locale.US, "%.6f", centerLatitude)
     val formattedLon = String.format(Locale.US, "%.6f", centerLongitude)
-    val markersJson = JSONArray(
-        markers.map { marker ->
-            JSONObject()
-                .put("id", marker.id)
-                .put("latitude", marker.latitude)
-                .put("longitude", marker.longitude)
-                .put("title", marker.title)
-                .put("subtitle", marker.subtitle)
-                .put("strokeColorHex", marker.strokeColorHex)
-                .put("fillColorHex", marker.fillColorHex)
-        }
-    ).toString()
+    val markersJson = leafletMarkersJson(markers)
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
+    val fitBoundsToMarkersJson = if (fitBoundsToMarkers) "true" else "false"
     val centerMarkerScript = if (showCenterMarker) {
         """
                 L.circleMarker(center, {
@@ -455,6 +537,7 @@ internal fun buildLeafletMarkerMapHtml(
                 var center = [$formattedLat, $formattedLon];
                 var markerData = $markersJson;
                 var selectedMarkerId = $selectedMarkerJson;
+                var fitBoundsToMarkers = $fitBoundsToMarkersJson;
                 var mapElement = document.getElementById('map');
                 if (!mapElement) {
                     failMap('Map failed to load.');
@@ -523,38 +606,97 @@ internal fun buildLeafletMarkerMapHtml(
                     });
                 };
 
-                markerData.forEach(function(marker) {
-                    var selected = marker.id === selectedMarkerId;
-                    var areaMarker = L.circleMarker(
-                        [marker.latitude, marker.longitude],
-                        markerOptions(marker, selected)
-                    ).addTo(map);
-                    var label = marker.subtitle
-                        ? escapeHtml(marker.title) + '<br />' + escapeHtml(marker.subtitle)
-                        : escapeHtml(marker.title);
-                    areaMarker.bindTooltip(label, { direction: 'top' });
-                    areaMarker.on('click', function() {
-                        window.nephSelectMarker(marker.id);
-                        if (window.$bridgeName && window.$bridgeName.onMarkerSelected) {
-                            window.$bridgeName.onMarkerSelected(nephMapInstanceId, marker.id);
-                        }
+                window.nephSetMarkers = function(nextMarkers, nextSelectedMarkerId) {
+                    markerData = Array.isArray(nextMarkers) ? nextMarkers : [];
+                    selectedMarkerId = nextSelectedMarkerId || null;
+                    Object.keys(areaMarkersById).forEach(function(id) {
+                        map.removeLayer(areaMarkersById[id].marker);
                     });
-                    areaMarkersById[marker.id] = {
-                        marker: areaMarker,
-                        data: marker
-                    };
-                    bounds.push([marker.latitude, marker.longitude]);
-                });
+                    areaMarkersById = {};
+                    bounds = [center];
 
-                if (bounds.length > 1) {
+                    markerData.forEach(function(marker) {
+                        var selected = marker.id === selectedMarkerId;
+                        var areaMarker = L.circleMarker(
+                            [marker.latitude, marker.longitude],
+                            markerOptions(marker, selected)
+                        ).addTo(map);
+                        var label = marker.subtitle
+                            ? escapeHtml(marker.title) + '<br />' + escapeHtml(marker.subtitle)
+                            : escapeHtml(marker.title);
+                        areaMarker.bindTooltip(label, { direction: 'top' });
+                        areaMarker.on('click', function() {
+                            window.nephSelectMarker(marker.id);
+                            if (window.$bridgeName && window.$bridgeName.onMarkerSelected) {
+                                window.$bridgeName.onMarkerSelected(nephMapInstanceId, marker.id);
+                            }
+                        });
+                        areaMarkersById[marker.id] = {
+                            marker: areaMarker,
+                            data: marker
+                        };
+                        bounds.push([marker.latitude, marker.longitude]);
+                    });
+                };
+
+                window.nephSetMarkers(markerData, selectedMarkerId);
+
+                if (fitBoundsToMarkers && bounds.length > 1) {
                     map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
                 }
+
+                function distanceKm(lat1, lon1, lat2, lon2) {
+                    var earthRadiusKm = 6371;
+                    var dLat = (lat2 - lat1) * Math.PI / 180;
+                    var dLon = (lon2 - lon1) * Math.PI / 180;
+                    var a =
+                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                }
+
+                function notifyViewportChanged() {
+                    if (!window.$bridgeName || !window.$bridgeName.onViewportChanged) {
+                        return;
+                    }
+                    var currentCenter = map.getCenter();
+                    var currentBounds = map.getBounds();
+                    var north = currentBounds.getNorth();
+                    var south = currentBounds.getSouth();
+                    var east = currentBounds.getEast();
+                    var west = currentBounds.getWest();
+                    var centerLat = currentCenter.lat;
+                    var centerLon = currentCenter.lng;
+                    var midLat = (north + south) / 2;
+                    var midLon = (east + west) / 2;
+                    var widthKm = distanceKm(midLat, west, midLat, east);
+                    var heightKm = distanceKm(south, midLon, north, midLon);
+                    var widestKm = Math.max(widthKm, heightKm);
+                    window.$bridgeName.onViewportChanged(
+                        nephMapInstanceId,
+                        centerLat,
+                        centerLon,
+                        north,
+                        south,
+                        east,
+                        west,
+                        map.getZoom(),
+                        widthKm,
+                        heightKm,
+                        widestKm
+                    );
+                }
+
+                map.on('moveend zoomend', notifyViewportChanged);
 
                 map.whenReady(function() {
                     logNephMapBreadcrumb('NEPH_MAP: whenReady fired');
                     notifyMapReadyOnce();
+                    notifyViewportChanged();
                 });
                 setTimeout(notifyMapReadyOnce, 1000);
+                setTimeout(notifyViewportChanged, 1000);
             </script>
         </body>
         </html>
@@ -565,7 +707,8 @@ private class LeafletMarkerMapBridge(
     private val currentMapInstanceId: () -> String,
     private val onMarkerSelected: (String, String) -> Unit,
     private val onMapReady: (String, String) -> Unit,
-    private val onMapError: (String, String) -> Unit
+    private val onMapError: (String, String) -> Unit,
+    private val onViewportChanged: (String, LeafletMapViewport) -> Unit
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var readyDeliveredInstanceId: String? = null
@@ -675,6 +818,51 @@ private class LeafletMarkerMapBridge(
                 return@post
             }
             onMapError(incomingInstanceId, trimmed)
+        }
+    }
+
+    @JavascriptInterface
+    fun onViewportChanged(
+        instanceId: String?,
+        centerLatitude: Double,
+        centerLongitude: Double,
+        north: Double,
+        south: Double,
+        east: Double,
+        west: Double,
+        zoom: Int,
+        widthKm: Double,
+        heightKm: Double,
+        widestVisibleDimensionKm: Double
+    ) {
+        val incomingInstanceId = instanceId.orEmpty()
+        val currentInstanceId = currentMapInstanceId()
+        if (incomingInstanceId != currentInstanceId) {
+            logMapDebug(
+                "native onViewportChanged ignored stale instance=$incomingInstanceId current=$currentInstanceId"
+            )
+            return
+        }
+        val viewport = LeafletMapViewport(
+            centerLatitude = centerLatitude,
+            centerLongitude = centerLongitude,
+            north = north,
+            south = south,
+            east = east,
+            west = west,
+            zoom = zoom,
+            widthKm = widthKm,
+            heightKm = heightKm,
+            widestVisibleDimensionKm = widestVisibleDimensionKm
+        )
+        mainHandler.post {
+            if (incomingInstanceId != currentMapInstanceId()) {
+                logMapDebug(
+                    "native onViewportChanged ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
+                )
+                return@post
+            }
+            onViewportChanged(incomingInstanceId, viewport)
         }
     }
 

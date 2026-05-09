@@ -74,9 +74,31 @@ class GatheringAreasScreenTest {
         val visibleAreas = result.areas
 
         val firstKey = gatheringAreasMapInstanceKey(result, visibleAreas)
-        val afterSelectionOnlyKey = gatheringAreasMapInstanceKey(result, visibleAreas)
+        val afterMarkerChangeKey = gatheringAreasMapInstanceKey(result, emptyList())
 
-        assertEquals(firstKey, afterSelectionOnlyKey)
+        assertEquals(firstKey, afterMarkerChangeKey)
+    }
+
+    @Test
+    fun reconcileGatheringAreaCategoryFilters_whenPreviouslyShowingAll_selectsAllNewCategories() {
+        val reconciled = reconcileGatheringAreaCategoryFilters(
+            previousOptionKeys = setOf("assembly_point", "shelter"),
+            previousSelectedKeys = setOf("assembly_point", "shelter"),
+            nextOptionKeys = setOf("hospital", "pharmacy")
+        )
+
+        assertEquals(setOf("hospital", "pharmacy"), reconciled)
+    }
+
+    @Test
+    fun reconcileGatheringAreaCategoryFilters_preservesHiddenCategoriesButShowsNewOnes() {
+        val reconciled = reconcileGatheringAreaCategoryFilters(
+            previousOptionKeys = setOf("assembly_point", "shelter"),
+            previousSelectedKeys = setOf("assembly_point"),
+            nextOptionKeys = setOf("assembly_point", "shelter", "hospital")
+        )
+
+        assertEquals(setOf("assembly_point", "hospital"), reconciled)
     }
 
     private fun sampleNearbyResult(): NearbyGatheringAreasResult {

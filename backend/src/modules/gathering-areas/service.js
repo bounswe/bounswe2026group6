@@ -63,6 +63,16 @@ function buildCacheKey({ lat, lon, radius, limit }) {
   return `${lat.toFixed(CACHE_COORDINATE_DECIMALS)}:${lon.toFixed(CACHE_COORDINATE_DECIMALS)}:${radius}:${limit}`;
 }
 
+function buildViewportCacheKey({ bbox, limit }) {
+  return [
+    bbox.minLon.toFixed(CACHE_COORDINATE_DECIMALS),
+    bbox.minLat.toFixed(CACHE_COORDINATE_DECIMALS),
+    bbox.maxLon.toFixed(CACHE_COORDINATE_DECIMALS),
+    bbox.maxLat.toFixed(CACHE_COORDINATE_DECIMALS),
+    limit,
+  ].join(':');
+}
+
 function readFreshCache(cacheKey) {
   const entry = nearbyCache.get(cacheKey);
   if (!entry) {
@@ -162,6 +172,62 @@ function buildOverpassLightweightQuery({ lat, lon, radius }) {
       `  node(around:${radius},${lat},${lon})["amenity"="police"];`,
       `  node(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
       `  node(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
+    ');',
+    'out tags;',
+  ].join('\n');
+}
+
+function buildOverpassBboxQuery({ bbox }) {
+  const south = bbox.minLat;
+  const west = bbox.minLon;
+  const north = bbox.maxLat;
+  const east = bbox.maxLon;
+
+  return [
+    '[out:json][timeout:25];',
+    '(',
+    `  node(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+    `  way(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+    `  relation(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+    `  node(${south},${west},${north},${east})["amenity"="shelter"];`,
+    `  way(${south},${west},${north},${east})["amenity"="shelter"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="shelter"];`,
+    `  node(${south},${west},${north},${east})["amenity"="hospital"];`,
+    `  way(${south},${west},${north},${east})["amenity"="hospital"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="hospital"];`,
+    `  node(${south},${west},${north},${east})["healthcare"="hospital"];`,
+    `  way(${south},${west},${north},${east})["healthcare"="hospital"];`,
+    `  relation(${south},${west},${north},${east})["healthcare"="hospital"];`,
+    `  node(${south},${west},${north},${east})["amenity"="police"];`,
+    `  way(${south},${west},${north},${east})["amenity"="police"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="police"];`,
+    `  node(${south},${west},${north},${east})["amenity"="fire_station"];`,
+    `  way(${south},${west},${north},${east})["amenity"="fire_station"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="fire_station"];`,
+    `  node(${south},${west},${north},${east})["amenity"="pharmacy"];`,
+    `  way(${south},${west},${north},${east})["amenity"="pharmacy"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="pharmacy"];`,
+    ');',
+    'out center tags;',
+  ].join('\n');
+}
+
+function buildOverpassBboxLightweightQuery({ bbox }) {
+  const south = bbox.minLat;
+  const west = bbox.minLon;
+  const north = bbox.maxLat;
+  const east = bbox.maxLon;
+
+  return [
+    '[out:json][timeout:25];',
+    '(',
+      `  node(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+      `  node(${south},${west},${north},${east})["amenity"="shelter"];`,
+      `  node(${south},${west},${north},${east})["amenity"="hospital"];`,
+      `  node(${south},${west},${north},${east})["healthcare"="hospital"];`,
+      `  node(${south},${west},${north},${east})["amenity"="police"];`,
+      `  node(${south},${west},${north},${east})["amenity"="fire_station"];`,
+      `  node(${south},${west},${north},${east})["amenity"="pharmacy"];`,
     ');',
     'out tags;',
   ].join('\n');
@@ -467,6 +533,22 @@ async function fetchNearbyFromOverpass(params) {
   }
 }
 
+async function fetchViewportFromOverpass(params) {
+  try {
+    return await fetchNearbyFromOverpassWithQuery(buildOverpassBboxQuery(params));
+  } catch (error) {
+    const shouldRetryWithLightweightQuery =
+      error &&
+      (error.code === 'OVERPASS_UNAVAILABLE' || error.code === 'OVERPASS_TIMEOUT');
+
+    if (!shouldRetryWithLightweightQuery) {
+      throw error;
+    }
+
+    return fetchNearbyFromOverpassWithQuery(buildOverpassBboxLightweightQuery(params));
+  }
+}
+
 async function getNearbyGatheringAreas(params) {
   const cacheKey = buildCacheKey(params);
   const cached = readFreshCache(cacheKey);
@@ -531,11 +613,69 @@ async function getNearbyGatheringAreas(params) {
   }
 }
 
+async function getViewportGatheringAreas(params) {
+  const cacheKey = buildViewportCacheKey(params);
+  const cached = readFreshCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const payload = await fetchViewportFromOverpass(params);
+    const collection = toFeatureCollection(payload.elements, params.limit, params.center);
+
+    const result = {
+      center: params.center,
+      radius: params.radius,
+      source: 'overpass',
+      meta: {
+        requestedLimit: params.limit,
+        returnedCount: collection.features.length,
+        categories: buildCategoryMetadata(),
+        viewport: params.viewport,
+      },
+      collection,
+    };
+
+    writeToCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (!isProviderFailure(error)) {
+      throw error;
+    }
+
+    const staleCached = readStaleCache(cacheKey);
+    if (staleCached) {
+      return withSource(staleCached, 'stale_cache', {
+        stale: true,
+        providerErrorCode: error.code,
+      });
+    }
+
+    const collection = toFallbackFeatureCollection();
+    return {
+      center: params.center,
+      radius: params.radius,
+      source: 'fallback',
+      meta: {
+        requestedLimit: params.limit,
+        returnedCount: collection.features.length,
+        providerErrorCode: error.code,
+        fallbackReason: FALLBACK_REASON,
+        categories: buildCategoryMetadata(),
+        viewport: params.viewport,
+      },
+      collection,
+    };
+  }
+}
+
 function __resetNearbyCache() {
   nearbyCache.clear();
 }
 
 module.exports = {
   getNearbyGatheringAreas,
+  getViewportGatheringAreas,
   __resetNearbyCache,
 };

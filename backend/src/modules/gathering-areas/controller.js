@@ -1,5 +1,5 @@
-const { getNearbyGatheringAreas } = require('./service');
-const { validateNearbyQuery } = require('./validators');
+const { getNearbyGatheringAreas, getViewportGatheringAreas } = require('./service');
+const { validateNearbyQuery, validateViewportQuery } = require('./validators');
 
 function sendError(response, status, code, message) {
   return response.status(status).json({ code, message });
@@ -36,6 +36,21 @@ async function handleNearbyGatheringAreas(request, response) {
   }
 }
 
+async function handleViewportGatheringAreas(request, response) {
+  const validation = validateViewportQuery(request.query || {});
+  if (!validation.ok) {
+    return sendError(response, 400, validation.code, validation.message);
+  }
+
+  try {
+    const result = await getViewportGatheringAreas(validation.value);
+    return response.status(200).json(result);
+  } catch (error) {
+    return mapServiceError(response, error);
+  }
+}
+
 module.exports = {
   handleNearbyGatheringAreas,
+  handleViewportGatheringAreas,
 };

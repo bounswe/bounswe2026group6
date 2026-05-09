@@ -6,6 +6,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -79,6 +81,37 @@ object GatheringAreasRepository {
             fallbackLatitude = latitude,
             fallbackLongitude = longitude,
             fallbackRadius = normalizedRadius,
+            fallbackLimit = normalizedLimit
+        )
+    }
+
+    suspend fun fetchViewportGatheringAreas(
+        bbox: String,
+        centerLatitude: Double,
+        centerLongitude: Double,
+        widestVisibleDimensionKm: Double,
+        limit: Int = DefaultLimit
+    ): NearbyGatheringAreasResult {
+        val normalizedLimit = limit.coerceIn(1, MaxLimit)
+        val normalizedRadiusMeters = (widestVisibleDimensionKm * 1000.0)
+            .roundToInt()
+            .coerceAtLeast(1)
+
+        val response = withTimeoutOrNull(NearbyRequestTimeoutMillis) {
+            JsonHttpClient.request(
+                path = "/gathering-areas/viewport?bbox=${urlEncode(bbox)}&limit=$normalizedLimit"
+            )
+        } ?: throw ApiException(
+            message = "Gathering areas request timed out.",
+            status = 504,
+            code = "OVERPASS_TIMEOUT"
+        )
+
+        return parseNearbyGatheringAreasResponse(
+            response = response,
+            fallbackLatitude = centerLatitude,
+            fallbackLongitude = centerLongitude,
+            fallbackRadius = normalizedRadiusMeters,
             fallbackLimit = normalizedLimit
         )
     }
@@ -246,6 +279,10 @@ object GatheringAreasRepository {
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return (earthRadiusMeters * c).roundToInt()
     }
+}
+
+private fun urlEncode(value: String): String {
+    return URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
 }
 
 private fun formatCategoryLabel(category: String): String {
