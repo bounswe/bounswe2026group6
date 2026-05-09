@@ -266,20 +266,6 @@ async function deleteMe(req, res) {
   }
 }
 
-module.exports = {
-  getAuthInfo,
-  signup,
-  login,
-  verifyEmail,
-  getMe,
-  resendVerification,
-  forgotPassword,
-  resetPasswordHandler,
-  logout,
-  deleteMe,
-  googleLogin,
-};
-
 async function googleLogin(req, res) {
   try {
     const { idToken, mode } = req.body;
@@ -318,3 +304,17 @@ async function googleLogin(req, res) {
     return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Something went wrong' });
   }
 }
+
+module.exports = {
+  getAuthInfo,
+  signup,
+  login,
+  verifyEmail,
+  getMe,
+  resendVerification,
+  forgotPassword,
+  resetPasswordHandler,
+  logout,
+  deleteMe,
+  googleLogin,
+};

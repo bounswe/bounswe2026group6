@@ -316,7 +316,7 @@ async function deleteCurrentUser(userId) {
 }
 
 async function loginWithGoogle({ idToken, mode = 'login' }) {
-  const clientId = env.google.clientId;
+  const clientId = process.env.GOOGLE_CLIENT_ID || env.google.clientId;
   if (!clientId) {
     const error = new Error('Google Sign-In is not configured on this server. Set GOOGLE_CLIENT_ID.');
     error.code = 'GOOGLE_NOT_CONFIGURED';
