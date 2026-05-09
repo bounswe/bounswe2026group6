@@ -25,7 +25,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,10 +48,14 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.LeafletMapMarker
+import com.neph.ui.map.LeafletMapViewport
 import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.NephMapIntegration
+import com.neph.ui.map.effectiveLeafletViewportKey
 import com.neph.ui.map.isLeafletMapInitializedForInstance
 import com.neph.ui.map.isLeafletTileLoadedSignal
+import com.neph.ui.map.isLeafletViewportDiscoverable
+import com.neph.ui.map.leafletViewportBboxString
 import com.neph.ui.map.leafletMapErrorForInstance
 import com.neph.ui.map.logMapDebug
 import com.neph.ui.map.newLeafletMapInstanceId
@@ -63,12 +66,16 @@ import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 private const val HelpRequestMapHeightCssPx = 280
 private const val TurkeyOverviewLatitude = 39.0
 private const val TurkeyOverviewLongitude = 35.0
 private const val TurkeyOverviewZoom = 5
+private const val ResourceInitialMessage = "Zoom in or use your device location to see resources in this area."
+private const val ResourceZoomedOutMessage = "Zoom in to see resources in this area."
+private const val ResourceLoadingMessage = "Loading resources in this area..."
+private const val ResourceEmptyMessage = "No resources were found in this visible area."
+private const val ResourceErrorMessage = "Resources could not be loaded for this area. Please try again."
 
 private val RequestTypeFilterOrder = listOf(
     CrisisRequestType.FIRST_AID,
@@ -107,14 +114,14 @@ internal data class HelpRequestMapCenter(
 
 internal data class HelpRequestMapInstanceKey(
     val centerLatitude: Double,
-    val centerLongitude: Double,
-    val markers: List<LeafletMapMarker>
+    val centerLongitude: Double
 )
 
 internal fun helpRequestMapCenter(
     requests: List<ActiveHelpRequestMapItem>
 ): HelpRequestMapCenter {
-    if (requests.isEmpty()) {
+    val validRequests = requests.filter { it.hasValidMapCoordinates() }
+    if (validRequests.isEmpty()) {
         return HelpRequestMapCenter(
             latitude = TurkeyOverviewLatitude,
             longitude = TurkeyOverviewLongitude
@@ -122,15 +129,15 @@ internal fun helpRequestMapCenter(
     }
 
     return HelpRequestMapCenter(
-        latitude = requests.sumOf { it.latitude } / requests.size,
-        longitude = requests.sumOf { it.longitude } / requests.size
+        latitude = validRequests.sumOf { it.latitude } / validRequests.size,
+        longitude = validRequests.sumOf { it.longitude } / validRequests.size
     )
 }
 
 internal fun helpRequestLeafletMarkers(
     requests: List<ActiveHelpRequestMapItem>
 ): List<LeafletMapMarker> {
-    return requests.map { request ->
+    return requests.filter { it.hasValidMapCoordinates() }.map { request ->
         val style = requestMarkerStyle(request.type)
         val subtitle = "Priority: ${ActiveHelpRequestsRepository.formatPriority(request.priorityLevel)} - " +
             "${request.district}, ${request.city}"
@@ -152,9 +159,15 @@ internal fun helpRequestMapInstanceKey(
     val center = helpRequestMapCenter(requests)
     return HelpRequestMapInstanceKey(
         centerLatitude = center.latitude,
-        centerLongitude = center.longitude,
-        markers = helpRequestLeafletMarkers(requests)
+        centerLongitude = center.longitude
     )
+}
+
+private fun ActiveHelpRequestMapItem.hasValidMapCoordinates(): Boolean {
+    return latitude.isFinite() &&
+        longitude.isFinite() &&
+        latitude in -90.0..90.0 &&
+        longitude in -180.0..180.0
 }
 
 @Composable
@@ -166,52 +179,30 @@ fun HelpRequestMapScreen(
     isAuthenticated: Boolean
 ) {
     val spacing = LocalNephSpacing.current
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
     var requests by remember { mutableStateOf(emptyList<ActiveHelpRequestMapItem>()) }
     var selectedRequestId by remember { mutableStateOf<String?>(null) }
     var selectedTypes by remember { mutableStateOf(setOf<CrisisRequestType>()) }
+    var currentViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
+    var pendingViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
+    var lastFetchedViewportKey by remember { mutableStateOf<String?>(null) }
+    var viewportRefreshNonce by remember { mutableStateOf(0) }
+    var viewportRequestSerial by remember { mutableStateOf(0) }
 
-    fun loadWaitingRequests() {
-        scope.launch {
-            loading = true
-            errorMessage = ""
-            infoMessage = ""
-
-            try {
-                val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests()
-                requests = result.requests
-                selectedRequestId = when {
-                    result.requests.isEmpty() -> null
-                    selectedRequestId != null && result.requests.any { it.requestId == selectedRequestId } -> selectedRequestId
-                    else -> null
-                }
-
-                if (result.requests.isEmpty()) {
-                    infoMessage = "No waiting help requests are available right now."
-                } else if (result.skippedCount > 0) {
-                    infoMessage = "${result.skippedCount} inactive or malformed request entries were hidden."
-                }
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (error: ApiException) {
-                errorMessage = error.message.ifBlank {
-                    "Could not load waiting help requests."
-                }
-                requests = emptyList()
-                selectedRequestId = null
-            } catch (_: Exception) {
-                errorMessage = "Could not load waiting help requests."
-                requests = emptyList()
-                selectedRequestId = null
-            } finally {
-                loading = false
-            }
+    fun queueViewportRefresh() {
+        val viewport = currentViewport
+        if (!isLeafletViewportDiscoverable(viewport)) {
+            requests = emptyList()
+            selectedRequestId = null
+            infoMessage = ResourceZoomedOutMessage
+            return
         }
+        pendingViewport = viewport
+        viewportRefreshNonce += 1
     }
 
     fun openRequestInMap(item: ActiveHelpRequestMapItem) {
@@ -238,8 +229,58 @@ fun HelpRequestMapScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadWaitingRequests()
+    LaunchedEffect(effectiveLeafletViewportKey(pendingViewport), viewportRefreshNonce) {
+        val viewport = pendingViewport ?: return@LaunchedEffect
+        if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
+        val viewportKey = effectiveLeafletViewportKey(viewport) ?: return@LaunchedEffect
+        if (viewportKey == lastFetchedViewportKey && viewportRefreshNonce == 0) {
+            return@LaunchedEffect
+        }
+        delay(450)
+        val requestSerial = viewportRequestSerial + 1
+        viewportRequestSerial = requestSerial
+        loading = true
+        errorMessage = ""
+        infoMessage = ResourceLoadingMessage
+
+        try {
+            val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests(
+                bbox = leafletViewportBboxString(viewport)
+            )
+            if (requestSerial == viewportRequestSerial) {
+                requests = result.requests
+                lastFetchedViewportKey = viewportKey
+                viewportRefreshNonce = 0
+                selectedRequestId = selectedRequestId
+                    ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
+                infoMessage = when {
+                    result.requests.isEmpty() -> ResourceEmptyMessage
+                    result.skippedCount > 0 ->
+                        "${result.skippedCount} inactive or malformed request entries were hidden."
+                    else -> ""
+                }
+            }
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (error: ApiException) {
+            if (requestSerial == viewportRequestSerial) {
+                errorMessage = error.message.ifBlank { ResourceErrorMessage }
+                requests = emptyList()
+                selectedRequestId = null
+                infoMessage = ""
+            }
+        } catch (_: Exception) {
+            if (requestSerial == viewportRequestSerial) {
+                errorMessage = ResourceErrorMessage
+                requests = emptyList()
+                selectedRequestId = null
+                infoMessage = ""
+            }
+        } finally {
+            if (requestSerial == viewportRequestSerial) {
+                loading = false
+            }
+        }
     }
 
     val visibleRequests = filterVisibleRequests(requests, selectedTypes)
@@ -283,42 +324,59 @@ fun HelpRequestMapScreen(
 
                     SecondaryButton(
                         text = "Refresh Help Request Map",
-                        onClick = { loadWaitingRequests() },
+                        onClick = { queueViewportRefresh() },
                         enabled = !loading
                     )
                 }
             }
 
             when {
-                loading -> {
-                    SectionCard {
-                        HelperText(text = "Loading waiting help requests...")
-                    }
-                }
-
-                errorMessage.isNotBlank() -> {
-                    SectionCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                            HelperText(text = errorMessage)
-                            SecondaryButton(
-                                text = "Retry",
-                                onClick = { loadWaitingRequests() }
-                            )
-                        }
-                    }
-                }
-
                 requests.isEmpty() -> {
                     SectionCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                            SectionHeader(
-                                title = "No Waiting Requests",
-                                subtitle = "There are no waiting help requests to show on the map right now."
-                            )
-                            SecondaryButton(
-                                text = "Retry",
-                                onClick = { loadWaitingRequests() }
-                            )
+                        CrisisRequestMapPanel(
+                            requests = emptyList(),
+                            selectedRequestId = null,
+                            emptyMarkersMessage = when {
+                                loading -> ResourceLoadingMessage
+                                errorMessage.isNotBlank() -> ResourceErrorMessage
+                                currentViewport == null -> ResourceInitialMessage
+                                !isLeafletViewportDiscoverable(currentViewport) -> ResourceZoomedOutMessage
+                                else -> ResourceEmptyMessage
+                            },
+                            loadingResources = loading,
+                            onViewportChanged = { viewport ->
+                                currentViewport = viewport
+                                if (isLeafletViewportDiscoverable(viewport)) {
+                                    pendingViewport = viewport
+                                } else {
+                                    viewportRequestSerial += 1
+                                    requests = emptyList()
+                                    selectedRequestId = null
+                                    lastFetchedViewportKey = null
+                                    infoMessage = ResourceZoomedOutMessage
+                                }
+                            },
+                            onSelectRequest = { selectedRequestId = it }
+                        )
+                    }
+
+                    if (
+                        lastFetchedViewportKey != null &&
+                        !loading &&
+                        errorMessage.isBlank() &&
+                        isLeafletViewportDiscoverable(currentViewport)
+                    ) {
+                        SectionCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                                SectionHeader(
+                                    title = "No Waiting Requests",
+                                    subtitle = ResourceEmptyMessage
+                                )
+                                SecondaryButton(
+                                    text = "Retry",
+                                    onClick = { queueViewportRefresh() }
+                                )
+                            }
                         }
                     }
                 }
@@ -342,6 +400,19 @@ fun HelpRequestMapScreen(
                         CrisisRequestMapPanel(
                             requests = visibleRequests,
                             selectedRequestId = selectedRequest?.requestId,
+                            loadingResources = loading,
+                            onViewportChanged = { viewport ->
+                                currentViewport = viewport
+                                if (isLeafletViewportDiscoverable(viewport)) {
+                                    pendingViewport = viewport
+                                } else {
+                                    viewportRequestSerial += 1
+                                    requests = emptyList()
+                                    selectedRequestId = null
+                                    lastFetchedViewportKey = null
+                                    infoMessage = ResourceZoomedOutMessage
+                                }
+                            },
                             onSelectRequest = { selectedRequestId = it }
                         )
                     }
@@ -401,6 +472,18 @@ fun HelpRequestMapScreen(
             if (isFilterEmpty) {
                 SectionCard {
                     HelperText(text = "No help requests match the selected request type filters.")
+                }
+            }
+
+            if (errorMessage.isNotBlank()) {
+                SectionCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                        HelperText(text = errorMessage)
+                        SecondaryButton(
+                            text = "Retry",
+                            onClick = { queueViewportRefresh() }
+                        )
+                    }
                 }
             }
 
@@ -614,7 +697,7 @@ private fun RequestListItem(
                 )
             }
             TextActionButton(text = "Get Directions", onClick = onGetDirections)
-            TextActionButton(text = "Open", onClick = onOpenMap)
+            TextActionButton(text = "Open in Map", onClick = onOpenMap)
         }
         Spacer(modifier = Modifier.height(spacing.sm))
     }
@@ -624,6 +707,9 @@ private fun RequestListItem(
 private fun CrisisRequestMapPanel(
     requests: List<ActiveHelpRequestMapItem>,
     selectedRequestId: String?,
+    emptyMarkersMessage: String = ResourceEmptyMessage,
+    loadingResources: Boolean = false,
+    onViewportChanged: (LeafletMapViewport) -> Unit,
     onSelectRequest: (String) -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -631,7 +717,7 @@ private fun CrisisRequestMapPanel(
     val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
     var mapError by remember { mutableStateOf("") }
-    val mapInstanceKey = helpRequestMapInstanceKey(requests)
+    val mapInstanceKey = HelpRequestMapInstanceKey(TurkeyOverviewLatitude, TurkeyOverviewLongitude)
     val mapInstanceId = remember(mapInstanceKey) {
         newLeafletMapInstanceId()
     }
@@ -648,7 +734,7 @@ private fun CrisisRequestMapPanel(
         errorMessage = mapError
     )
     val selectedRequest = requests.firstOrNull { it.requestId == selectedRequestId }
-    val markers = mapInstanceKey.markers
+    val markers = helpRequestLeafletMarkers(requests)
 
     fun markMapAlive(instanceId: String, source: String) {
         if (instanceId == currentMapInstanceIdState.value) {
@@ -709,6 +795,7 @@ private fun CrisisRequestMapPanel(
             mapHeightCssPx = HelpRequestMapHeightCssPx,
             zoom = if (markers.isEmpty()) TurkeyOverviewZoom else 13,
             showCenterMarker = false,
+            fitBoundsToMarkers = false,
             onMarkerSelected = { markerInstanceId, markerId ->
                 if (markerInstanceId == currentMapInstanceIdState.value) {
                     onSelectRequest(markerId)
@@ -730,6 +817,11 @@ private fun CrisisRequestMapPanel(
                     mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                 }
             },
+            onViewportChanged = { viewportInstanceId, viewport ->
+                if (viewportInstanceId == currentMapInstanceIdState.value) {
+                    onViewportChanged(viewport)
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(HelpRequestMapHeightCssPx.dp)
@@ -743,8 +835,12 @@ private fun CrisisRequestMapPanel(
             HelperText(text = activeMapError)
         }
 
+        if (loadingResources) {
+            HelperText(text = ResourceLoadingMessage)
+        }
+
         if (markers.isEmpty()) {
-            HelperText(text = "No help request markers are available for the selected filters.")
+            HelperText(text = emptyMarkersMessage)
         }
 
         selectedRequest?.let { request ->

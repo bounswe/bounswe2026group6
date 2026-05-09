@@ -44,9 +44,13 @@ import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
+import com.neph.ui.map.LeafletMapViewport
 import com.neph.ui.map.NephMapIntegration
+import com.neph.ui.map.effectiveLeafletViewportKey
 import com.neph.ui.map.isLeafletMapInitializedForInstance
 import com.neph.ui.map.isLeafletTileLoadedSignal
+import com.neph.ui.map.isLeafletViewportDiscoverable
+import com.neph.ui.map.leafletViewportBboxString
 import com.neph.ui.map.leafletMapErrorForInstance
 import com.neph.ui.map.logMapDebug
 import com.neph.ui.map.newLeafletMapInstanceId
@@ -60,30 +64,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private enum class GatheringAreasSearchOrigin {
-    CURRENT_LOCATION,
-    OTHER
-}
-
 private const val GatheringAreasMapHeightCssPx = 280
 private const val TurkeyOverviewLatitude = 39.0
 private const val TurkeyOverviewLongitude = 35.0
 private const val TurkeyOverviewZoom = 5
+private const val ResourceInitialMessage = "Zoom in or use your device location to see resources in this area."
+private const val ResourceZoomedOutMessage = "Zoom in to see resources in this area."
+private const val ResourceLoadingMessage = "Loading resources in this area..."
+private const val ResourceEmptyMessage = "No resources were found in this visible area."
+private const val ResourceErrorMessage = "Resources could not be loaded for this area. Please try again."
 internal const val GatheringAreasVisibleCategoriesTitle = "Visible Categories"
 internal const val GatheringAreasVisibleCategoriesSubtitle =
     "Selected categories are shown on the map and in the list."
 internal const val GatheringAreasShowAllCategoriesText = "Show All Categories"
 
-internal data class GatheringAreaMapMarkerKey(
-    val id: String,
-    val latitude: Double,
-    val longitude: Double
-)
-
 internal data class GatheringAreasMapInstanceKey(
     val centerLatitude: Double,
-    val centerLongitude: Double,
-    val markers: List<GatheringAreaMapMarkerKey>
+    val centerLongitude: Double
 )
 
 internal fun gatheringAreasMapInstanceKey(
@@ -92,14 +89,7 @@ internal fun gatheringAreasMapInstanceKey(
 ): GatheringAreasMapInstanceKey {
     return GatheringAreasMapInstanceKey(
         centerLatitude = result.centerLatitude,
-        centerLongitude = result.centerLongitude,
-        markers = visibleAreas.map { area ->
-            GatheringAreaMapMarkerKey(
-                id = area.id,
-                latitude = area.latitude,
-                longitude = area.longitude
-            )
-        }
+        centerLongitude = result.centerLongitude
     )
 }
 
@@ -122,60 +112,36 @@ fun GatheringAreasScreen(
     var sourceLabel by remember { mutableStateOf("") }
     var lastCenterLatitude by remember { mutableStateOf<Double?>(null) }
     var lastCenterLongitude by remember { mutableStateOf<Double?>(null) }
-    var lastSearchOrigin by remember { mutableStateOf<GatheringAreasSearchOrigin?>(null) }
+    var mapCenterLatitude by remember { mutableStateOf(TurkeyOverviewLatitude) }
+    var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
+    var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
+    var currentViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
+    var pendingViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
+    var lastFetchedViewportKey by remember { mutableStateOf<String?>(null) }
+    var viewportRefreshNonce by remember { mutableStateOf(0) }
+    var viewportRequestSerial by remember { mutableStateOf(0) }
     var nearbyResult by remember { mutableStateOf<NearbyGatheringAreasResult?>(null) }
     var selectedAreaId by remember { mutableStateOf<String?>(null) }
     var categoryFilters by remember { mutableStateOf<Set<String>>(emptySet()) }
     val hasSearchCenter = lastCenterLatitude != null && lastCenterLongitude != null
 
-    fun fetchGatheringAreas(
-        lat: Double,
-        lon: Double,
-        label: String,
-        origin: GatheringAreasSearchOrigin
-    ) {
-        val normalizedLabel = label.ifBlank { "selected location" }
-        sourceLabel = normalizedLabel
-        lastCenterLatitude = lat
-        lastCenterLongitude = lon
-        lastSearchOrigin = origin
+    fun applyViewportResult(result: NearbyGatheringAreasResult) {
+        nearbyResult = result
+        sourceLabel = "visible area"
+        lastCenterLatitude = result.centerLatitude
+        lastCenterLongitude = result.centerLongitude
+        selectedAreaId = selectedAreaId
+            ?.takeIf { selected -> result.areas.any { it.id == selected } }
+            ?: result.areas.firstOrNull()?.id
+        val nextOptions = resolveCategoryOptions(result).map { it.key }.toSet()
+        if (categoryFilters.isEmpty()) {
+            categoryFilters = nextOptions
+        }
 
-        scope.launch {
-            loading = true
-            errorMessage = ""
-            infoMessage = ""
-
-            try {
-                val result = GatheringAreasRepository.fetchNearbyGatheringAreas(
-                    latitude = lat,
-                    longitude = lon
-                )
-                nearbyResult = result
-                sourceLabel = normalizedLabel
-                lastCenterLatitude = result.centerLatitude
-                lastCenterLongitude = result.centerLongitude
-                selectedAreaId = selectedAreaId
-                    ?.takeIf { selected -> result.areas.any { it.id == selected } }
-                    ?: result.areas.firstOrNull()?.id
-                categoryFilters = resolveCategoryOptions(result).map { it.key }.toSet()
-
-                if (result.areas.isEmpty()) {
-                    infoMessage = "No gathering areas were found in this area."
-                } else if (result.skippedCount > 0) {
-                    infoMessage = "${result.skippedCount} malformed area entries were skipped safely."
-                }
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (error: ApiException) {
-                errorMessage = mapGatheringAreasErrorMessage(error)
-                if (origin == GatheringAreasSearchOrigin.CURRENT_LOCATION && isProviderError(error)) {
-                    infoMessage = "Current location detected. Nearby gathering areas could not be loaded right now."
-                }
-            } catch (_: Exception) {
-                errorMessage = "Could not load gathering areas right now."
-            } finally {
-                loading = false
-            }
+        if (result.areas.isEmpty()) {
+            infoMessage = ResourceEmptyMessage
+        } else if (result.skippedCount > 0) {
+            infoMessage = "${result.skippedCount} malformed provider entries were skipped."
         }
     }
 
@@ -193,12 +159,14 @@ fun GatheringAreasScreen(
 
                 val location = attempt.location
                 if (location != null) {
-                    fetchGatheringAreas(
-                        lat = location.latitude,
-                        lon = location.longitude,
-                        label = "your current location",
-                        origin = GatheringAreasSearchOrigin.CURRENT_LOCATION
-                    )
+                    mapCenterLatitude = location.latitude
+                    mapCenterLongitude = location.longitude
+                    mapZoom = 13
+                    sourceLabel = "your current location"
+                    nearbyResult = null
+                    selectedAreaId = null
+                    lastFetchedViewportKey = null
+                    loading = false
                     return@launch
                 }
 
@@ -215,6 +183,51 @@ fun GatheringAreasScreen(
             } catch (_: Exception) {
                 loading = false
                 infoMessage = "Current location is unavailable. Nearby results were not updated."
+            }
+        }
+    }
+
+    LaunchedEffect(effectiveLeafletViewportKey(pendingViewport), viewportRefreshNonce) {
+        val viewport = pendingViewport ?: return@LaunchedEffect
+        if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
+        val viewportKey = effectiveLeafletViewportKey(viewport) ?: return@LaunchedEffect
+        if (viewportKey == lastFetchedViewportKey && viewportRefreshNonce == 0) {
+            return@LaunchedEffect
+        }
+        delay(450)
+        val requestSerial = viewportRequestSerial + 1
+        viewportRequestSerial = requestSerial
+        loading = true
+        errorMessage = ""
+        infoMessage = ResourceLoadingMessage
+
+        try {
+            val result = GatheringAreasRepository.fetchViewportGatheringAreas(
+                bbox = leafletViewportBboxString(viewport),
+                centerLatitude = viewport.centerLatitude,
+                centerLongitude = viewport.centerLongitude,
+                widestVisibleDimensionKm = viewport.widestVisibleDimensionKm
+            )
+            if (requestSerial == viewportRequestSerial) {
+                lastFetchedViewportKey = viewportKey
+                viewportRefreshNonce = 0
+                applyViewportResult(result)
+            }
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (error: ApiException) {
+            if (requestSerial == viewportRequestSerial) {
+                errorMessage = mapGatheringAreasErrorMessage(error).ifBlank { ResourceErrorMessage }
+                infoMessage = ""
+            }
+        } catch (_: Exception) {
+            if (requestSerial == viewportRequestSerial) {
+                errorMessage = ResourceErrorMessage
+                infoMessage = ""
+            }
+        } finally {
+            if (requestSerial == viewportRequestSerial) {
+                loading = false
             }
         }
     }
@@ -301,12 +314,16 @@ fun GatheringAreasScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
-                        HelperText(
-                            text = "Showing results around $sourceLabel."
-                        )
+                    if (loading) {
+                        HelperText(text = ResourceLoadingMessage)
+                    } else if (currentViewport == null) {
+                        HelperText(text = ResourceInitialMessage)
+                    } else if (!isLeafletViewportDiscoverable(currentViewport)) {
+                        HelperText(text = ResourceZoomedOutMessage)
+                    } else if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
+                        HelperText(text = "Showing resources in the visible area.")
                     } else {
-                        HelperText(text = "Use your current location to find nearby gathering areas.")
+                        HelperText(text = ResourceInitialMessage)
                     }
 
                     SecondaryButton(
@@ -322,51 +339,23 @@ fun GatheringAreasScreen(
                     )
 
                     SecondaryButton(
-                        text = "Refresh Nearby Areas",
+                        text = "Refresh Visible Area",
                         onClick = {
-                            val lat = lastCenterLatitude ?: return@SecondaryButton
-                            val lon = lastCenterLongitude ?: return@SecondaryButton
-                            fetchGatheringAreas(
-                                lat = lat,
-                                lon = lon,
-                                label = sourceLabel,
-                                origin = lastSearchOrigin ?: GatheringAreasSearchOrigin.OTHER
-                            )
+                            val viewport = currentViewport
+                            if (!isLeafletViewportDiscoverable(viewport)) {
+                                infoMessage = ResourceZoomedOutMessage
+                                return@SecondaryButton
+                            }
+                            pendingViewport = viewport
+                            viewportRefreshNonce += 1
                         },
-                        enabled = !loading && hasSearchCenter
+                        enabled = !loading
                     )
                 }
             }
 
             when {
-                loading -> {
-                    SectionCard {
-                        HelperText(text = "Loading nearby gathering areas...")
-                    }
-                }
-
-                errorMessage.isNotBlank() -> {
-                    SectionCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                            HelperText(text = errorMessage)
-                            if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
-                                SecondaryButton(
-                                    text = "Retry",
-                                    onClick = {
-                                        fetchGatheringAreas(
-                                            lat = lastCenterLatitude!!,
-                                            lon = lastCenterLongitude!!,
-                                            label = sourceLabel,
-                                            origin = lastSearchOrigin ?: GatheringAreasSearchOrigin.OTHER
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                !hasSearchCenter -> {
+                nearbyResult == null -> {
                     GatheringAreasMapCard(
                         result = turkeyOverviewGatheringAreasResult(),
                         visibleAreas = emptyList(),
@@ -374,10 +363,31 @@ fun GatheringAreasScreen(
                         onAreaSelected = { selectedAreaId = it },
                         onOpenAreaInMap = ::openAreaInMap,
                         onGetDirections = ::openAreaDirections,
-                        emptyMarkersMessage = "Use your device location to find nearby gathering areas.",
-                        emptyMapSubtitle = "Turkey overview. Nearby markers will appear after using your device location.",
-                        mapZoom = TurkeyOverviewZoom,
-                        showCenterMarker = false
+                        emptyMarkersMessage = when {
+                            loading -> ResourceLoadingMessage
+                            errorMessage.isNotBlank() -> ResourceErrorMessage
+                            currentViewport == null -> ResourceInitialMessage
+                            !isLeafletViewportDiscoverable(currentViewport) -> ResourceZoomedOutMessage
+                            else -> ResourceEmptyMessage
+                        },
+                        emptyMapSubtitle = ResourceInitialMessage,
+                        mapCenterLatitude = mapCenterLatitude,
+                        mapCenterLongitude = mapCenterLongitude,
+                        mapZoom = mapZoom,
+                        showCenterMarker = false,
+                        loadingResources = loading,
+                        onViewportChanged = { viewport ->
+                            currentViewport = viewport
+                            if (isLeafletViewportDiscoverable(viewport)) {
+                                pendingViewport = viewport
+                            } else {
+                                viewportRequestSerial += 1
+                                nearbyResult = null
+                                selectedAreaId = null
+                                lastFetchedViewportKey = null
+                                infoMessage = ResourceZoomedOutMessage
+                            }
+                        }
                     )
                 }
 
@@ -390,7 +400,25 @@ fun GatheringAreasScreen(
                         selectedAreaId = null,
                         onAreaSelected = { selectedAreaId = it },
                         onOpenAreaInMap = ::openAreaInMap,
-                        onGetDirections = ::openAreaDirections
+                        onGetDirections = ::openAreaDirections,
+                        emptyMarkersMessage = ResourceEmptyMessage,
+                        emptyMapSubtitle = ResourceEmptyMessage,
+                        mapCenterLatitude = mapCenterLatitude,
+                        mapCenterLongitude = mapCenterLongitude,
+                        mapZoom = mapZoom,
+                        loadingResources = loading,
+                        onViewportChanged = { viewport ->
+                            currentViewport = viewport
+                            if (isLeafletViewportDiscoverable(viewport)) {
+                                pendingViewport = viewport
+                            } else {
+                                viewportRequestSerial += 1
+                                nearbyResult = null
+                                selectedAreaId = null
+                                lastFetchedViewportKey = null
+                                infoMessage = ResourceZoomedOutMessage
+                            }
+                        }
                     )
 
                     SectionCard {
@@ -399,16 +427,12 @@ fun GatheringAreasScreen(
                                 title = "No Gathering Areas Found",
                                 subtitle = "Try refreshing or using your current location for a different area."
                             )
-                            if (hasSearchCenter && lastCenterLatitude != null && lastCenterLongitude != null) {
+                            if (isLeafletViewportDiscoverable(currentViewport)) {
                                 SecondaryButton(
                                     text = "Retry",
                                     onClick = {
-                                        fetchGatheringAreas(
-                                            lat = lastCenterLatitude!!,
-                                            lon = lastCenterLongitude!!,
-                                            label = sourceLabel,
-                                            origin = lastSearchOrigin ?: GatheringAreasSearchOrigin.OTHER
-                                        )
+                                        pendingViewport = currentViewport
+                                        viewportRefreshNonce += 1
                                     }
                                 )
                             }
@@ -493,7 +517,23 @@ fun GatheringAreasScreen(
                         selectedAreaId = selectedArea?.id,
                         onAreaSelected = { selectedAreaId = it },
                         onOpenAreaInMap = ::openAreaInMap,
-                        onGetDirections = ::openAreaDirections
+                        onGetDirections = ::openAreaDirections,
+                        mapCenterLatitude = mapCenterLatitude,
+                        mapCenterLongitude = mapCenterLongitude,
+                        mapZoom = mapZoom,
+                        loadingResources = loading,
+                        onViewportChanged = { viewport ->
+                            currentViewport = viewport
+                            if (isLeafletViewportDiscoverable(viewport)) {
+                                pendingViewport = viewport
+                            } else {
+                                viewportRequestSerial += 1
+                                nearbyResult = null
+                                selectedAreaId = null
+                                lastFetchedViewportKey = null
+                                infoMessage = ResourceZoomedOutMessage
+                            }
+                        }
                     )
 
                     visibleAreas.forEachIndexed { index, area ->
@@ -553,6 +593,23 @@ fun GatheringAreasScreen(
                 }
             }
 
+            if (errorMessage.isNotBlank()) {
+                SectionCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                        HelperText(text = errorMessage)
+                        if (isLeafletViewportDiscoverable(currentViewport)) {
+                            SecondaryButton(
+                                text = "Retry",
+                                onClick = {
+                                    pendingViewport = currentViewport
+                                    viewportRefreshNonce += 1
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             if (infoMessage.isNotBlank()) {
                 SectionCard {
                     HelperText(text = infoMessage)
@@ -570,10 +627,14 @@ private fun GatheringAreasMapCard(
     onAreaSelected: (String) -> Unit,
     onOpenAreaInMap: (GatheringAreaItem) -> Unit,
     onGetDirections: (GatheringAreaItem) -> Unit,
+    onViewportChanged: (LeafletMapViewport) -> Unit,
     emptyMarkersMessage: String = "No gathering area markers are available for this search center.",
     emptyMapSubtitle: String = "Showing the searched area. No gathering area markers were returned.",
+    mapCenterLatitude: Double = result.centerLatitude,
+    mapCenterLongitude: Double = result.centerLongitude,
     mapZoom: Int = 13,
-    showCenterMarker: Boolean = true
+    showCenterMarker: Boolean = true,
+    loadingResources: Boolean = false
 ) {
     val spacing = LocalNephSpacing.current
     val initializedInstanceIdState = remember { mutableStateOf<String?>(null) }
@@ -582,7 +643,7 @@ private fun GatheringAreasMapCard(
     var mapError by remember {
         mutableStateOf("")
     }
-    val mapInstanceKey = gatheringAreasMapInstanceKey(result, visibleAreas)
+    val mapInstanceKey = GatheringAreasMapInstanceKey(mapCenterLatitude, mapCenterLongitude)
     val mapInstanceId = remember(mapInstanceKey) {
         newLeafletMapInstanceId()
     }
@@ -666,13 +727,14 @@ private fun GatheringAreasMapCard(
             LeafletMarkerMap(
                 mapInstanceId = mapInstanceId,
                 currentMapInstanceId = { currentMapInstanceIdState.value },
-                centerLatitude = result.centerLatitude,
-                centerLongitude = result.centerLongitude,
+                centerLatitude = mapCenterLatitude,
+                centerLongitude = mapCenterLongitude,
                 markers = markers,
                 selectedMarkerId = selectedAreaId,
                 mapHeightCssPx = GatheringAreasMapHeightCssPx,
                 zoom = mapZoom,
                 showCenterMarker = showCenterMarker,
+                fitBoundsToMarkers = false,
                 onMarkerSelected = { markerInstanceId, markerId ->
                     if (markerInstanceId == currentMapInstanceIdState.value) {
                         onAreaSelected(markerId)
@@ -694,6 +756,11 @@ private fun GatheringAreasMapCard(
                         mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
                     }
                 },
+                onViewportChanged = { viewportInstanceId, viewport ->
+                    if (viewportInstanceId == currentMapInstanceIdState.value) {
+                        onViewportChanged(viewport)
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(GatheringAreasMapHeightCssPx.dp)
@@ -705,6 +772,10 @@ private fun GatheringAreasMapCard(
 
             if (activeMapError.isNotBlank()) {
                 HelperText(text = activeMapError)
+            }
+
+            if (loadingResources) {
+                HelperText(text = ResourceLoadingMessage)
             }
 
             if (markers.isEmpty()) {
