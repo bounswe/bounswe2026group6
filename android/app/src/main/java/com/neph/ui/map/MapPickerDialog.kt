@@ -1,15 +1,9 @@
 package com.neph.ui.map
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,28 +13,35 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.viewinterop.AndroidView
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.theme.LocalNephSpacing
-import java.io.ByteArrayInputStream
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 data class MapPickerSelection(
     val latitude: Double,
     val longitude: Double
 )
+
+internal fun initialMapPickerSelection(latitude: Double?, longitude: Double?): MapPickerSelection? {
+    return if (latitude != null && longitude != null && latitude.isFinite() && longitude.isFinite()) {
+        MapPickerSelection(latitude = latitude, longitude = longitude)
+    } else {
+        null
+    }
+}
 
 @Composable
 fun MapPickerDialog(
@@ -60,11 +61,71 @@ fun MapPickerDialog(
     val spacing = LocalNephSpacing.current
     val effectiveInitialLatitude = centerLatitude ?: initialLatitude
     val effectiveInitialLongitude = centerLongitude ?: initialLongitude
-    var selection by remember(initialLatitude, initialLongitude, centerLatitude, centerLongitude) {
-        mutableStateOf<MapPickerSelection?>(null)
+    val mapInstanceId = remember(effectiveInitialLatitude, effectiveInitialLongitude) {
+        newLeafletMapInstanceId()
     }
-    var mapReady by remember { mutableStateOf(false) }
-    var mapError by remember { mutableStateOf("") }
+    val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
+    currentMapInstanceIdState.value = mapInstanceId
+    var selection by remember(effectiveInitialLatitude, effectiveInitialLongitude) {
+        mutableStateOf(initialMapPickerSelection(effectiveInitialLatitude, effectiveInitialLongitude))
+    }
+    val initializedInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
+    val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
+    var mapError by remember {
+        mutableStateOf("")
+    }
+    val activeMapInitialized = isLeafletMapInitializedForInstance(
+        activeInstanceId = mapInstanceId,
+        initializedInstanceId = initializedInstanceIdState.value
+    )
+    val activeMapError = leafletMapErrorForInstance(
+        activeInstanceId = mapInstanceId,
+        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+        errorInstanceId = errorInstanceIdState.value,
+        errorMessage = mapError
+    )
+
+    LaunchedEffect(mapInstanceId) {
+        errorInstanceIdState.value = null
+        mapError = ""
+        delay(LeafletMapInitializationTimeoutMillis)
+        if (shouldApplyLeafletMapTimeout(
+                activeInstanceId = mapInstanceId,
+                currentInstanceId = currentMapInstanceIdState.value,
+                initializedInstanceId = initializedInstanceIdState.value,
+                errorInstanceId = errorInstanceIdState.value
+            )
+        ) {
+            logMapDebug("native MapPicker timeout applied instance=$mapInstanceId")
+            errorInstanceIdState.value = mapInstanceId
+            mapError = LeafletMapInitializationTimeoutMessage
+        } else {
+            logMapDebug(
+                "native MapPicker timeout ignored instance=$mapInstanceId current=${currentMapInstanceIdState.value} initialized=${initializedInstanceIdState.value} error=${errorInstanceIdState.value}"
+            )
+        }
+    }
+
+    fun markMapAlive(instanceId: String, source: String) {
+        if (instanceId == currentMapInstanceIdState.value) {
+            if (initializedInstanceIdState.value != instanceId) {
+                logMapDebug("native MapPicker initialized source=$source instance=$instanceId")
+            }
+            initializedInstanceIdState.value = instanceId
+            if (isLeafletTileLoadedSignal(source)) {
+                tileLoadedInstanceIdState.value = instanceId
+            }
+            if (shouldClearLeafletMapErrorForSignal(source, mapError)) {
+                errorInstanceIdState.value = null
+                mapError = ""
+            }
+        } else {
+            logMapDebug(
+                "native MapPicker initialized ignored stale source=$source instance=$instanceId current=${currentMapInstanceIdState.value}"
+            )
+        }
+    }
 
     Dialog(onDismissRequest = { if (!loading) onDismiss() }) {
         Surface(
@@ -87,33 +148,43 @@ fun MapPickerDialog(
                 HelperText(text = "Tap on the map to place a pin, then confirm the selection.")
 
                 MapPickerMap(
+                    mapInstanceId = mapInstanceId,
+                    currentMapInstanceId = { currentMapInstanceIdState.value },
                     initialLatitude = effectiveInitialLatitude,
                     initialLongitude = effectiveInitialLongitude,
                     onLocationSelected = { lat, lon ->
                         selection = MapPickerSelection(lat, lon)
                     },
-                    onMapReady = { mapReady = true },
-                    onMapError = { message ->
-                        mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                    onMapReady = { initializedInstanceId, source -> markMapAlive(initializedInstanceId, source) },
+                    onMapError = { errorInstanceId, message ->
+                        if (
+                            shouldApplyLeafletMapError(
+                                activeInstanceId = errorInstanceId,
+                                currentInstanceId = currentMapInstanceIdState.value,
+                                tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                                errorMessage = message
+                            )
+                        ) {
+                            errorInstanceIdState.value = errorInstanceId
+                            mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                        } else {
+                            logMapDebug(
+                                "native onMapError ignored stale instance=$errorInstanceId current=${currentMapInstanceIdState.value}"
+                            )
+                        }
                     }
                 )
 
-                if (!mapReady && mapError.isBlank()) {
+                if (!activeMapInitialized && activeMapError.isBlank()) {
                     HelperText(text = "Loading map...")
                 }
 
-                if (mapError.isNotBlank()) {
-                    HelperText(text = mapError)
-                }
-
-                selection?.let {
-                    HelperText(
-                        text = "Selected coordinates: ${formatMapCoordinate(it.latitude)}, ${formatMapCoordinate(it.longitude)}"
-                    )
+                if (activeMapError.isNotBlank()) {
+                    HelperText(text = activeMapError)
                 }
 
                 if (loading) {
-                    HelperText(text = "Resolving selected coordinates...")
+                    HelperText(text = "Resolving selected location...")
                 }
 
                 if (showCenterOnCurrentLocation && onCenterOnCurrentLocation != null) {
@@ -125,7 +196,7 @@ fun MapPickerDialog(
                 }
 
                 if (centerActionLoading) {
-                    HelperText(text = "Finding your current location...")
+                    HelperText(text = "Finding your device location...")
                 }
 
                 if (centerActionMessage.isNotBlank()) {
@@ -149,184 +220,250 @@ fun MapPickerDialog(
 }
 
 private const val MapPickerBridgeName = "AndroidMapPicker"
-private const val MapPickerBaseUrl = "https://neph.app/map-picker/"
-private const val LeafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-private const val LeafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 private const val DefaultCenterLatitude = 39.9334
 private const val DefaultCenterLongitude = 32.8597
-private val AllowedOpenStreetMapTileHosts = setOf(
-    "tile.openstreetmap.org",
-    "a.tile.openstreetmap.org",
-    "b.tile.openstreetmap.org",
-    "c.tile.openstreetmap.org"
-)
-private val OpenStreetMapTilePathPattern = Regex("""^/\d+/\d+/\d+\.png$""")
+private const val MapPickerMapHeightCssPx = 260
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun MapPickerMap(
+    mapInstanceId: String,
+    currentMapInstanceId: () -> String,
     initialLatitude: Double?,
     initialLongitude: Double?,
     onLocationSelected: (Double, Double) -> Unit,
-    onMapReady: () -> Unit,
-    onMapError: (String) -> Unit
+    onMapReady: (String, String) -> Unit,
+    onMapError: (String, String) -> Unit
 ) {
-    val context = LocalContext.current
-    val html = remember(initialLatitude, initialLongitude) {
-        buildMapHtml(initialLatitude, initialLongitude)
-    }
-    val bridge = remember {
-        MapPickerBridge(onLocationSelected, onMapReady, onMapError)
-    }
-
-    key(html) {
-        AndroidView(
-            factory = {
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = false
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
-                    settings.javaScriptCanOpenWindowsAutomatically = false
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    webViewClient = MapPickerWebViewClient()
-                    addJavascriptInterface(bridge, MapPickerBridgeName)
-                    loadDataWithBaseURL(MapPickerBaseUrl, html, "text/html", "utf-8", null)
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp)
+    val latestOnLocationSelected by rememberUpdatedState(onLocationSelected)
+    val latestOnMapReady by rememberUpdatedState(onMapReady)
+    val latestOnMapError by rememberUpdatedState(onMapError)
+    val latestCurrentMapInstanceId by rememberUpdatedState(currentMapInstanceId)
+    val html = remember(mapInstanceId, initialLatitude, initialLongitude) {
+        buildMapHtml(
+            mapInstanceId = mapInstanceId,
+            initialLatitude = initialLatitude,
+            initialLongitude = initialLongitude,
+            mapHeightCssPx = MapPickerMapHeightCssPx
         )
     }
+    val bridge = remember {
+        MapPickerBridge(
+            currentMapInstanceId = { latestCurrentMapInstanceId() },
+            onLocationSelected = { lat, lon -> latestOnLocationSelected(lat, lon) },
+            onMapReady = { instanceId, source -> latestOnMapReady(instanceId, source) },
+            onMapError = { instanceId, message -> latestOnMapError(instanceId, message) }
+        )
+    }
+
+    LeafletMapWebView(
+        mapInstanceId = mapInstanceId,
+        html = html,
+        bridgeName = MapPickerBridgeName,
+        bridge = bridge,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(MapPickerMapHeightCssPx.dp)
+    )
 }
 
 private class MapPickerBridge(
+    private val currentMapInstanceId: () -> String,
     private val onLocationSelected: (Double, Double) -> Unit,
-    private val onMapReady: () -> Unit,
-    private val onMapError: (String) -> Unit
+    private val onMapReady: (String, String) -> Unit,
+    private val onMapError: (String, String) -> Unit
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var readyDeliveredInstanceId: String? = null
+    private val aliveDeliveredSignals = mutableSetOf<String>()
 
     @JavascriptInterface
-    fun onLocationSelected(latitude: Double, longitude: Double) {
+    fun onLocationSelected(instanceId: String?, latitude: Double, longitude: Double) {
+        val incomingInstanceId = instanceId.orEmpty()
+        val currentInstanceId = currentMapInstanceId()
+        if (incomingInstanceId != currentInstanceId) {
+            logMapDebug(
+                "native onLocationSelected ignored stale instance=$incomingInstanceId current=$currentInstanceId"
+            )
+            return
+        }
         mainHandler.post {
+            if (incomingInstanceId != currentMapInstanceId()) {
+                logMapDebug(
+                    "native onLocationSelected ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
+                )
+                return@post
+            }
+            onMapReady(incomingInstanceId, "selection")
             onLocationSelected(latitude, longitude)
         }
     }
 
     @JavascriptInterface
-    fun onMapReady() {
-        mainHandler.post { onMapReady() }
+    fun onMapReady(instanceId: String?) {
+        val incomingInstanceId = instanceId.orEmpty()
+        val currentInstanceId = currentMapInstanceId()
+        logMapDebug(
+            "native MapPickerBridge.onMapReady received instance=$incomingInstanceId current=$currentInstanceId"
+        )
+        if (incomingInstanceId != currentInstanceId) {
+            logMapDebug(
+                "native onMapReady ignored stale instance=$incomingInstanceId current=$currentInstanceId"
+            )
+            return
+        }
+        synchronized(this) {
+            if (readyDeliveredInstanceId == incomingInstanceId) {
+                logMapDebug(
+                    "native onMapReady ignored duplicate instance=$incomingInstanceId current=$currentInstanceId"
+                )
+                return
+            }
+            readyDeliveredInstanceId = incomingInstanceId
+        }
+        mainHandler.post {
+            val postedCurrentInstanceId = currentMapInstanceId()
+            if (incomingInstanceId != postedCurrentInstanceId) {
+                logMapDebug(
+                    "native onMapReady ignored stale instance=$incomingInstanceId current=$postedCurrentInstanceId"
+                )
+                return@post
+            }
+            logMapDebug(
+                "native MapPickerBridge.onMapReady dispatched instance=$incomingInstanceId"
+            )
+            onMapReady(incomingInstanceId, "whenReady")
+        }
     }
 
     @JavascriptInterface
-    fun onMapError(message: String?) {
+    fun onMapAlive(instanceId: String?, source: String?) {
+        val incomingInstanceId = instanceId.orEmpty()
+        val currentInstanceId = currentMapInstanceId()
+        val readySource = source?.trim().orEmpty().ifBlank { "fallback" }
+        if (incomingInstanceId != currentInstanceId) {
+            logMapDebug(
+                "native onMapAlive ignored stale source=$readySource instance=$incomingInstanceId current=$currentInstanceId"
+            )
+            return
+        }
+        synchronized(this) {
+            if (!aliveDeliveredSignals.add("$incomingInstanceId:$readySource")) {
+                return
+            }
+        }
+        mainHandler.post {
+            val postedCurrentInstanceId = currentMapInstanceId()
+            if (incomingInstanceId != postedCurrentInstanceId) {
+                logMapDebug(
+                    "native onMapAlive ignored stale source=$readySource instance=$incomingInstanceId current=$postedCurrentInstanceId"
+                )
+                return@post
+            }
+            logMapDebug("native MapPickerBridge.onMapAlive dispatched source=$readySource instance=$incomingInstanceId")
+            onMapReady(incomingInstanceId, readySource)
+        }
+    }
+
+    @JavascriptInterface
+    fun onMapError(instanceId: String?, message: String?) {
+        val incomingInstanceId = instanceId.orEmpty()
+        val currentInstanceId = currentMapInstanceId()
+        if (incomingInstanceId != currentInstanceId) {
+            logMapDebug(
+                "native onMapError ignored stale instance=$incomingInstanceId current=$currentInstanceId"
+            )
+            return
+        }
         val trimmed = message?.trim().orEmpty()
         mainHandler.post {
-            onMapError(trimmed)
+            if (incomingInstanceId != currentMapInstanceId()) {
+                logMapDebug(
+                    "native onMapError ignored stale instance=$incomingInstanceId current=${currentMapInstanceId()}"
+                )
+                return@post
+            }
+            onMapError(incomingInstanceId, trimmed)
         }
     }
 }
 
-private class MapPickerWebViewClient : WebViewClient() {
-    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-        val uri = request?.url ?: return true
-        return !request.isForMainFrame || !isAllowedMapPickerNavigation(uri)
-    }
-
-    @Suppress("DEPRECATION")
-    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-        val uri = url?.let(Uri::parse) ?: return true
-        return !isAllowedMapPickerNavigation(uri)
-    }
-
-    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        val uri = request?.url ?: return emptyBlockedResponse()
-        return if (isAllowedMapPickerResource(uri)) {
-            null
-        } else {
-            emptyBlockedResponse()
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
-        val uri = url?.let(Uri::parse) ?: return emptyBlockedResponse()
-        return if (isAllowedMapPickerResource(uri)) {
-            null
-        } else {
-            emptyBlockedResponse()
-        }
-    }
-
-    private fun emptyBlockedResponse(): WebResourceResponse {
-        return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
-    }
-}
-
-private fun isAllowedMapPickerNavigation(uri: Uri): Boolean {
-    return uri.toString() == MapPickerBaseUrl
-}
-
-private fun isAllowedMapPickerResource(uri: Uri): Boolean {
-    val url = uri.toString()
-    if (url == MapPickerBaseUrl || url == LeafletCssUrl || url == LeafletJsUrl) {
-        return true
-    }
-
-    return uri.scheme == "https" &&
-        uri.host in AllowedOpenStreetMapTileHosts &&
-        OpenStreetMapTilePathPattern.matches(uri.path.orEmpty())
-}
-
-private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): String {
+private fun buildMapHtml(
+    mapInstanceId: String,
+    initialLatitude: Double?,
+    initialLongitude: Double?,
+    mapHeightCssPx: Int
+): String {
     val hasInitial = initialLatitude != null && initialLongitude != null
     val centerLat = initialLatitude ?: DefaultCenterLatitude
     val centerLon = initialLongitude ?: DefaultCenterLongitude
     val zoom = if (hasInitial) 15 else 6
     val formattedLat = String.format(Locale.US, "%.6f", centerLat)
     val formattedLon = String.format(Locale.US, "%.6f", centerLon)
+    val initialSelectionScript = if (hasInitial) {
+        "setMarker($formattedLat, $formattedLon);"
+    } else {
+        ""
+    }
 
     return """
         <!DOCTYPE html>
         <html>
         <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <!-- Keep the embedded picker limited to Leaflet assets, OSM tiles, and its inline script. -->
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; style-src 'self' '$LeafletCssUrl' 'unsafe-inline'; script-src '$LeafletJsUrl' 'unsafe-inline'; img-src https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; connect-src 'none'; font-src 'none'; media-src 'none'; navigate-to 'none'" />
-            <link rel="stylesheet" href="$LeafletCssUrl" />
-            <script src="$LeafletJsUrl"></script>
-            <style>
-                html, body, #map { height: 100%; margin: 0; padding: 0; }
-            </style>
+            ${buildLeafletDocumentHead(mapHeightCssPx)}
         </head>
         <body>
             <div id="map"></div>
             <script>
+                ${buildLeafletErrorScript(MapPickerBridgeName, mapInstanceId, mapHeightCssPx)}
+
+                var mapElement = document.getElementById('map');
+                if (!mapElement) {
+                    failMap('Map failed to load.');
+                }
+                logNephMapBreadcrumb('NEPH_MAP: map element found');
+                ensureNephMapHeight(mapElement);
+                logNephMapSize('before L.map', mapElement);
                 var map = L.map('map').setView([$formattedLat, $formattedLon], $zoom);
+                logNephMapBreadcrumb('NEPH_MAP: map created');
+                if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapAlive) {
+                    window.$MapPickerBridgeName.onMapAlive(nephMapInstanceId, 'map-created');
+                }
+                logNephMapSize('after L.map', mapElement);
+                scheduleMapInvalidateSize(map, mapElement);
                 var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
                     attribution: '(c) OpenStreetMap'
                 }).addTo(map);
+                logNephMapBreadcrumb('NEPH_MAP: tile layer added');
 
                 var marker = null;
 
-                if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapReady) {
-                    map.whenReady(function() {
-                        window.$MapPickerBridgeName.onMapReady();
-                    });
-                }
+                tiles.on('tileloadstart', function() {
+                    logNephMapBreadcrumb('NEPH_MAP: tileloadstart');
+                    if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapAlive) {
+                        window.$MapPickerBridgeName.onMapAlive(nephMapInstanceId, 'tileloadstart');
+                    }
+                });
+
+                tiles.on('tileload', function() {
+                    logNephMapBreadcrumb('NEPH_MAP: tileload');
+                    if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapAlive) {
+                        window.$MapPickerBridgeName.onMapAlive(nephMapInstanceId, 'tileload');
+                    }
+                });
+
+                map.whenReady(function() {
+                    logNephMapBreadcrumb('NEPH_MAP: whenReady fired');
+                    notifyMapReadyOnce();
+                });
+                setTimeout(notifyMapReadyOnce, 1000);
 
                 if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onMapError) {
                     tiles.on('tileerror', function() {
-                        window.$MapPickerBridgeName.onMapError('Map tiles could not be loaded.');
+                        logNephMapBreadcrumb('NEPH_MAP: tile error');
+                        notifyMapError('$LeafletMapTileLoadErrorMessage');
                     });
-                    window.onerror = function(message) {
-                        window.$MapPickerBridgeName.onMapError(String(message || 'Map failed to load.'));
-                    };
                 }
 
                 function setMarker(lat, lon) {
@@ -343,12 +480,14 @@ private fun buildMapHtml(initialLatitude: Double?, initialLongitude: Double?): S
                     }
                 }
 
+                $initialSelectionScript
+
                 map.on('click', function(e) {
                     var lat = e.latlng.lat;
                     var lon = e.latlng.lng;
                     setMarker(lat, lon);
                     if (window.$MapPickerBridgeName && window.$MapPickerBridgeName.onLocationSelected) {
-                        window.$MapPickerBridgeName.onLocationSelected(lat, lon);
+                        window.$MapPickerBridgeName.onLocationSelected(nephMapInstanceId, lat, lon);
                     }
                 });
             </script>

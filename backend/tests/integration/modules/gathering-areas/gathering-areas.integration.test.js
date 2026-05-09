@@ -60,15 +60,25 @@ describe('gathering-areas integration', () => {
     expect(response.status).toBe(200);
     expect(response.body.source).toBe('overpass');
     expect(response.body.radius).toBe(1500);
-    expect(response.body.meta).toEqual({
+    expect(response.body.meta).toMatchObject({
       requestedLimit: 10,
       returnedCount: 1,
     });
+    expect(response.body.meta.categories).toEqual(expect.arrayContaining([
+      { key: 'assembly_point', label: 'Assembly Point' },
+      { key: 'shelter', label: 'Shelter' },
+      { key: 'hospital', label: 'Hospital' },
+      { key: 'police', label: 'Police Station' },
+      { key: 'fire_station', label: 'Fire Station' },
+      { key: 'pharmacy', label: 'Pharmacy' },
+      { key: 'other', label: 'Other' },
+    ]));
     expect(response.body.collection).toBeTruthy();
     expect(response.body.collection.type).toBe('FeatureCollection');
     expect(response.body.collection.features).toHaveLength(1);
     expect(response.body.collection.features[0].geometry.coordinates).toEqual([29.01, 41.01]);
     expect(response.body.collection.features[0].properties.category).toBe('assembly_point');
+    expect(response.body.collection.features[0].properties.categoryLabel).toBe('Assembly Point');
     expect(response.body.collection.features[0].properties.distanceMeters).toBeGreaterThanOrEqual(0);
   });
 
@@ -382,5 +392,81 @@ describe('gathering-areas integration', () => {
 
     const [first, second] = response.body.collection.features;
     expect(first.properties.distanceMeters).toBeLessThanOrEqual(second.properties.distanceMeters);
+  });
+
+  test('GET /api/gathering-areas/nearby maps supported and unknown categories to stable keys', async () => {
+    const app = createApp();
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        elements: [
+          {
+            type: 'node',
+            id: 5101,
+            lat: 41.0100,
+            lon: 29.0100,
+            tags: { amenity: 'hospital' },
+          },
+          {
+            type: 'node',
+            id: 5102,
+            lat: 41.0101,
+            lon: 29.0101,
+            tags: { healthcare: 'hospital' },
+          },
+          {
+            type: 'node',
+            id: 5103,
+            lat: 41.0102,
+            lon: 29.0102,
+            tags: { amenity: 'police' },
+          },
+          {
+            type: 'node',
+            id: 5104,
+            lat: 41.0103,
+            lon: 29.0103,
+            tags: { amenity: 'fire_station' },
+          },
+          {
+            type: 'node',
+            id: 5105,
+            lat: 41.0104,
+            lon: 29.0104,
+            tags: { amenity: 'pharmacy' },
+          },
+          {
+            type: 'node',
+            id: 5106,
+            lat: 41.0105,
+            lon: 29.0105,
+            tags: { amenity: 'school' },
+          },
+        ],
+      }),
+    });
+
+    const response = await request(app)
+      .get('/api/gathering-areas/nearby?lat=41.01&lon=29.01&radius=2000&limit=10');
+
+    expect(response.status).toBe(200);
+    const categories = response.body.collection.features.map((feature) => feature.properties.category);
+    expect(categories).toEqual(expect.arrayContaining([
+      'hospital',
+      'police',
+      'fire_station',
+      'pharmacy',
+      'other',
+    ]));
+
+    const labels = response.body.collection.features.map((feature) => feature.properties.categoryLabel);
+    expect(labels).toEqual(expect.arrayContaining([
+      'Hospital',
+      'Police Station',
+      'Fire Station',
+      'Pharmacy',
+      'Other',
+    ]));
   });
 });

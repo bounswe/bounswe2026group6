@@ -3,14 +3,18 @@ package com.neph.features.notifications.presentation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,10 +27,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.notifications.data.NotificationUiModel
+import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.navigation.Routes
+import com.neph.ui.components.display.EmptyState
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
+import com.neph.ui.components.display.StatusBadge
+import com.neph.ui.components.display.StatusBadgeTone
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
@@ -58,6 +66,7 @@ fun NotificationsScreen(
             val page = NotificationsRepository.fetchNotifications(token = token, limit = 50)
             notifications = page.items
             unreadCount = page.unreadCount
+            NotificationsBadge.set(page.unreadCount)
             nextCursor = page.nextCursor
         } catch (error: Exception) {
             errorMessage = error.message ?: "Failed to load notifications."
@@ -81,21 +90,51 @@ fun NotificationsScreen(
         } else {
             Routes.guestDrawerItems
         },
+        bottomNavItems = if (isAuthenticated) {
+            Routes.authenticatedBottomNavItems
+        } else {
+            Routes.guestBottomNavItems
+        },
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        contentFillMaxSize = true,
+        contentScrollable = false
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
-            SectionCard {
-                SectionHeader(
-                    title = "Notifications",
-                    subtitle = if (isAuthenticated) {
-                        "Unread: $unreadCount"
-                    } else {
-                        "Sign in to view your notifications."
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg)
+        ) {
+            SectionCard(modifier = Modifier.weight(1f)) {
+                if (isAuthenticated && unreadCount > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Stay informed about activity that needs your attention.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatusBadge(
+                            text = "$unreadCount unread",
+                            tone = StatusBadgeTone.BRAND
+                        )
                     }
-                )
+                } else {
+                    Text(
+                        text = if (isAuthenticated) {
+                            "Stay informed about activity that needs your attention."
+                        } else {
+                            "Sign in to view your notifications."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 if (!isAuthenticated) {
                     Text(
@@ -151,13 +190,16 @@ fun NotificationsScreen(
                 }
 
                 if (notifications.isEmpty()) {
-                    Text(
-                        text = "No notifications yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    EmptyState(
+                        icon = Icons.Filled.NotificationsNone,
+                        title = "No notifications yet",
+                        description = "You're all caught up. We'll let you know when something needs your attention."
                     )
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm)
+                    ) {
                         items(notifications, key = { it.id }) { notification ->
                             Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
                                 Row(
@@ -222,6 +264,7 @@ fun NotificationsScreen(
                                         )
                                         notifications = notifications + page.items
                                         unreadCount = page.unreadCount
+                                        NotificationsBadge.set(page.unreadCount)
                                         nextCursor = page.nextCursor
                                     } catch (error: Exception) {
                                         errorMessage = error.message ?: "Failed to load more notifications."

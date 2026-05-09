@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import com.neph.navigation.Routes
 import com.neph.ui.components.display.SectionCard
+import com.neph.ui.components.display.StatusBadge
+import com.neph.ui.components.display.StatusBadgeTone
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
@@ -152,18 +154,22 @@ fun NewsScreen(
         } else {
             Routes.guestDrawerItems
         },
+        bottomNavItems = if (isAuthenticated) {
+            Routes.authenticatedBottomNavItems
+        } else {
+            Routes.guestBottomNavItems
+        },
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        contentFillMaxSize = true
     ) {
         Column(
             modifier = Modifier.fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(spacing.lg)
         ) {
-            SectionCard(
-                modifier = Modifier.weight(1f)
-            ) {
+            SectionCard(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -198,9 +204,7 @@ fun NewsScreen(
                 }
 
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     verticalArrangement = Arrangement.spacedBy(spacing.md)
                 ) {
                     itemsIndexed(filteredNews, key = { _, item -> item.id }) { index, item ->
@@ -209,11 +213,14 @@ fun NewsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
+                                StatusBadge(
                                     text = item.category,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
+                                    tone = when (item.category) {
+                                        "Preparedness" -> StatusBadgeTone.INFO
+                                        "Announcement" -> StatusBadgeTone.BRAND
+                                        "Community" -> StatusBadgeTone.SUCCESS
+                                        else -> StatusBadgeTone.NEUTRAL
+                                    }
                                 )
 
                                 Text(

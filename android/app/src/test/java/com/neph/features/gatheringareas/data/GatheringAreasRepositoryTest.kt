@@ -8,6 +8,12 @@ import org.junit.Test
 
 class GatheringAreasRepositoryTest {
     @Test
+    fun fetchNearbyGatheringAreas_usesDemoFriendlyDefaultsWithinBackendLimits() {
+        assertEquals(10000, GatheringAreasRepository.DefaultRadiusMeters)
+        assertEquals(50, GatheringAreasRepository.DefaultLimit)
+    }
+
+    @Test
     fun parseNearbyGatheringAreasResponse_mapsValidFeaturesAndSkipsMalformedOnes() {
         val response = JSONObject(
             """
@@ -15,7 +21,15 @@ class GatheringAreasRepositoryTest {
               "center": { "lat": 41.01, "lon": 29.01 },
               "radius": 1500,
               "source": "overpass",
-              "meta": { "requestedLimit": 10, "returnedCount": 3 },
+              "meta": {
+                "requestedLimit": 10,
+                "returnedCount": 3,
+                "categories": [
+                  { "key": "assembly_point", "label": "Assembly Point" },
+                  { "key": "shelter", "label": "Shelter" },
+                  { "key": "hospital", "label": "Hospital" }
+                ]
+              },
               "collection": {
                 "type": "FeatureCollection",
                 "features": [
@@ -67,10 +81,12 @@ class GatheringAreasRepositoryTest {
         assertEquals(1500, parsed.radiusMeters)
         assertEquals("overpass", parsed.source)
         assertEquals(10, parsed.requestedLimit)
+        assertEquals(3, parsed.categories.size)
 
         assertEquals("node-1", parsed.areas[0].id)
         assertEquals("Main Street", parsed.areas[0].addressLine)
         assertEquals("shelter", parsed.areas[1].category)
+        assertEquals("Shelter", parsed.areas[1].categoryLabel)
         assertEquals("Shelter B", parsed.areas[1].name)
     }
 

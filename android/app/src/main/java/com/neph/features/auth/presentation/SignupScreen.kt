@@ -16,11 +16,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
+import com.neph.features.auth.data.LoginDestination
 import com.neph.features.auth.presentation.components.AuthFooterLinks
 import com.neph.features.auth.presentation.components.AuthFooterMode
 import com.neph.features.auth.presentation.components.SocialAuthButtons
@@ -28,6 +34,7 @@ import com.neph.features.auth.presentation.components.SocialAuthMode
 import com.neph.features.auth.util.isValidEmail
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.display.BrandLogo
 import com.neph.ui.components.display.Divider
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.inputs.AppTextField
@@ -40,11 +47,14 @@ import kotlinx.coroutines.launch
 fun SignupScreen(
     onNavigateToLogin: () -> Unit,
     onSignupSuccess: () -> Unit,
+    onGoogleSignupSuccess: () -> Unit,
+    onGoogleProfileCompletionRequired: () -> Unit,
     onNavigateToTerms: () -> Unit,
     onNavigateToPrivacy: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var showEmailForm by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
@@ -102,20 +112,57 @@ fun SignupScreen(
         }
     }
 
-    fun handleSocialAuth(provider: String) {
+    fun handleGoogleSignup() {
         error = ""
-        info =
-            "$provider sign-up UI is ready. Real OAuth registration will be connected after provider credentials and backend callback setup are completed."
+        info = ""
+
+        if (!acceptedTerms) {
+            error = "You must accept the terms to continue."
+            return
+        }
+
+        loading = true
+        scope.launch {
+            try {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(com.neph.BuildConfig.GOOGLE_SERVER_CLIENT_ID)
+                    .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+                val credentialManager = CredentialManager.create(context)
+                val result = credentialManager.getCredential(context, request)
+                val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
+                when (
+                    AuthRepository.loginWithGoogle(
+                        googleCredential.idToken,
+                        mode = "signup",
+                        acceptedTerms = acceptedTerms
+                    )
+                ) {
+                    LoginDestination.PROFILE -> onGoogleSignupSuccess()
+                    LoginDestination.COMPLETE_PROFILE -> onGoogleProfileCompletionRequired()
+                }
+            } catch (cancellationException: kotlinx.coroutines.CancellationException) {
+                throw cancellationException
+            } catch (errorResponse: ApiException) {
+                error = errorResponse.message.ifBlank { "Google sign-up failed. Please try again." }
+            } catch (_: Exception) {
+                error = "Google sign-up failed. Please try again."
+            } finally {
+                loading = false
+            }
+        }
     }
 
     AuthScaffold(
         title = "Create Account",
         subtitle = "Set up your account and get ready before emergencies happen.",
         logoContent = {
-            Text(
-                text = "NEPH",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary
+            BrandLogo(
+                size = 64.dp,
+                showWordmark = false
             )
         },
         footerContent = {
@@ -127,8 +174,59 @@ fun SignupScreen(
     ) {
         SocialAuthButtons(
             mode = SocialAuthMode.SIGNUP,
-            onProviderClick = ::handleSocialAuth
+            onGoogleClick = ::handleGoogleSignup,
+            enabled = acceptedTerms
         )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+        ) {
+            androidx.compose.material3.Checkbox(
+                checked = acceptedTerms,
+                onCheckedChange = { acceptedTerms = it },
+                modifier = Modifier.testTag("signup_terms_checkbox"),
+                colors = androidx.compose.material3.CheckboxDefaults.colors(
+                    checkedColor = MaterialTheme.colorScheme.primary,
+                    uncheckedColor = MaterialTheme.colorScheme.outline,
+                    checkmarkColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "I agree to the",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs)
+                ) {
+                    Text(
+                        text = "Terms of Service",
+                        modifier = Modifier.clickable(onClick = onNavigateToTerms),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Text(
+                        text = "and",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = "Privacy Policy",
+                        modifier = Modifier.clickable(onClick = onNavigateToPrivacy),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -181,56 +279,6 @@ fun SignupScreen(
                     testTag = "signup_confirm_password"
                 )
 
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm)
-                ) {
-                    androidx.compose.material3.Checkbox(
-                        checked = acceptedTerms,
-                        onCheckedChange = { acceptedTerms = it },
-                        modifier = Modifier.testTag("signup_terms_checkbox"),
-                        colors = androidx.compose.material3.CheckboxDefaults.colors(
-                            checkedColor = MaterialTheme.colorScheme.primary,
-                            uncheckedColor = MaterialTheme.colorScheme.outline,
-                            checkmarkColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = "I agree to the",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(spacing.xs)
-                        ) {
-                            Text(
-                                text = "Terms of Service",
-                                modifier = Modifier.clickable(onClick = onNavigateToTerms),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Text(
-                                text = "and",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Text(
-                                text = "Privacy Policy",
-                                modifier = Modifier.clickable(onClick = onNavigateToPrivacy),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
 
                 if (error.isNotBlank()) {
                     Text(

@@ -17,6 +17,7 @@ function loadAuthRouteExportsWithLimiterEnabled() {
     resetPasswordHandler: (_req, res) => res.status(200).json({ ok: true }),
     logout: (_req, res) => res.status(200).json({ ok: true }),
     deleteMe: (_req, res) => res.status(200).json({ ok: true }),
+    googleLogin: (_req, res) => res.status(200).json({ ok: true }),
   }));
   jest.doMock('../../../../src/modules/admin/routes', () => {
     const mockExpress = require('express');

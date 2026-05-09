@@ -236,6 +236,71 @@ describe('location integration', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  test('GET /api/location/reverse maps Istanbul-style administrative fallbacks', async () => {
+    const app = createApp();
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        place_id: 24680,
+        display_name: 'Balmumcu, Besiktas, Istanbul, Turkey',
+        lat: '41.0605',
+        lon: '29.0073',
+        address: {
+          country_code: 'tr',
+          country: 'Turkey',
+          province: 'Istanbul',
+          city_district: 'Besiktas',
+          quarter: 'Balmumcu',
+          road: 'Aytekin Kotil Caddesi',
+          house_number: '12',
+          postcode: '34349',
+        },
+      }),
+    });
+
+    const response = await request(app)
+      .get('/api/location/reverse?lat=41.0605&lon=29.0073');
+
+    expect(response.status).toBe(200);
+    expect(response.body.item.administrative.city).toBe('Istanbul');
+    expect(response.body.item.administrative.district).toBe('Besiktas');
+    expect(response.body.item.administrative.neighborhood).toBe('Balmumcu');
+    expect(response.body.item.administrative.extraAddress).toBe('Aytekin Kotil Caddesi 12');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('GET /api/location/reverse keeps city and district when neighborhood is absent', async () => {
+    const app = createApp();
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        place_id: 13579,
+        display_name: 'Besiktas, Istanbul, Turkey',
+        lat: '41.0605',
+        lon: '29.0073',
+        address: {
+          country_code: 'tr',
+          country: 'Turkey',
+          state: 'Istanbul',
+          district: 'Besiktas',
+          road: 'Aytekin Kotil Caddesi',
+        },
+      }),
+    });
+
+    const response = await request(app)
+      .get('/api/location/reverse?lat=41.0605&lon=29.0073');
+
+    expect(response.status).toBe(200);
+    expect(response.body.item.administrative.city).toBe('Istanbul');
+    expect(response.body.item.administrative.district).toBe('Besiktas');
+    expect(response.body.item.administrative.neighborhood).toBe('');
+    expect(response.body.item.administrative.extraAddress).toBe('Aytekin Kotil Caddesi');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('GET /api/location/search uses in-memory cache for identical queries', async () => {
     const app = createApp();
 

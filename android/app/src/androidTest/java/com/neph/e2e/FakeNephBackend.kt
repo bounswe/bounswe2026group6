@@ -73,7 +73,8 @@ private data class FakeUserState(
     var verified: Boolean,
     var accessToken: String = "access-token-1",
     var profile: FakeProfileState? = null,
-    var safetyStatus: FakeSafetyStatusState = FakeSafetyStatusState()
+    var safetyStatus: FakeSafetyStatusState = FakeSafetyStatusState(),
+    var deleted: Boolean = false
 )
 
 private object MissingJsonField
@@ -193,6 +194,7 @@ class FakeNephBackend {
             route == "/auth/forgot-password" && method == "POST" -> handleForgotPassword(body)
             route == "/auth/reset-password" && method == "POST" -> handleResetPassword(body)
             route == "/auth/me" && method == "GET" -> handleCurrentUser(token)
+            route == "/auth/me" && method == "DELETE" -> handleDeleteCurrentUser(token)
             route == "/profiles/me" && method == "GET" -> handleGetProfile(token)
             route == "/profiles/me" && method == "PATCH" -> handlePatchProfile(token, body)
             route == "/profiles/me/physical" && method == "PATCH" -> handlePatchPhysical(token, body)
@@ -554,6 +556,23 @@ class FakeNephBackend {
         return currentUserJson(requireAuthorizedUser(token))
     }
 
+    private fun handleDeleteCurrentUser(token: String?): JSONObject {
+        val user = requireAuthorizedUser(token)
+        user.deleted = true
+        user.email = "deleted+fake@deleted.invalid"
+        user.password = "deleted-account-disabled"
+        user.verified = false
+        user.profile = null
+        user.safetyStatus = FakeSafetyStatusState()
+
+        return JSONObject()
+            .put("message", "Account deleted successfully.")
+            .put("deleted", true)
+            .put("cancelledRequestCount", 0)
+            .put("cancelledAssignmentRequestCount", 0)
+            .put("availabilityCancelled", false)
+    }
+
     private fun handleGetProfile(token: String?): JSONObject {
         val user = requireAuthorizedUser(token)
         val profile = user.profile ?: throw ApiException("Profile not found", 404, "PROFILE_NOT_FOUND")
@@ -861,7 +880,7 @@ class FakeNephBackend {
 
     private fun requireAuthorizedUser(token: String?): FakeUserState {
         val user = requireUser()
-        if (token.isNullOrBlank() || token != user.accessToken) {
+        if (user.deleted || token.isNullOrBlank() || token != user.accessToken) {
             throw ApiException("Unauthorized", 401, "UNAUTHORIZED")
         }
         return user

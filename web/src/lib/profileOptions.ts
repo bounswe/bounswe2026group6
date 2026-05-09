@@ -7,5 +7,5 @@ export const professionOptions = [
 ];
 
 export const expertiseOptions = [
-    "First Aid",
+    "Do you know first aid?",
 ];

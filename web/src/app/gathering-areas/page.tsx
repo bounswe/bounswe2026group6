@@ -6,8 +6,9 @@ import { SectionCard } from "@/components/ui/display/SectionCard";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { GatheringAreasMap } from "@/components/feature/location/GatheringAreasMap";
 import { fetchNearbyGatheringAreas } from "@/lib/gatheringAreas";
+import { openDirections } from "@/lib/mapDirections";
 import { reverseLocation } from "@/lib/location";
-import type { GatheringAreaFeature, NearbyGatheringAreasResponse } from "@/types/location";
+import type { GatheringAreaCategoryMeta, GatheringAreaFeature, NearbyGatheringAreasResponse } from "@/types/location";
 import type { GatheringAreaMapFeature } from "@/components/feature/location/LeafletGatheringAreasMap";
 
 const DEFAULT_CENTER = {
@@ -25,6 +26,11 @@ type FetchState = "idle" | "loading" | "success" | "empty" | "error" | "fallback
 type GatheringAreasCache = {
     response: NearbyGatheringAreasResponse;
     savedAt: string;
+};
+
+type CategoryOption = {
+    key: string;
+    label: string;
 };
 
 const FALLBACK_GATHERING_AREA_FEATURES: GatheringAreaFeature[] = [
@@ -103,6 +109,51 @@ function formatCategoryLabel(category: string) {
         .split("_")
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
+}
+
+function normalizeCategoryKey(value: string) {
+    return (value || "").trim().toLowerCase() || "other";
+}
+
+function buildCategoryLabel(key: string, backendLabel?: string) {
+    const explicit = (backendLabel || "").trim();
+    if (explicit) {
+        return explicit;
+    }
+
+    return formatCategoryLabel(key);
+}
+
+function deriveCategoryOptions(
+    areas: GatheringAreaMapFeature[],
+    metadata?: GatheringAreaCategoryMeta[]
+) {
+    const categoryMap = new Map<string, string>();
+
+    for (const item of metadata || []) {
+        const key = normalizeCategoryKey(item.key);
+        categoryMap.set(key, buildCategoryLabel(key, item.label));
+    }
+
+    for (const area of areas) {
+        const key = normalizeCategoryKey(area.category);
+        if (!categoryMap.has(key)) {
+            categoryMap.set(key, buildCategoryLabel(key, area.categoryLabel));
+        }
+    }
+
+    return Array.from(categoryMap.entries()).map(([key, label]) => ({ key, label }));
+}
+
+function getLegendSwatchColor(categoryKey: string) {
+    const normalized = normalizeCategoryKey(categoryKey);
+    if (normalized === "assembly_point") return "#e35f4f";
+    if (normalized === "shelter") return "#f3b545";
+    if (normalized === "hospital") return "#ef4444";
+    if (normalized === "police") return "#3b82f6";
+    if (normalized === "fire_station") return "#f97316";
+    if (normalized === "pharmacy") return "#22c55e";
+    return "#4da2ea";
 }
 
 function formatDistanceLabel(distanceMeters: number) {
@@ -195,6 +246,10 @@ function mapFeature(feature: GatheringAreaFeature): GatheringAreaMapFeature | nu
         name: feature.properties.name || "Unnamed gathering area",
         address: buildAddressFromRawTags(feature.properties.rawTags || {}),
         category: feature.properties.category || "unknown",
+        categoryLabel: buildCategoryLabel(
+            feature.properties.category || "unknown",
+            feature.properties.categoryLabel
+        ),
         distanceMeters: feature.properties.distanceMeters,
         latitude,
         longitude,
@@ -270,6 +325,8 @@ function getFallbackMapFeatures() {
 export default function GatheringAreasPage() {
     const [center, setCenter] = React.useState(DEFAULT_CENTER);
     const [areas, setAreas] = React.useState<GatheringAreaMapFeature[]>([]);
+    const [categoryOptions, setCategoryOptions] = React.useState<CategoryOption[]>([]);
+    const [selectedCategoryKeys, setSelectedCategoryKeys] = React.useState<string[]>([]);
     const [selectedAreaId, setSelectedAreaId] = React.useState<string | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
     const [fetchState, setFetchState] = React.useState<FetchState>("idle");
@@ -278,9 +335,18 @@ export default function GatheringAreasPage() {
     const [locationNote, setLocationNote] = React.useState("Resolving your current location...");
     const [dataNotice, setDataNotice] = React.useState("");
     const [dataNoticeTitle, setDataNoticeTitle] = React.useState("");
+    const [directionsMessage, setDirectionsMessage] = React.useState("");
     const [lastUpdated, setLastUpdated] = React.useState("");
     const requestIdRef = React.useRef(0);
     const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
+
+    const filteredAreas = React.useMemo(() => {
+        if (!selectedCategoryKeys.length) {
+            return areas;
+        }
+        const selected = new Set(selectedCategoryKeys.map(normalizeCategoryKey));
+        return areas.filter((item) => selected.has(normalizeCategoryKey(item.category)));
+    }, [areas, selectedCategoryKeys]);
 
     const hydrateMissingAddresses = React.useCallback(
         async (items: GatheringAreaMapFeature[], requestId: number) => {
@@ -351,6 +417,7 @@ export default function GatheringAreasPage() {
     const handleSelectArea = React.useCallback((featureId: string) => {
         setSelectedAreaId(featureId);
         setIsDetailsOpen(true);
+        setDirectionsMessage("");
     }, []);
 
     const loadNearbyAreas = React.useCallback(
@@ -375,6 +442,7 @@ export default function GatheringAreasPage() {
                 }
 
                 const mapped = mapFeatures(response.collection.features);
+                const responseCategoryOptions = deriveCategoryOptions(mapped, response.meta.categories);
 
                 if (response.source === "overpass") {
                     const savedAt = new Date().toISOString();
@@ -401,6 +469,9 @@ export default function GatheringAreasPage() {
                         setLocationNote("Live provider unavailable. Showing backend fallback gathering areas.");
                     }
                     setAreas(fallbackAreas);
+                    const fallbackCategoryOptions = deriveCategoryOptions(fallbackAreas, response.meta.categories);
+                    setCategoryOptions(fallbackCategoryOptions);
+                    setSelectedCategoryKeys(fallbackCategoryOptions.map((item) => item.key));
                     void hydrateMissingAddresses(fallbackAreas, currentRequestId);
                     setDataNoticeTitle(mapped.length ? "Using backend fallback gathering areas" : "Using demo gathering areas");
                     setDataNotice(
@@ -410,7 +481,7 @@ export default function GatheringAreasPage() {
                     );
                     setLastUpdated(savedAt);
                     setFetchState("fallback");
-                    setSelectedAreaId(fallbackAreas[0]?.featureKey || null);
+                    setSelectedAreaId(null);
                     return;
                 } else {
                     setDataNotice("");
@@ -418,6 +489,8 @@ export default function GatheringAreasPage() {
                 }
 
                 setAreas(mapped);
+                setCategoryOptions(responseCategoryOptions);
+                setSelectedCategoryKeys(responseCategoryOptions.map((item) => item.key));
                 void hydrateMissingAddresses(mapped, currentRequestId);
                 setFetchState(mapped.length ? "success" : "empty");
                 setSelectedAreaId((current) => {
@@ -429,7 +502,7 @@ export default function GatheringAreasPage() {
                         return current;
                     }
 
-                    return mapped[0].featureKey;
+                    return null;
                 });
             } catch (err) {
                 if (currentRequestId !== requestIdRef.current) {
@@ -447,6 +520,9 @@ export default function GatheringAreasPage() {
                 const cachedAreas = cached
                     ? mapFeatures(cached.response.collection.features)
                     : [];
+                const cachedCategoryOptions = cached
+                    ? deriveCategoryOptions(cachedAreas, cached.response.meta.categories)
+                    : [];
 
                 if (cached && cachedAreas.length) {
                     setCenter({
@@ -455,7 +531,9 @@ export default function GatheringAreasPage() {
                     });
                     setLocationNote("Showing cached gathering areas from your last successful lookup.");
                     setAreas(cachedAreas);
-                    setSelectedAreaId(cachedAreas[0].featureKey);
+                    setCategoryOptions(cachedCategoryOptions);
+                    setSelectedCategoryKeys(cachedCategoryOptions.map((item) => item.key));
+                    setSelectedAreaId(null);
                     setError("");
                     setDataNoticeTitle("Using cached gathering areas");
                     setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing your last saved result.`);
@@ -469,7 +547,10 @@ export default function GatheringAreasPage() {
                 setCenter(DEFAULT_CENTER);
                 setLocationNote("Live provider unavailable. Showing demo gathering areas around Istanbul.");
                 setAreas(fallbackAreas);
-                setSelectedAreaId(fallbackAreas[0]?.featureKey || null);
+                const fallbackCategoryOptions = deriveCategoryOptions(fallbackAreas);
+                setCategoryOptions(fallbackCategoryOptions);
+                setSelectedCategoryKeys(fallbackCategoryOptions.map((item) => item.key));
+                setSelectedAreaId(null);
                 setError("");
                 setDataNoticeTitle("Using demo gathering areas");
                 setDataNotice(`Live gathering areas could not be refreshed (${uiMessage}). Showing demo Istanbul areas and guidance.`);
@@ -530,18 +611,52 @@ export default function GatheringAreasPage() {
         resolveCurrentLocationAndLoad();
     }, [resolveCurrentLocationAndLoad]);
 
+    React.useEffect(() => {
+        if (!selectedAreaId) {
+            return;
+        }
+
+        const stillVisible = filteredAreas.some((item) => item.featureKey === selectedAreaId);
+        if (!stillVisible) {
+            setSelectedAreaId(null);
+            setDirectionsMessage("");
+        }
+    }, [filteredAreas, selectedAreaId]);
+
     const isInitialState = resolvingLocation && fetchState === "idle";
     const isLoading = fetchState === "loading";
     const isError = fetchState === "error";
     const isEmpty = fetchState === "empty";
     const isFallback = fetchState === "fallback";
+    const isFilterEmpty = !isLoading && !isError && areas.length > 0 && filteredAreas.length === 0;
     const searchContextLine = isFallback
         ? "Fallback content may not match your exact location; follow official guidance during a real emergency."
         : `Searching within ${SEARCH_RADIUS_KM} km of your current location.`;
 
-    const selectedArea =
-        areas.find((item) => item.featureKey === selectedAreaId) ||
-        (areas.length ? areas[0] : null);
+    const selectedArea = selectedAreaId
+        ? filteredAreas.find((item) => item.featureKey === selectedAreaId) || null
+        : null;
+
+    const toggleCategoryFilter = React.useCallback((key: string) => {
+        const normalized = normalizeCategoryKey(key);
+        setSelectedCategoryKeys((current) => {
+            if (current.includes(normalized)) {
+                return current.filter((item) => item !== normalized);
+            }
+            return [...current, normalized];
+        });
+    }, []);
+
+    const clearCategoryFilters = React.useCallback(() => {
+        setSelectedCategoryKeys(categoryOptions.map((item) => item.key));
+    }, [categoryOptions]);
+
+    const handleGetDirections = React.useCallback((area: GatheringAreaMapFeature) => {
+        const opened = openDirections(area.latitude, area.longitude, area.name || "Gathering area");
+        setDirectionsMessage(
+            opened ? "" : "Directions are unavailable for this gathering area."
+        );
+    }, []);
 
     return (
         <AppShell
@@ -554,7 +669,7 @@ export default function GatheringAreasPage() {
                     <div className="gathering-areas-map-wrap">
                         <GatheringAreasMap
                             center={center}
-                            features={areas}
+                            features={filteredAreas}
                             selectedFeatureId={selectedAreaId}
                             onSelectFeature={handleSelectArea}
                             heightClassName="h-[460px] md:h-[620px]"
@@ -602,7 +717,7 @@ export default function GatheringAreasPage() {
                                     <article className="gathering-areas-selected-card">
                                         <p className="gathering-areas-selected-name">{selectedArea.name}</p>
                                         <p className="gathering-areas-selected-meta">
-                                            Type: {formatCategoryLabel(selectedArea.category)}
+                                            Type: {selectedArea.categoryLabel}
                                         </p>
                                         <p className="gathering-areas-selected-meta">
                                             Distance: {formatDistanceLabel(selectedArea.distanceMeters)}
@@ -610,6 +725,16 @@ export default function GatheringAreasPage() {
                                         <p className="gathering-areas-selected-meta">
                                             Address: {selectedArea.address}
                                         </p>
+                                        <PrimaryButton
+                                            type="button"
+                                            className="mt-1 h-10 w-auto"
+                                            onClick={() => handleGetDirections(selectedArea)}
+                                        >
+                                            Get Directions
+                                        </PrimaryButton>
+                                        {directionsMessage ? (
+                                            <p className="gathering-areas-selected-meta">{directionsMessage}</p>
+                                        ) : null}
                                     </article>
                                 ) : (
                                     <p className="gathering-areas-empty-detail">
@@ -633,8 +758,8 @@ export default function GatheringAreasPage() {
                                         <p className="gathering-areas-empty-detail">
                                             Could not load nearby results.
                                         </p>
-                                    ) : areas.length ? (
-                                        areas.map((area) => (
+                                    ) : filteredAreas.length ? (
+                                        filteredAreas.map((area) => (
                                             <button
                                                 key={area.featureKey}
                                                 type="button"
@@ -643,10 +768,14 @@ export default function GatheringAreasPage() {
                                             >
                                                 <p className="gathering-areas-item-name">{area.name}</p>
                                                 <p className="gathering-areas-item-meta">
-                                                    {formatCategoryLabel(area.category)} • {formatDistanceLabel(area.distanceMeters)}
+                                                    {area.categoryLabel} � {formatDistanceLabel(area.distanceMeters)}
                                                 </p>
                                             </button>
                                         ))
+                                    ) : isFilterEmpty ? (
+                                        <p className="gathering-areas-empty-detail">
+                                            No results match the selected categories.
+                                        </p>
                                     ) : isEmpty ? (
                                         <p className="gathering-areas-empty-detail">
                                             No nearby areas in the current result.
@@ -665,6 +794,52 @@ export default function GatheringAreasPage() {
                         <p className="gathering-areas-context-line">{locationNote}</p>
                         <p className="gathering-areas-context-line">{searchContextLine}</p>
                     </div>
+
+                    {categoryOptions.length ? (
+                        <div className="crisis-filters-panel">
+                            <div className="crisis-filters-header">
+                                <p className="crisis-filters-title">Filter by Category</p>
+                                <button
+                                    type="button"
+                                    className="crisis-filters-clear"
+                                    onClick={clearCategoryFilters}
+                                    disabled={!categoryOptions.length}
+                                >
+                                    Clear filters
+                                </button>
+                            </div>
+                            <div className="crisis-filters-grid">
+                                {categoryOptions.map((option) => {
+                                    const active = selectedCategoryKeys.includes(option.key);
+                                    return (
+                                        <button
+                                            key={option.key}
+                                            type="button"
+                                            className={`crisis-filter-chip${active ? " is-active" : ""}`}
+                                            onClick={() => toggleCategoryFilter(option.key)}
+                                        >
+                                            <span
+                                                className="crisis-filter-swatch"
+                                                style={{ backgroundColor: getLegendSwatchColor(option.key) }}
+                                            />
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="crisis-legend">
+                                {categoryOptions.map((option) => (
+                                    <span key={`legend-${option.key}`} className="crisis-legend-item">
+                                        <span
+                                            className="crisis-legend-swatch"
+                                            style={{ backgroundColor: getLegendSwatchColor(option.key) }}
+                                        />
+                                        <span>{option.label}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
 
                     {isLoading ? (
                         <div className="gathering-areas-status-box">
@@ -693,7 +868,7 @@ export default function GatheringAreasPage() {
                                 Retry gathering areas
                             </PrimaryButton>
                         </div>
-                    ) : lastUpdated && areas.length ? (
+                    ) : lastUpdated && filteredAreas.length ? (
                         <div className="gathering-areas-status-box">
                             <p>Last updated: {formatLastUpdated(lastUpdated)}</p>
                         </div>

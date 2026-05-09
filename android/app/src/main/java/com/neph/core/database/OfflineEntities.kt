@@ -136,6 +136,8 @@ data class AssignedRequestEntity(
     val riskFlagsJson: String,
     val vulnerableGroupsJson: String,
     val bloodType: String?,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val locationLabel: String,
     val status: String,
     val urgencyLevel: String? = null,
@@ -156,15 +158,17 @@ data class AssignedRequestEntity(
 
 @Entity(
     tableName = "nearby_visible_users",
-    primaryKeys = ["cacheOwnerUserId", "userId"],
+    primaryKeys = ["cacheOwnerUserId", "cacheSource", "userId"],
     indices = [
         Index(value = ["cacheOwnerUserId"]),
+        Index(value = ["cacheOwnerUserId", "cacheSource"]),
         Index(value = ["safetyStatus"]),
         Index(value = ["fetchedAtEpochMillis"])
     ]
 )
 data class NearbyVisibleUserEntity(
     val cacheOwnerUserId: String,
+    val cacheSource: String,
     val userId: String,
     val displayName: String?,
     val safetyStatus: String,

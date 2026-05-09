@@ -539,6 +539,18 @@ fun AppNavGraph(
                         launchSingleTop = true
                     }
                 },
+                onGoogleSignupSuccess = {
+                    navController.navigate(Routes.Home.route) {
+                        popUpTo(Routes.Welcome.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onGoogleProfileCompletionRequired = {
+                    navController.navigate(Routes.CompleteProfile.route) {
+                        popUpTo(Routes.Welcome.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToTerms = {
                     navController.navigate(Routes.TermsOfService.route)
                 },

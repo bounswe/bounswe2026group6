@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
@@ -20,7 +21,13 @@ const navItemsOrdered = [
     { label: "Privacy & Security", href: "/privacy-security" },
 ];
 
-const guestAllowedPaths = new Set(["/home", "/news", "/emergency-numbers", "/crisis-map", "/gathering-areas"]);
+const guestAllowedPaths = new Set([
+    "/home",
+    "/news",
+    "/emergency-numbers",
+    "/crisis-map",
+    "/gathering-areas",
+]);
 
 function resolveUserInitials(email: string | null | undefined) {
     const localPart = (email || "").trim().split("@")[0] || "";
@@ -205,12 +212,23 @@ export function TopNavbar() {
 
         return true;
     });
+    const notificationAriaLabel =
+        isAuthenticated && unreadCount > 0
+            ? `Notifications (${unreadCount} unread)`
+            : "Notifications";
 
     return (
         <header className="top-navbar">
             <PageContainer className="top-navbar-inner">
                 <Link href="/home" className="top-navbar-brand">
                     NEPH
+                    <Image
+                        src="/neph_logo_only.png"
+                        alt="NEPH icon"
+                        width={48}
+                        height={48}
+                        className="top-navbar-brand-logo"
+                    />
                 </Link>
 
                 <nav className="top-navbar-nav">
@@ -229,7 +247,7 @@ export function TopNavbar() {
                     <Link
                         href="/notifications"
                         className={`top-navbar-notification-button${pathname === "/notifications" || pathname.startsWith("/notifications/") ? " is-active" : ""}`}
-                        aria-label="Notifications"
+                        aria-label={notificationAriaLabel}
                     >
                         <svg
                             width="18"
@@ -255,9 +273,10 @@ export function TopNavbar() {
                             />
                         </svg>
                         {isAuthenticated && unreadCount > 0 ? (
-                            <span className="top-navbar-notification-badge">
-                                {unreadCount > 99 ? "99+" : unreadCount}
-                            </span>
+                            <>
+                                <span className="top-navbar-notification-dot" aria-hidden="true" />
+                                <span className="sr-only">{unreadCount} unread notifications</span>
+                            </>
                         ) : null}
                     </Link>
 

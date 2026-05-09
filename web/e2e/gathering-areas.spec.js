@@ -275,3 +275,76 @@ test('uses fallback location flow when geolocation is denied', async ({ page }) 
   await expect(page.getByText('No gathering areas were found for this location and radius.')).toBeVisible();
   await expect.poll(() => requestCount).toBe(1);
 });
+
+test('supports multi-select category filters and clear filters reset', async ({ page }) => {
+  await mockGeolocation(page);
+
+  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        center: { lat: 41.009, lon: 28.97 },
+        radius: 2000,
+        source: 'overpass',
+        meta: {
+          requestedLimit: 20,
+          returnedCount: 3,
+          categories: [
+            { key: 'assembly_point', label: 'Assembly Point' },
+            { key: 'hospital', label: 'Hospital' },
+            { key: 'police', label: 'Police Station' },
+          ],
+        },
+        collection: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [28.975, 41.01] },
+              properties: {
+                id: 'a1',
+                osmType: 'node',
+                name: 'Assembly Alpha',
+                category: 'assembly_point',
+                categoryLabel: 'Assembly Point',
+                distanceMeters: 120,
+                rawTags: {},
+              },
+            },
+            {
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [28.982, 41.015] },
+              properties: {
+                id: 'h1',
+                osmType: 'node',
+                name: 'Hospital Beta',
+                category: 'hospital',
+                categoryLabel: 'Hospital',
+                distanceMeters: 300,
+                rawTags: {},
+              },
+            },
+          ]
+        },
+      }),
+    });
+  });
+
+  await page.goto('/gathering-areas');
+  await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Hospital Beta/i })).toBeVisible();
+  const filterPanel = page.locator('.crisis-filters-panel');
+
+  await filterPanel.getByRole('button', { name: 'Hospital', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Hospital Beta/i })).toHaveCount(0);
+
+  await filterPanel.getByRole('button', { name: 'Assembly Point', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toHaveCount(0);
+
+  await expect(page.getByText('No results match the selected categories.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Hospital Beta/i })).toBeVisible();
+});

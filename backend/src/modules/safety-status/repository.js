@@ -58,6 +58,69 @@ function mapVisibleSafetyStatus(row, { isAdmin = false } = {}) {
   };
 }
 
+function createCurrentLocationGuardError(message) {
+  const error = new Error(message);
+  error.status = 403;
+  error.code = 'CURRENT_LOCATION_NEARBY_NOT_ALLOWED';
+  return error;
+}
+
+async function requireAllowedCurrentLocationContext(viewerUserId, requestedLocation) {
+  const result = await query(
+    `
+      SELECT
+        COALESCE(ps.location_sharing_enabled, FALSE) AS location_sharing_enabled,
+        uol.latitude,
+        uol.longitude,
+        uol.updated_at,
+        CASE
+          WHEN uol.latitude IS NULL OR uol.longitude IS NULL THEN NULL
+          ELSE (
+            6371 * ACOS(
+              LEAST(
+                1,
+                GREATEST(
+                  -1,
+                  SIN(RADIANS($2::double precision)) * SIN(RADIANS(uol.latitude::double precision))
+                    + COS(RADIANS($2::double precision)) * COS(RADIANS(uol.latitude::double precision))
+                    * COS(RADIANS(uol.longitude::double precision - $3::double precision))
+                )
+              )
+            )
+          )
+        END AS requested_distance_km
+      FROM users u
+      LEFT JOIN user_profiles up ON up.user_id = u.user_id
+      LEFT JOIN privacy_settings ps ON ps.profile_id = up.profile_id
+      LEFT JOIN user_operational_locations uol ON uol.user_id = u.user_id
+      WHERE u.user_id = $1;
+    `,
+    [viewerUserId, requestedLocation.latitude, requestedLocation.longitude],
+  );
+
+  const row = result.rows[0];
+  if (!row || !row.location_sharing_enabled) {
+    throw createCurrentLocationGuardError('Current-location nearby refresh is disabled by privacy settings.');
+  }
+
+  if (row.latitude == null || row.longitude == null) {
+    throw createCurrentLocationGuardError('Current operational location is not available.');
+  }
+
+  if (row.updated_at == null || new Date(row.updated_at).getTime() < Date.now() - 2 * 60 * 60 * 1000) {
+    throw createCurrentLocationGuardError('Current operational location is stale.');
+  }
+
+  if (Number(row.requested_distance_km) > 1) {
+    throw createCurrentLocationGuardError('Requested coordinates do not match the latest operational location.');
+  }
+
+  return {
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+  };
+}
+
 async function findSafetyStatusByUserId(userId) {
   const result = await query(
     `
@@ -163,7 +226,20 @@ async function upsertSafetyStatus(userId, input) {
   return mapSafetyStatus(result.rows[0]);
 }
 
-async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false, nearbyOnly = false } = {}) {
+async function listVisibleSafetyStatuses(
+  viewerUserId,
+  {
+    isAdmin = false,
+    nearbyOnly = false,
+    nearbyContext = '',
+    currentLocation = null,
+  } = {},
+) {
+  const usesCurrentLocation = nearbyContext === 'current-location' && currentLocation;
+  const effectiveCurrentLocation = usesCurrentLocation
+    ? await requireAllowedCurrentLocationContext(viewerUserId, currentLocation)
+    : null;
+  const nearbyRadiusKm = 10;
   const result = await query(
     `
       WITH visible_statuses AS (
@@ -187,6 +263,8 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false, nearby
         target_lp.city,
         target_lp.district,
         target_lp.neighborhood,
+        target_lp.latitude AS profile_latitude,
+        target_lp.longitude AS profile_longitude,
         viewer_lp.country AS viewer_country,
         viewer_lp.city AS viewer_city,
         viewer_lp.district AS viewer_district,
@@ -222,7 +300,27 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false, nearby
       FROM visible_statuses
       WHERE $3 = FALSE
         OR (
-          user_id <> $1
+          $7 = TRUE
+          AND user_id <> $1
+          AND profile_latitude IS NOT NULL
+          AND profile_longitude IS NOT NULL
+          AND (
+            6371 * ACOS(
+              LEAST(
+                1,
+                GREATEST(
+                  -1,
+                  SIN(RADIANS($4::double precision)) * SIN(RADIANS(profile_latitude::double precision))
+                    + COS(RADIANS($4::double precision)) * COS(RADIANS(profile_latitude::double precision))
+                    * COS(RADIANS(profile_longitude::double precision - $5::double precision))
+                )
+              )
+            )
+          ) <= $6
+        )
+        OR (
+          $7 = FALSE
+          AND user_id <> $1
           AND NULLIF(TRIM(COALESCE(viewer_neighborhood, '')), '') IS NOT NULL
           AND NULLIF(TRIM(COALESCE(neighborhood, '')), '') IS NOT NULL
           AND LOWER(TRIM(COALESCE(viewer_country, ''))) = LOWER(TRIM(COALESCE(country, '')))
@@ -232,7 +330,15 @@ async function listVisibleSafetyStatuses(viewerUserId, { isAdmin = false, nearby
         )
       ORDER BY updated_at DESC, user_id ASC;
     `,
-    [viewerUserId, isAdmin, Boolean(nearbyOnly)],
+    [
+      viewerUserId,
+      isAdmin,
+      Boolean(nearbyOnly),
+      effectiveCurrentLocation ? effectiveCurrentLocation.latitude : 0,
+      effectiveCurrentLocation ? effectiveCurrentLocation.longitude : 0,
+      nearbyRadiusKm,
+      Boolean(usesCurrentLocation),
+    ],
   );
 
   return result.rows.map((row) => mapVisibleSafetyStatus(row, { isAdmin }));

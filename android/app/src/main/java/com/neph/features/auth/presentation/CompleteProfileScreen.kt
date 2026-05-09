@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import com.neph.core.network.ApiException
 import com.neph.features.auth.util.countryCodeOptions
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileRepository
@@ -33,7 +35,6 @@ import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizeDateOfBirth
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.profile.data.parseListField
-import com.neph.features.profile.data.professionOptionsFor
 import com.neph.features.profile.data.sanitizeDecimalInput
 import com.neph.features.profile.data.splitFullName
 import com.neph.features.profile.data.toEditableString
@@ -46,11 +47,14 @@ import com.neph.ui.components.display.SaveActionBar
 import com.neph.ui.components.inputs.AppDropdown
 import com.neph.ui.components.inputs.AppTextArea
 import com.neph.ui.components.inputs.AppTextField
+import com.neph.ui.components.inputs.DateInput
 import com.neph.ui.components.selection.AppCheckbox
 import com.neph.ui.layout.AuthScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.MapPickerDialog
 import com.neph.ui.map.MapPickerSelection
 import com.neph.ui.map.LocationSelectionMapAction
+import com.neph.ui.map.residentialMapPickerFeedbackMessage
 import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
@@ -96,7 +100,6 @@ fun CompleteProfileScreen(
     var district by rememberSaveable { mutableStateOf(existingProfile.district.orEmpty()) }
     var neighborhood by rememberSaveable { mutableStateOf(existingProfile.neighborhood.orEmpty()) }
     var extraAddress by rememberSaveable { mutableStateOf(existingProfile.extraAddress.orEmpty()) }
-    var profession by rememberSaveable { mutableStateOf(existingProfile.profession) }
     var expertise by rememberSaveable { mutableStateOf(existingProfile.expertise) }
     var loading by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf("") }
@@ -104,6 +107,10 @@ fun CompleteProfileScreen(
     var mapActionInfo by rememberSaveable { mutableStateOf("") }
     var mapPickerOpen by rememberSaveable { mutableStateOf(false) }
     var mapPickerLoading by rememberSaveable { mutableStateOf(false) }
+    var mapCenterLoading by rememberSaveable { mutableStateOf(false) }
+    var mapCenterInfo by rememberSaveable { mutableStateOf("") }
+    var mapCenterLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
+    var mapCenterLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var availableLocationData by remember { mutableStateOf<LocationData>(locationData) }
     var locationLoading by remember { mutableStateOf(true) }
@@ -149,23 +156,91 @@ fun CompleteProfileScreen(
                 district = update.district
                 neighborhood = update.neighborhood
                 extraAddress = update.extraAddress
-                mapActionInfo = when {
-                    reverseLocation == null ->
-                        "Could not resolve selected coordinates. You can continue with manual location entry."
-                    update.isMeaningfulMapping ->
-                        "Selected location applied."
-                    else ->
-                        "Selected coordinates were detected. Please verify the location fields manually."
-                }
+                mapActionInfo = residentialMapPickerFeedbackMessage(reverseLocation, update)
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                mapActionInfo = "Could not resolve selected coordinates. You can continue with manual location entry."
+                mapActionInfo = "Could not resolve the selected point. You can still enter the address manually."
             } finally {
                 mapPickerSelection = selection
                 mapPickerLoading = false
                 mapPickerOpen = false
             }
+        }
+    }
+
+    fun openProfileMapPickerWithFallback(message: String) {
+        mapCenterLatitude = null
+        mapCenterLongitude = null
+        mapCenterInfo = message
+        mapCenterLoading = false
+        mapPickerOpen = true
+    }
+
+    fun captureCurrentLocationForProfileMap(fromPermissionResult: Boolean = false) {
+        if (mapCenterLoading && !fromPermissionResult) return
+
+        mapCenterLoading = true
+        mapCenterInfo = ""
+
+        scope.launch {
+            try {
+                val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                val location = attempt.location
+                if (location == null) {
+                    val fallbackMessage = when (attempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission was denied. You can still choose your home location manually."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. You can still choose your home location manually."
+                    }
+                    openProfileMapPickerWithFallback(fallbackMessage)
+                    return@launch
+                }
+
+                mapCenterLatitude = location.latitude
+                mapCenterLongitude = location.longitude
+                mapCenterInfo = "Map opened near your device location. Please verify the selected home location."
+                mapPickerOpen = true
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                openProfileMapPickerWithFallback(
+                    "Current location is unavailable. You can still choose your home location manually."
+                )
+            } finally {
+                mapCenterLoading = false
+            }
+        }
+    }
+
+    val mapLocationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
+            captureCurrentLocationForProfileMap(fromPermissionResult = true)
+        } else {
+            openProfileMapPickerWithFallback(
+                "Location permission was denied. You can still choose your home location manually."
+            )
+        }
+    }
+
+    fun prepareAndOpenProfileMapPicker() {
+        if (mapCenterLoading) return
+
+        mapActionInfo = ""
+        mapCenterLatitude = null
+        mapCenterLongitude = null
+        mapCenterInfo = ""
+
+        if (mapLocationPermissionRequester.refreshPermissionState()) {
+            captureCurrentLocationForProfileMap()
+        } else {
+            mapCenterLoading = true
+            mapLocationPermissionRequester.requestPermission()
         }
     }
 
@@ -242,7 +317,6 @@ fun CompleteProfileScreen(
                     district = district,
                     neighborhood = neighborhood,
                     extraAddress = extraAddress.takeIf(String::isNotBlank),
-                    profession = profession?.trim()?.takeIf(String::isNotBlank),
                     expertise = parseListField(expertise.joinToString(", "))
                 )
                 ProfileRepository.syncProfile(
@@ -338,13 +412,11 @@ fun CompleteProfileScreen(
 
             GenderSelector(value = gender, onValueChange = { gender = it })
 
-            AppTextField(
+            DateInput(
                 value = dateOfBirth,
                 onValueChange = { dateOfBirth = it },
                 label = "Date of Birth",
-                testTag = "complete_profile_date_of_birth",
-                placeholder = "YYYY-MM-DD",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                testTag = "complete_profile_date_of_birth"
             )
 
             Text("Medical Information (optional)", style = MaterialTheme.typography.titleMedium)
@@ -375,23 +447,7 @@ fun CompleteProfileScreen(
                 label = "Allergies (optional - comma-separated)"
             )
 
-            Text("Profession", style = MaterialTheme.typography.titleMedium)
-
-            AppDropdown(
-                value = profession.orEmpty(),
-                onValueChange = { profession = it },
-                label = "Profession",
-                options = professionOptionsFor(profession),
-                placeholder = "Select your profession"
-            )
-
             Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-                Text(
-                    text = "Expertise (optional)",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
                 expertiseOptionsFor(expertise).forEach { option ->
                     AppCheckbox(
                         checked = option in expertise,
@@ -408,7 +464,6 @@ fun CompleteProfileScreen(
             }
 
             Text("Residential Location", style = MaterialTheme.typography.titleMedium)
-            HelperText(text = "This is your home/neighborhood location. It is not automatically updated by GPS.")
 
             if (locationLoading) {
                 HelperText(text = "Loading location options...")
@@ -445,8 +500,8 @@ fun CompleteProfileScreen(
 
             SecondaryButton(
                 text = "Select Home Location on Map",
-                onClick = { mapPickerOpen = true },
-                enabled = !locationLoading && !loading
+                onClick = ::prepareAndOpenProfileMapPicker,
+                enabled = !locationLoading && !loading && !mapCenterLoading
             )
 
             AppTextField(
@@ -473,6 +528,10 @@ fun CompleteProfileScreen(
                     title = "Select Home Location on Map",
                     initialLatitude = mapPickerSelection?.latitude,
                     initialLongitude = mapPickerSelection?.longitude,
+                    centerLatitude = mapCenterLatitude,
+                    centerLongitude = mapCenterLongitude,
+                    centerActionLoading = mapCenterLoading,
+                    centerActionMessage = mapCenterInfo,
                     loading = mapPickerLoading,
                     onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
                     onConfirm = ::handleMapSelection

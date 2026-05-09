@@ -8,6 +8,7 @@ const {
   resetPassword,
   logoutUser,
   deleteCurrentUser,
+  loginWithGoogle,
 } = require('./service');
 const {
   validateSignupInput,
@@ -265,6 +266,52 @@ async function deleteMe(req, res) {
   }
 }
 
+async function googleLogin(req, res) {
+  try {
+    const { idToken, mode, acceptedTerms } = req.body;
+    if (!idToken || typeof idToken !== 'string') {
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'idToken is required' });
+    }
+    const normalizedMode = mode === 'signup' ? 'signup' : 'login';
+    const result = await loginWithGoogle({
+      idToken,
+      mode: normalizedMode,
+      acceptedTerms: acceptedTerms === true,
+    });
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error.code === 'INVALID_GOOGLE_TOKEN') {
+      return res.status(401).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'GOOGLE_NOT_CONFIGURED') {
+      return res.status(503).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'GOOGLE_EMAIL_NOT_VERIFIED') {
+      return res.status(403).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'USER_BANNED') {
+      return res.status(403).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'ACCOUNT_DELETED') {
+      return res.status(403).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'EMAIL_ALREADY_EXISTS') {
+      return res.status(409).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'GOOGLE_ACCOUNT_EXISTS') {
+      return res.status(409).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'GOOGLE_ACCOUNT_NOT_FOUND') {
+      return res.status(404).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'TERMS_NOT_ACCEPTED') {
+      return res.status(400).json({ code: error.code, message: error.message });
+    }
+    console.error('Google login error:', error);
+    return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Something went wrong' });
+  }
+}
+
 module.exports = {
   getAuthInfo,
   signup,
@@ -276,4 +323,5 @@ module.exports = {
   resetPasswordHandler,
   logout,
   deleteMe,
+  googleLogin,
 };

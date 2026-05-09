@@ -14,6 +14,7 @@ export type BackendProfileResponse = {
         profileVisibility: string;
         healthInfoVisibility: string;
         locationVisibility: string;
+        locationVisibilityInitialized?: boolean;
         locationSharingEnabled: boolean;
     };
     healthInfo: {
@@ -208,6 +209,7 @@ export function mapBackendProfileToEditableProfile(
             .map((area) => area.trim())
             .filter((area) =>
                 expertiseOptions.some((allowed) => allowed.toLocaleLowerCase() === area.toLocaleLowerCase())
+                || area.toLocaleLowerCase() === "first aid"
             )
             .map(() => expertiseOptions[0]),
         height:

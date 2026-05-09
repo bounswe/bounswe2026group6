@@ -7,7 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PeopleOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,19 +21,29 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.nearbyusers.data.NearbyVisibleUserUiModel
+import com.neph.features.nearbyusers.data.NearbyVisibleUsersCacheSource
 import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
+import com.neph.features.operationallocation.data.OperationalLocationRepository
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
+import com.neph.features.profile.data.ProfileRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
+import com.neph.ui.components.display.EmptyState
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
+import com.neph.ui.components.display.StatusBadge
+import com.neph.ui.components.display.StatusBadgeTone
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -51,12 +62,16 @@ fun NearbyVisibleUsersScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val token = AuthSessionStore.getAccessToken()
     var users by remember { mutableStateOf<List<NearbyVisibleUserUiModel>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
     var showingCachedData by remember { mutableStateOf(false) }
+    var activeCacheSource by remember {
+        mutableStateOf(NearbyVisibleUsersCacheSource.RESIDENTIAL_PROFILE)
+    }
 
     fun loadNearbyUsers() {
         val safeToken = token
@@ -76,6 +91,7 @@ fun NearbyVisibleUsersScreen(
                     cacheOwnerUserId = cacheOwnerUserId
                 )
                 users = result.users
+                activeCacheSource = NearbyVisibleUsersCacheSource.RESIDENTIAL_PROFILE
                 showingCachedData = result.fromCache || result.isStale
                 message = when {
                     result.message != null -> result.message
@@ -101,6 +117,102 @@ fun NearbyVisibleUsersScreen(
         }
     }
 
+    fun updateOfflineDataForCurrentLocation() {
+        val safeToken = token
+        val cacheOwnerUserId = AuthSessionStore.getCurrentUserId()
+        if (safeToken.isNullOrBlank() || cacheOwnerUserId.isNullOrBlank()) {
+            onNavigateToLogin()
+            return
+        }
+
+        loading = true
+        message = ""
+        errorMessage = ""
+        scope.launch {
+            try {
+                val profile = try {
+                    ProfileRepository.fetchAndCacheRemoteProfile()
+                } catch (apiError: ApiException) {
+                    if (apiError.status == 401) {
+                        throw apiError
+                    }
+                    showingCachedData = false
+                    message = "Could not verify current-location privacy settings. Offline data was not updated."
+                    return@launch
+                } catch (_: Exception) {
+                    showingCachedData = false
+                    message = "Could not verify current-location privacy settings. Offline data was not updated."
+                    return@launch
+                }
+
+                if (profile.shareLocation != true) {
+                    showingCachedData = false
+                    message = "Share Current Location is disabled in privacy settings. Offline data was not updated."
+                    return@launch
+                }
+
+                val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+                val location = attempt.location
+                if (location == null) {
+                    showingCachedData = false
+                    message = when (attempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission was denied. Offline data was not updated."
+
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. Offline data was not updated."
+                    }
+                    return@launch
+                }
+
+                OperationalLocationRepository.saveAndSyncIfAuthenticated(location)
+                val result = NearbyVisibleUsersRepository.refreshNearbyVisibleUsersForCurrentLocation(
+                    token = safeToken,
+                    cacheOwnerUserId = cacheOwnerUserId,
+                    currentLocation = location
+                )
+                users = result.users
+                activeCacheSource = NearbyVisibleUsersCacheSource.CURRENT_OPERATIONAL_LOCATION
+                showingCachedData = result.fromCache || result.isStale
+                message = when {
+                    result.message != null -> result.message
+                    result.users.isEmpty() -> "No visible users were found around your current location."
+                    result.fromCache -> "Showing cached current-location offline data. This information may be stale."
+                    else -> "Offline data for your current location was updated."
+                }
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    errorMessage = "Session expired. Please log in again."
+                    onNavigateToLogin()
+                } else if (error.status == 403 || error.code == "CURRENT_LOCATION_NEARBY_NOT_ALLOWED") {
+                    errorMessage = "Current-location offline refresh is blocked by privacy or location safety rules."
+                } else {
+                    errorMessage = error.message.ifBlank { "Could not update offline data for current location." }
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                errorMessage = "Could not update offline data for current location."
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
+            updateOfflineDataForCurrentLocation()
+        } else {
+            loading = false
+            errorMessage = ""
+            message = "Location permission was denied. Offline data was not updated."
+        }
+    }
+
     LaunchedEffect(Unit) {
         loadNearbyUsers()
     }
@@ -119,20 +231,30 @@ fun NearbyVisibleUsersScreen(
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(spacing.md)
         ) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-                    SectionHeader(
-                        title = "Nearby Visible Users",
-                        subtitle = "Based on your residential/profile area, not your current GPS. Only users visible through privacy or trusted circle rules are cached."
+                    Text(
+                        text = "Based on your residential/profile area, not your current GPS. Only users visible through privacy or trusted circle rules are cached.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     SecondaryButton(
                         text = "Refresh",
                         onClick = { loadNearbyUsers() },
+                        enabled = !loading
+                    )
+                    SecondaryButton(
+                        text = "Update Offline Data for Current Location",
+                        onClick = {
+                            if (locationPermissionRequester.refreshPermissionState()) {
+                                updateOfflineDataForCurrentLocation()
+                            } else {
+                                locationPermissionRequester.requestPermission()
+                            }
+                        },
                         enabled = !loading
                     )
                 }
@@ -146,6 +268,18 @@ fun NearbyVisibleUsersScreen(
                 SectionCard {
                     HelperText(text = "Cached data may be stale. Refresh when connectivity is available.")
                 }
+            }
+
+            SectionCard {
+                HelperText(
+                    text = when (activeCacheSource) {
+                        NearbyVisibleUsersCacheSource.RESIDENTIAL_PROFILE ->
+                            "Showing offline cache from your residential/profile area."
+
+                        NearbyVisibleUsersCacheSource.CURRENT_OPERATIONAL_LOCATION ->
+                            "Showing offline cache from your last manual current-location update."
+                    }
+                )
             }
 
             if (message.isNotBlank()) {
@@ -165,6 +299,14 @@ fun NearbyVisibleUsersScreen(
 
             users.forEach { user ->
                 NearbyVisibleUserRow(user = user)
+            }
+
+            if (!loading && errorMessage.isBlank() && users.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Filled.PeopleOutline,
+                    title = "No nearby users",
+                    description = "Nobody who shares their location with you is visible right now."
+                )
             }
         }
     }
@@ -193,10 +335,7 @@ private fun NearbyVisibleUserRow(user: NearbyVisibleUserUiModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(formatSafetyStatus(user.safetyStatus)) }
-                )
+                AssistChipReplacement(safetyStatus = user.safetyStatus)
             }
 
             Text(
@@ -215,6 +354,16 @@ private fun NearbyVisibleUserRow(user: NearbyVisibleUserUiModel) {
             }
         }
     }
+}
+
+@Composable
+private fun AssistChipReplacement(safetyStatus: String) {
+    val tone = when (safetyStatus.trim().lowercase()) {
+        "safe" -> StatusBadgeTone.SUCCESS
+        "not_safe" -> StatusBadgeTone.DANGER
+        else -> StatusBadgeTone.NEUTRAL
+    }
+    StatusBadge(text = formatSafetyStatus(safetyStatus), tone = tone)
 }
 
 private fun buildLocationLabel(user: NearbyVisibleUserUiModel): String {

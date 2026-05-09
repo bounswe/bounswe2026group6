@@ -3,13 +3,29 @@ package com.neph.features.myhelprequests.data
 import com.neph.core.database.HelpRequestEntity
 import com.neph.core.sync.LocalOwnerType
 import com.neph.core.sync.SyncStatus
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.util.TimeZone
 
 class MyHelpRequestsRepositoryMappingTest {
+    private lateinit var previousTimeZone: TimeZone
+
+    @Before
+    fun setUp() {
+        previousTimeZone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    }
+
+    @After
+    fun tearDown() {
+        TimeZone.setDefault(previousTimeZone)
+    }
+
     @Test
     fun toUiModelIncludesLifecycleOperationalLabelsForClosedRequests() {
         val model = HelpRequestEntity(

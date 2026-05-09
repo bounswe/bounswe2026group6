@@ -12,7 +12,8 @@ import { Divider } from "@/components/ui/display/Divider";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
-import { SIGNUP_DRAFT_KEY, signup } from "@/lib/auth";
+import { SIGNUP_DRAFT_KEY, signup, googleLogin, setAccessToken } from "@/lib/auth";
+import { fetchMyProfile } from "@/lib/profile";
 import { isValidEmail } from "@/lib/validators/email";
 
 export function SignupForm() {
@@ -126,16 +127,74 @@ export function SignupForm() {
         }
     };
 
-    const handleSocialAuth = (provider: "Google" | "Facebook" | "Apple") => {
+    const handleGoogleSuccess = async (idToken: string) => {
         setError("");
-        setInfo(
-            `${provider} sign-up UI is ready. Real OAuth registration will be connected after provider credentials and backend callback setup are completed.`
-        );
+        setInfo("");
+
+        if (!acceptedTerms) {
+            setError("You must accept the terms to continue.");
+            return;
+        }
+
+        try {
+            const result = await googleLogin(idToken, "signup", acceptedTerms);
+            setAccessToken(result.accessToken);
+            try {
+                const profile = await fetchMyProfile(result.accessToken);
+                if (!profile.profile?.firstName) {
+                    router.push("/complete-profile");
+                } else {
+                    router.push("/home");
+                }
+            } catch {
+                // No profile yet for the new Google account — send to complete-profile.
+                router.push("/complete-profile");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Google sign-in failed.");
+        }
+    };
+
+    const handleGoogleError = (message: string) => {
+        setError(message);
     };
 
     return (
         <>
-            <SocialAuthButtons mode="signup" onProviderClick={handleSocialAuth} />
+            <Checkbox
+                id="signup-terms-consent"
+                checked={acceptedTerms}
+                onCheckedChange={setAcceptedTerms}
+                label={
+                    <span>
+                        I agree to the{" "}
+                        <Link
+                            href="/terms-of-service?from=signup"
+                            onClick={saveSignupDraft}
+                            className="font-semibold text-[color:var(--primary-500)] hover:underline"
+                        >
+                            Terms of Service
+                        </Link>{" "}
+                        and {" "}
+                        <Link
+                            href="/privacy-policy?from=signup"
+                            onClick={saveSignupDraft}
+                            className="font-semibold text-[color:var(--primary-500)] hover:underline"
+                        >
+                            Privacy Policy
+                        </Link>
+                        .
+                    </span>
+                }
+            />
+
+            <SocialAuthButtons
+                mode="signup"
+                onGoogleSuccess={handleGoogleSuccess}
+                onGoogleError={handleGoogleError}
+                disabled={!acceptedTerms}
+                disabledMessage="Accept Terms of Service and Privacy Policy to continue with Google sign-up."
+            />
 
             <div className="my-5 flex items-center gap-3">
                 <Divider className="flex-1" />
@@ -181,33 +240,6 @@ export function SignupForm() {
                         placeholder="Re-enter your password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
-
-                    <Checkbox
-                        id="signup-terms"
-                        checked={acceptedTerms}
-                        onCheckedChange={setAcceptedTerms}
-                        label={
-                            <span>
-                                I agree to the{" "}
-                                <Link
-                                    href="/terms-of-service?from=signup"
-                                    onClick={saveSignupDraft}
-                                    className="font-semibold text-[color:var(--primary-500)] hover:underline"
-                                >
-                                    Terms of Service
-                                </Link>{" "}
-                                and{" "}
-                                <Link
-                                    href="/privacy-policy?from=signup"
-                                    onClick={saveSignupDraft}
-                                    className="font-semibold text-[color:var(--primary-500)] hover:underline"
-                                >
-                                    Privacy Policy
-                                </Link>
-                                .
-                            </span>
-                        }
                     />
 
                     {error ? (

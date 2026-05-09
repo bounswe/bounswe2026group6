@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.neph.core.sync.OfflineSyncScheduler
@@ -35,6 +33,7 @@ import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 
@@ -132,6 +131,29 @@ fun AssignedRequestScreen(
         }
     }
 
+    fun openAssignedRequestDirections(request: AssignedRequestUiModel) {
+        val latitude = request.latitude
+        val longitude = request.longitude
+        if (
+            latitude == null ||
+            longitude == null ||
+            !NephMapIntegration.isValidCoordinate(latitude = latitude, longitude = longitude)
+        ) {
+            infoMessage = "Directions are unavailable because this request has no usable coordinates."
+            return
+        }
+
+        val opened = NephMapIntegration.openDirections(
+            context = context,
+            latitude = latitude,
+            longitude = longitude,
+            label = request.helpTypeSummary
+        )
+        if (!opened) {
+            infoMessage = "Could not open directions for this assigned request."
+        }
+    }
+
     LaunchedEffect(currentRequest?.assignmentId, token, refreshVersion) {
         val assignmentId = currentRequest?.assignmentId
         if (assignmentId.isNullOrBlank()) {
@@ -162,9 +184,10 @@ fun AssignedRequestScreen(
             error.isNotBlank() && currentRequest == null -> {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
                     SectionCard {
-                        SectionHeader(
-                            title = "Assigned Request",
-                            subtitle = "We could not load your current assignment."
+                        Text(
+                            text = "We could not load your current assignment.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         HelperText(text = error)
@@ -182,9 +205,10 @@ fun AssignedRequestScreen(
             currentRequest == null -> {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
                     SectionCard {
-                        SectionHeader(
-                            title = "Assigned Request",
-                            subtitle = "This page shows the request currently assigned to you."
+                        Text(
+                            text = "This page shows the request currently assigned to you.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Text(
@@ -204,9 +228,7 @@ fun AssignedRequestScreen(
                 val request = currentRequest!!
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(spacing.lg)
                 ) {
                     SectionCard {
@@ -332,6 +354,22 @@ fun AssignedRequestScreen(
                             )
 
                             DetailLine(label = "Location", value = request.locationLabel)
+
+                            if (
+                                request.latitude != null &&
+                                request.longitude != null &&
+                                NephMapIntegration.isValidCoordinate(
+                                    latitude = request.latitude,
+                                    longitude = request.longitude
+                                )
+                            ) {
+                                SecondaryButton(
+                                    text = "Get Directions",
+                                    onClick = { openAssignedRequestDirections(request) }
+                                )
+                            } else {
+                                HelperText(text = "Directions are unavailable because this request has no usable coordinates.")
+                            }
 
                             when {
                                 routeLoading -> {

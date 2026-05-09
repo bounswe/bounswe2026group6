@@ -6,6 +6,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -17,10 +19,16 @@ data class GatheringAreaItem(
     val osmType: String,
     val name: String,
     val category: String,
+    val categoryLabel: String,
     val latitude: Double,
     val longitude: Double,
     val distanceMeters: Int,
     val addressLine: String?
+)
+
+data class GatheringAreaCategoryMeta(
+    val key: String,
+    val label: String
 )
 
 data class NearbyGatheringAreasResult(
@@ -31,12 +39,13 @@ data class NearbyGatheringAreasResult(
     val requestedLimit: Int,
     val returnedCount: Int,
     val skippedCount: Int,
+    val categories: List<GatheringAreaCategoryMeta>,
     val areas: List<GatheringAreaItem>
 )
 
 object GatheringAreasRepository {
-    private const val DefaultRadiusMeters = 2000
-    private const val DefaultLimit = 20
+    internal const val DefaultRadiusMeters = 10000
+    internal const val DefaultLimit = 50
     private const val MaxRadiusMeters = 10000
     private const val MaxLimit = 50
     private const val NearbyRequestTimeoutMillis = 8000L
@@ -76,6 +85,37 @@ object GatheringAreasRepository {
         )
     }
 
+    suspend fun fetchViewportGatheringAreas(
+        bbox: String,
+        centerLatitude: Double,
+        centerLongitude: Double,
+        widestVisibleDimensionKm: Double,
+        limit: Int = DefaultLimit
+    ): NearbyGatheringAreasResult {
+        val normalizedLimit = limit.coerceIn(1, MaxLimit)
+        val normalizedRadiusMeters = (widestVisibleDimensionKm * 1000.0)
+            .roundToInt()
+            .coerceAtLeast(1)
+
+        val response = withTimeoutOrNull(NearbyRequestTimeoutMillis) {
+            JsonHttpClient.request(
+                path = "/gathering-areas/viewport?bbox=${urlEncode(bbox)}&limit=$normalizedLimit"
+            )
+        } ?: throw ApiException(
+            message = "Gathering areas request timed out.",
+            status = 504,
+            code = "OVERPASS_TIMEOUT"
+        )
+
+        return parseNearbyGatheringAreasResponse(
+            response = response,
+            fallbackLatitude = centerLatitude,
+            fallbackLongitude = centerLongitude,
+            fallbackRadius = normalizedRadiusMeters,
+            fallbackLimit = normalizedLimit
+        )
+    }
+
     internal fun parseNearbyGatheringAreasResponse(
         response: JSONObject,
         fallbackLatitude: Double,
@@ -92,6 +132,7 @@ object GatheringAreasRepository {
 
         val metaJson = response.optJSONObject("meta") ?: JSONObject()
         val requestedLimit = metaJson.optPositiveInt("requestedLimit") ?: fallbackLimit
+        val categories = parseCategoryMetadata(metaJson.optJSONArray("categories"))
 
         val features = response
             .optJSONObject("collection")
@@ -132,8 +173,28 @@ object GatheringAreasRepository {
             requestedLimit = requestedLimit,
             returnedCount = sortedAreas.size,
             skippedCount = skippedCount,
+            categories = categories,
             areas = sortedAreas
         )
+    }
+
+    private fun parseCategoryMetadata(raw: JSONArray?): List<GatheringAreaCategoryMeta> {
+        if (raw == null) return emptyList()
+
+        return buildList {
+            for (index in 0 until raw.length()) {
+                val item = raw.optJSONObject(index) ?: continue
+                val key = item.optString("key").trim().lowercase()
+                if (key.isBlank()) continue
+                val label = item.optString("label").trim()
+                add(
+                    GatheringAreaCategoryMeta(
+                        key = key,
+                        label = if (label.isBlank()) formatCategoryLabel(key) else label
+                    )
+                )
+            }
+        }
     }
 
     private fun parseFeature(
@@ -168,6 +229,9 @@ object GatheringAreasRepository {
             rawTags.optString("emergency").trim().ifBlank {
                 rawTags.optString("amenity").trim().ifBlank { "unknown" }
             }
+        }.lowercase()
+        val categoryLabel = properties.optString("categoryLabel").trim().ifBlank {
+            formatCategoryLabel(category)
         }
 
         val payloadDistance = properties.optNonNegativeInt("distanceMeters")
@@ -189,6 +253,7 @@ object GatheringAreasRepository {
             osmType = osmType,
             name = resolvedName,
             category = category,
+            categoryLabel = categoryLabel,
             latitude = latitude,
             longitude = longitude,
             distanceMeters = distanceMeters,
@@ -213,6 +278,20 @@ object GatheringAreasRepository {
 
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return (earthRadiusMeters * c).roundToInt()
+    }
+}
+
+private fun urlEncode(value: String): String {
+    return URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
+}
+
+private fun formatCategoryLabel(category: String): String {
+    val normalized = category.trim().lowercase()
+    if (normalized.isBlank() || normalized == "unknown") return "Gathering Area"
+    if (normalized == "assembly_point") return "Assembly Point"
+    if (normalized == "fire_station") return "Fire Station"
+    return normalized.split('_').joinToString(" ") { part ->
+        part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
 }
 

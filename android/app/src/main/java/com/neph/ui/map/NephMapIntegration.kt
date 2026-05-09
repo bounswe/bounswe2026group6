@@ -22,6 +22,73 @@ import com.neph.ui.components.buttons.TextActionButton
 import java.util.Locale
 
 object NephMapIntegration {
+    fun isValidCoordinate(
+        latitude: Double,
+        longitude: Double
+    ): Boolean {
+        return latitude.isFinite() &&
+            longitude.isFinite() &&
+            latitude in -90.0..90.0 &&
+            longitude in -180.0..180.0
+    }
+
+    fun buildDirectionsNavigationUri(
+        latitude: Double,
+        longitude: Double,
+        label: String? = null
+    ): String? {
+        // Directions are coordinate-based; label is reserved for future destination UI integrations.
+        if (!isValidCoordinate(latitude = latitude, longitude = longitude)) {
+            return null
+        }
+
+        return "google.navigation:q=$latitude,$longitude"
+    }
+
+    fun buildDirectionsBrowserUrl(
+        latitude: Double,
+        longitude: Double,
+        label: String? = null
+    ): String? {
+        if (!isValidCoordinate(latitude = latitude, longitude = longitude)) {
+            return null
+        }
+
+        return "https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude"
+    }
+
+    fun openDirections(
+        context: Context,
+        latitude: Double,
+        longitude: Double,
+        label: String? = null
+    ): Boolean {
+        val navigationUri = buildDirectionsNavigationUri(
+            latitude = latitude,
+            longitude = longitude,
+            label = label
+        ) ?: return false
+        val browserUrl = buildDirectionsBrowserUrl(
+            latitude = latitude,
+            longitude = longitude,
+            label = label
+        ) ?: return false
+
+        val navigationIntent = Intent(Intent.ACTION_VIEW, Uri.parse(navigationUri))
+
+        return runCatching {
+            context.startActivity(navigationIntent)
+            true
+        }.recoverCatching {
+            if (it is ActivityNotFoundException) {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(browserUrl)))
+                true
+            } else {
+                throw it
+            }
+        }.getOrElse { false }
+    }
+
     fun openCoordinates(
         context: Context,
         latitude: Double,

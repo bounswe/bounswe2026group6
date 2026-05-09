@@ -30,6 +30,7 @@ data class ProfileData(
     val profileVisibility: String? = null,
     val healthInfoVisibility: String? = null,
     val locationVisibility: String? = null,
+    val locationVisibilityInitialized: Boolean = false,
     val shareLocation: Boolean? = null,
     val sharedLatitude: Double? = null,
     val sharedLongitude: Double? = null

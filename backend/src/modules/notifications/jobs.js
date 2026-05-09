@@ -3,6 +3,7 @@ const {
 } = require('./service');
 const {
   listAvailabilityPausedNotificationCandidates,
+  listAvailabilityReminderCandidates,
   expireStalePendingHelpRequests,
 } = require('./repository');
 const { env } = require('../../config/env');
@@ -29,6 +30,29 @@ async function runAvailabilityPausedNotificationCycle() {
         kind: 'availability_paused',
         pauseReason: candidate.pauseReason,
         pauseEventKey: candidate.pauseEventKey,
+      },
+    });
+  }
+}
+
+async function runAvailabilityExpiringNotificationCycle() {
+  const candidates = await listAvailabilityReminderCandidates({
+    minMinutesSinceLocationUpdate: env.notifications.availabilityReminderMinutes,
+    reminderCooldownMinutes: env.notifications.availabilityReminderCooldownMinutes,
+    limit: env.notifications.jobBatchSize,
+  });
+
+  for (const userId of candidates) {
+    await createNotification({
+      recipientUserId: userId,
+      actorUserId: null,
+      type: 'VOLUNTEER_AVAILABILITY_EXPIRING',
+      title: 'Refresh volunteer availability',
+      body: 'Your volunteer availability may expire soon. Open NEPH to refresh your location and stay available.',
+      entity: null,
+      data: {
+        screen: 'availability',
+        kind: 'availability_reminder',
       },
     });
   }
@@ -72,6 +96,7 @@ async function runNotificationJobsOnce() {
 
   running = true;
   try {
+    await runAvailabilityExpiringNotificationCycle();
     await runAvailabilityPausedNotificationCycle();
     await runHelpRequestExpirationCycle();
   } catch (error) {
@@ -111,4 +136,5 @@ module.exports = {
   startNotificationJobs,
   stopNotificationJobs,
   runNotificationJobsOnce,
+  runAvailabilityExpiringNotificationCycle,
 };

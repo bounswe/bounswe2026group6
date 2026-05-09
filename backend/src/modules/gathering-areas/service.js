@@ -6,6 +6,15 @@ const DEFAULT_CACHE_MAX_ENTRIES = 500;
 const DEFAULT_OVERPASS_USER_AGENT = 'NEPH-Backend/1.0 (+https://github.com/bounswe/bounswe2026group6)';
 const CACHE_COORDINATE_DECIMALS = 4;
 const FALLBACK_REASON = 'No verified backend fallback gathering-area data is available';
+const CATEGORY_METADATA = {
+  assembly_point: { key: 'assembly_point', label: 'Assembly Point' },
+  shelter: { key: 'shelter', label: 'Shelter' },
+  hospital: { key: 'hospital', label: 'Hospital' },
+  police: { key: 'police', label: 'Police Station' },
+  fire_station: { key: 'fire_station', label: 'Fire Station' },
+  pharmacy: { key: 'pharmacy', label: 'Pharmacy' },
+  other: { key: 'other', label: 'Other' },
+};
 
 const nearbyCache = new Map();
 
@@ -52,6 +61,16 @@ function getCacheMaxEntries() {
 
 function buildCacheKey({ lat, lon, radius, limit }) {
   return `${lat.toFixed(CACHE_COORDINATE_DECIMALS)}:${lon.toFixed(CACHE_COORDINATE_DECIMALS)}:${radius}:${limit}`;
+}
+
+function buildViewportCacheKey({ bbox, limit }) {
+  return [
+    bbox.minLon.toFixed(CACHE_COORDINATE_DECIMALS),
+    bbox.minLat.toFixed(CACHE_COORDINATE_DECIMALS),
+    bbox.maxLon.toFixed(CACHE_COORDINATE_DECIMALS),
+    bbox.maxLat.toFixed(CACHE_COORDINATE_DECIMALS),
+    limit,
+  ].join(':');
 }
 
 function readFreshCache(cacheKey) {
@@ -122,6 +141,21 @@ function buildOverpassQuery({ lat, lon, radius }) {
     `  node(around:${radius},${lat},${lon})["amenity"="shelter"];`,
     `  way(around:${radius},${lat},${lon})["amenity"="shelter"];`,
     `  relation(around:${radius},${lat},${lon})["amenity"="shelter"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+    `  node(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+    `  way(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+    `  relation(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="police"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="police"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="police"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+    `  node(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
+    `  way(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
+    `  relation(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
     ');',
     'out center tags;',
   ].join('\n');
@@ -133,6 +167,67 @@ function buildOverpassLightweightQuery({ lat, lon, radius }) {
     '(',
       `  node(around:${radius},${lat},${lon})["emergency"="assembly_point"];`,
       `  node(around:${radius},${lat},${lon})["amenity"="shelter"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="hospital"];`,
+      `  node(around:${radius},${lat},${lon})["healthcare"="hospital"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="police"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="fire_station"];`,
+      `  node(around:${radius},${lat},${lon})["amenity"="pharmacy"];`,
+    ');',
+    'out tags;',
+  ].join('\n');
+}
+
+function buildOverpassBboxQuery({ bbox }) {
+  const south = bbox.minLat;
+  const west = bbox.minLon;
+  const north = bbox.maxLat;
+  const east = bbox.maxLon;
+
+  return [
+    '[out:json][timeout:25];',
+    '(',
+    `  node(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+    `  way(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+    `  relation(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+    `  node(${south},${west},${north},${east})["amenity"="shelter"];`,
+    `  way(${south},${west},${north},${east})["amenity"="shelter"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="shelter"];`,
+    `  node(${south},${west},${north},${east})["amenity"="hospital"];`,
+    `  way(${south},${west},${north},${east})["amenity"="hospital"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="hospital"];`,
+    `  node(${south},${west},${north},${east})["healthcare"="hospital"];`,
+    `  way(${south},${west},${north},${east})["healthcare"="hospital"];`,
+    `  relation(${south},${west},${north},${east})["healthcare"="hospital"];`,
+    `  node(${south},${west},${north},${east})["amenity"="police"];`,
+    `  way(${south},${west},${north},${east})["amenity"="police"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="police"];`,
+    `  node(${south},${west},${north},${east})["amenity"="fire_station"];`,
+    `  way(${south},${west},${north},${east})["amenity"="fire_station"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="fire_station"];`,
+    `  node(${south},${west},${north},${east})["amenity"="pharmacy"];`,
+    `  way(${south},${west},${north},${east})["amenity"="pharmacy"];`,
+    `  relation(${south},${west},${north},${east})["amenity"="pharmacy"];`,
+    ');',
+    'out center tags;',
+  ].join('\n');
+}
+
+function buildOverpassBboxLightweightQuery({ bbox }) {
+  const south = bbox.minLat;
+  const west = bbox.minLon;
+  const north = bbox.maxLat;
+  const east = bbox.maxLon;
+
+  return [
+    '[out:json][timeout:25];',
+    '(',
+      `  node(${south},${west},${north},${east})["emergency"="assembly_point"];`,
+      `  node(${south},${west},${north},${east})["amenity"="shelter"];`,
+      `  node(${south},${west},${north},${east})["amenity"="hospital"];`,
+      `  node(${south},${west},${north},${east})["healthcare"="hospital"];`,
+      `  node(${south},${west},${north},${east})["amenity"="police"];`,
+      `  node(${south},${west},${north},${east})["amenity"="fire_station"];`,
+      `  node(${south},${west},${north},${east})["amenity"="pharmacy"];`,
     ');',
     'out tags;',
   ].join('\n');
@@ -173,6 +268,34 @@ function calculateDistanceMeters(fromLat, fromLon, toLat, toLon) {
   return earthRadiusMeters * c;
 }
 
+function mapTagsToCategory(tags) {
+  if (tags.emergency === 'assembly_point') {
+    return CATEGORY_METADATA.assembly_point;
+  }
+
+  if (tags.amenity === 'shelter') {
+    return CATEGORY_METADATA.shelter;
+  }
+
+  if (tags.amenity === 'hospital' || tags.healthcare === 'hospital') {
+    return CATEGORY_METADATA.hospital;
+  }
+
+  if (tags.amenity === 'police') {
+    return CATEGORY_METADATA.police;
+  }
+
+  if (tags.amenity === 'fire_station') {
+    return CATEGORY_METADATA.fire_station;
+  }
+
+  if (tags.amenity === 'pharmacy') {
+    return CATEGORY_METADATA.pharmacy;
+  }
+
+  return CATEGORY_METADATA.other;
+}
+
 function mapElementToFeature(element, center) {
   if (!isObject(element)) {
     return null;
@@ -187,6 +310,7 @@ function mapElementToFeature(element, center) {
   }
 
   const distanceMeters = Math.round(calculateDistanceMeters(center.lat, center.lon, lat, lon));
+  const category = mapTagsToCategory(tags);
 
   return {
     type: 'Feature',
@@ -198,7 +322,8 @@ function mapElementToFeature(element, center) {
       id: String(element.id || ''),
       osmType: element.type || '',
       name: tags.name || tags['name:tr'] || '',
-      category: tags.emergency || tags.amenity || 'unknown',
+      category: category.key,
+      categoryLabel: category.label,
       distanceMeters,
       rawTags: tags,
     },
@@ -234,8 +359,76 @@ function toFeatureCollection(elements, limit, center) {
 
   return {
     type: 'FeatureCollection',
-    features: features.slice(0, limit),
+    features: selectBalancedFeatures(features, limit),
   };
+}
+
+function selectBalancedFeatures(sortedFeatures, limit) {
+  const cappedLimit = Math.max(0, limit);
+  if (cappedLimit === 0 || sortedFeatures.length <= cappedLimit) {
+    return sortedFeatures.slice(0, cappedLimit);
+  }
+
+  const groups = new Map();
+  for (const feature of sortedFeatures) {
+    const category = feature.properties && feature.properties.category
+      ? feature.properties.category
+      : 'other';
+    if (!groups.has(category)) {
+      groups.set(category, []);
+    }
+    groups.get(category).push(feature);
+  }
+
+  const categoriesByNearest = [...groups.entries()]
+    .sort((left, right) => left[1][0].properties.distanceMeters - right[1][0].properties.distanceMeters);
+  const selected = [];
+  const selectedIds = new Set();
+  const perCategoryTarget = Math.min(
+    3,
+    Math.max(1, Math.floor(cappedLimit / Math.max(categoriesByNearest.length, 1))),
+  );
+
+  for (let round = 0; round < perCategoryTarget && selected.length < cappedLimit; round += 1) {
+    for (const [, categoryFeatures] of categoriesByNearest) {
+      const feature = categoryFeatures[round];
+      if (!feature || selected.length >= cappedLimit) {
+        continue;
+      }
+      const featureKey = getFeatureSelectionKey(feature);
+      if (selectedIds.has(featureKey)) {
+        continue;
+      }
+      selectedIds.add(featureKey);
+      selected.push(feature);
+    }
+  }
+
+  for (const feature of sortedFeatures) {
+    if (selected.length >= cappedLimit) {
+      break;
+    }
+    const featureKey = getFeatureSelectionKey(feature);
+    if (selectedIds.has(featureKey)) {
+      continue;
+    }
+    selectedIds.add(featureKey);
+    selected.push(feature);
+  }
+
+  return selected.sort((left, right) => left.properties.distanceMeters - right.properties.distanceMeters);
+}
+
+function getFeatureSelectionKey(feature) {
+  const properties = feature.properties || {};
+  if (properties.id) {
+    return `${properties.osmType || 'unknown'}:${properties.id}`;
+  }
+
+  const coordinates = feature.geometry && Array.isArray(feature.geometry.coordinates)
+    ? feature.geometry.coordinates.join(':')
+    : 'unknown';
+  return `coordinates:${coordinates}`;
 }
 
 function toFallbackFeatureCollection() {
@@ -254,6 +447,10 @@ function withSource(result, source, extraMeta = {}) {
       ...extraMeta,
     },
   };
+}
+
+function buildCategoryMetadata() {
+  return Object.values(CATEGORY_METADATA);
 }
 
 async function fetchNearbyFromOverpassUrl(queryText, url) {
@@ -336,6 +533,22 @@ async function fetchNearbyFromOverpass(params) {
   }
 }
 
+async function fetchViewportFromOverpass(params) {
+  try {
+    return await fetchNearbyFromOverpassWithQuery(buildOverpassBboxQuery(params));
+  } catch (error) {
+    const shouldRetryWithLightweightQuery =
+      error &&
+      (error.code === 'OVERPASS_UNAVAILABLE' || error.code === 'OVERPASS_TIMEOUT');
+
+    if (!shouldRetryWithLightweightQuery) {
+      throw error;
+    }
+
+    return fetchNearbyFromOverpassWithQuery(buildOverpassBboxLightweightQuery(params));
+  }
+}
+
 async function getNearbyGatheringAreas(params) {
   const cacheKey = buildCacheKey(params);
   const cached = readFreshCache(cacheKey);
@@ -360,6 +573,7 @@ async function getNearbyGatheringAreas(params) {
       meta: {
         requestedLimit: params.limit,
         returnedCount: collection.features.length,
+        categories: buildCategoryMetadata(),
       },
       collection,
     };
@@ -392,6 +606,64 @@ async function getNearbyGatheringAreas(params) {
         returnedCount: collection.features.length,
         providerErrorCode: error.code,
         fallbackReason: FALLBACK_REASON,
+        categories: buildCategoryMetadata(),
+      },
+      collection,
+    };
+  }
+}
+
+async function getViewportGatheringAreas(params) {
+  const cacheKey = buildViewportCacheKey(params);
+  const cached = readFreshCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const payload = await fetchViewportFromOverpass(params);
+    const collection = toFeatureCollection(payload.elements, params.limit, params.center);
+
+    const result = {
+      center: params.center,
+      radius: params.radius,
+      source: 'overpass',
+      meta: {
+        requestedLimit: params.limit,
+        returnedCount: collection.features.length,
+        categories: buildCategoryMetadata(),
+        viewport: params.viewport,
+      },
+      collection,
+    };
+
+    writeToCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (!isProviderFailure(error)) {
+      throw error;
+    }
+
+    const staleCached = readStaleCache(cacheKey);
+    if (staleCached) {
+      return withSource(staleCached, 'stale_cache', {
+        stale: true,
+        providerErrorCode: error.code,
+      });
+    }
+
+    const collection = toFallbackFeatureCollection();
+    return {
+      center: params.center,
+      radius: params.radius,
+      source: 'fallback',
+      meta: {
+        requestedLimit: params.limit,
+        returnedCount: collection.features.length,
+        providerErrorCode: error.code,
+        fallbackReason: FALLBACK_REASON,
+        categories: buildCategoryMetadata(),
+        viewport: params.viewport,
       },
       collection,
     };
@@ -404,5 +676,6 @@ function __resetNearbyCache() {
 
 module.exports = {
   getNearbyGatheringAreas,
+  getViewportGatheringAreas,
   __resetNearbyCache,
 };

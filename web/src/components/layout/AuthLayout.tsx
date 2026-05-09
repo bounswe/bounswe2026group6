@@ -1,4 +1,5 @@
 import * as React from "react";
+import Image from "next/image";
 import { AuthCard } from "@/components/ui/display/AuthCard";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AuthShowcase } from "@/components/feature/auth/AuthShowcase";
@@ -21,9 +22,14 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
                     <div className="flex items-start justify-center">
                         <AuthCard className="w-full max-w-md">
                             <div className="mb-6 flex flex-col items-center text-center">
-                                <div className="mb-4 text-2xl font-bold text-[color:var(--primary-500)]">
-                                    NEPH
-                                </div>
+                                <Image
+                                    src="/neph_logo.png"
+                                    alt="NEPH logo"
+                                    width={180}
+                                    height={52}
+                                    className="mb-4 h-auto w-[180px] max-w-full"
+                                    priority
+                                />
 
                                 {title ? (
                                     <h1 className="text-3xl font-bold text-[color:var(--text-primary)]">

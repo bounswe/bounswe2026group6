@@ -12,7 +12,7 @@ import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
 import { ApiError } from "@/lib/api";
-import { login, resendVerification, setAccessToken } from "@/lib/auth";
+import { login, googleLogin, resendVerification, setAccessToken } from "@/lib/auth";
 import { fetchMyProfile } from "@/lib/profile";
 import { isValidEmail } from "@/lib/validators/email";
 
@@ -108,11 +108,30 @@ export function LoginForm() {
         router.push(target);
     };
 
-    const handleSocialAuth = (provider: "Google" | "Facebook" | "Apple") => {
+    const handleGoogleSuccess = async (idToken: string) => {
         setError("");
-        setInfo(
-            `${provider} sign-in UI is ready. Real OAuth login will be connected after provider credentials and backend callback setup are completed.`
-        );
+        setInfo("");
+        try {
+            const result = await googleLogin(idToken, "login");
+            setAccessToken(result.accessToken);
+            try {
+                const profile = await fetchMyProfile(result.accessToken);
+                if (!profile.profile?.firstName) {
+                    router.push("/complete-profile");
+                } else {
+                    router.push(safeReturnTo || "/home");
+                }
+            } catch {
+                // No profile yet — send to complete-profile.
+                router.push("/complete-profile");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Google sign-in failed.");
+        }
+    };
+
+    const handleGoogleError = (message: string) => {
+        setError(message);
     };
 
     const handleResendVerification = async () => {
@@ -146,7 +165,7 @@ export function LoginForm() {
 
     return (
         <>
-            <SocialAuthButtons mode="login" onProviderClick={handleSocialAuth} />
+            <SocialAuthButtons mode="login" onGoogleSuccess={handleGoogleSuccess} onGoogleError={handleGoogleError} />
 
             <div className="my-5 flex items-center gap-3">
                 <Divider className="flex-1" />

@@ -1,26 +1,40 @@
 package com.neph.features.settings.presentation
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.neph.core.theme.ThemePreferenceStore
 import com.neph.features.auth.data.AuthRepository
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
-import com.neph.ui.components.buttons.SecondaryButton
+import com.neph.ui.components.display.IconListRow
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
+import com.neph.ui.components.display.StatusBadgeTone
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
@@ -108,33 +122,76 @@ fun SettingsScreen(
         ) {
             SectionCard {
                 SectionHeader(
-                    title = "Account",
-                    subtitle = "Manage app and account preferences."
+                    title = "Appearance",
+                    subtitle = "Choose how NEPH looks on this device."
                 )
 
-                Text(
-                    text = "Privacy, security, and session controls are available below.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                val themeMode by ThemePreferenceStore.themeModeFlow.collectAsState()
+                val darkThemeEnabled = ThemePreferenceStore.resolveDarkTheme(
+                    themeMode = themeMode,
+                    systemDarkTheme = isSystemInDarkTheme()
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.md)
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.Filled.DarkMode,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Dark mode",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (darkThemeEnabled) "On" else "Off",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = darkThemeEnabled,
+                        onCheckedChange = { ThemePreferenceStore.setDarkThemeEnabled(it) }
+                    )
+                }
             }
-
-            SecondaryButton(
-                text = "Privacy & Security",
-                onClick = onNavigateToPrivacySecurity,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            SecondaryButton(
-                text = "Log Out",
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth()
-            )
 
             SectionCard {
                 SectionHeader(
-                    title = "Delete Account",
-                    subtitle = "Remove your account and personal data from NEPH."
+                    title = "Account",
+                    subtitle = "Manage your privacy, security, and active session."
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    IconListRow(
+                        icon = Icons.Filled.Shield,
+                        title = "Privacy & Security",
+                        supportingText = "Profile visibility and password",
+                        iconTone = StatusBadgeTone.INFO,
+                        onClick = onNavigateToPrivacySecurity
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    IconListRow(
+                        icon = Icons.AutoMirrored.Filled.Logout,
+                        title = "Log Out",
+                        supportingText = "Sign out of this device",
+                        iconTone = StatusBadgeTone.NEUTRAL,
+                        onClick = onLogout
+                    )
+                }
+            }
+
+            SectionCard {
+                SectionHeader(
+                    title = "Danger Zone",
+                    subtitle = "Permanently remove your account and all personal data from NEPH."
                 )
 
                 Text(
@@ -152,7 +209,7 @@ fun SettingsScreen(
                 }
 
                 PrimaryButton(
-                    text = "Delete Account",
+                    text = if (deletingAccount) "Deleting..." else "Delete Account",
                     onClick = { showDeleteDialog = true },
                     loading = deletingAccount,
                     modifier = Modifier.fillMaxWidth()

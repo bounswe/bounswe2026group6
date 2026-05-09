@@ -9,6 +9,7 @@ import com.neph.core.sync.OfflineSyncScheduler
 import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.notifications.data.PushTokenSync
+import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
 import com.neph.features.operationallocation.data.OperationalLocationRepository
@@ -97,6 +98,7 @@ object AuthRepository {
 
         AuthSessionStore.saveAccessToken(accessToken, rememberMe, userId = userId)
         PushTokenSync.syncCurrentToken()
+        NotificationsBadge.hydrateIfAuthenticated()
         ProfileRepository.clearProfile()
         ProfileRepository.saveProfile(
             if (canReuseLocalProfileFields) {
@@ -107,6 +109,7 @@ object AuthRepository {
         )
 
         return try {
+            ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
             ProfileRepository.fetchAndCacheRemoteProfile()
             AuthSessionStore.clearPendingVerificationEmail()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login") }
@@ -134,6 +137,65 @@ object AuthRepository {
         }
     }
 
+    suspend fun loginWithGoogle(
+        idToken: String,
+        mode: String = "login",
+        acceptedTerms: Boolean? = null
+    ): LoginDestination {
+        val requestBody = JSONObject()
+            .put("idToken", idToken)
+            .put("mode", mode)
+
+        if (acceptedTerms != null) {
+            requestBody.put("acceptedTerms", acceptedTerms)
+        }
+
+        val response = JsonHttpClient.request(
+            path = "/auth/google",
+            method = "POST",
+            body = requestBody
+        )
+
+        val accessToken = response.optString("accessToken")
+        if (accessToken.isBlank()) {
+            throw ApiException(
+                message = "Google sign-in succeeded but no access token was returned.",
+                status = 200,
+                code = "INVALID_RESPONSE"
+            )
+        }
+
+        val user = response.optJSONObject("user")
+        val userId = user?.optString("userId")?.trim().orEmpty()
+        val userEmail = user?.optString("email").orEmpty()
+
+        AuthSessionStore.saveAccessToken(accessToken, rememberMe = true, userId = userId)
+        PushTokenSync.syncCurrentToken()
+        NotificationsBadge.hydrateIfAuthenticated()
+        ProfileRepository.clearProfile()
+        ProfileRepository.saveProfile(ProfileData(email = userEmail))
+
+        return try {
+            ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
+            ProfileRepository.fetchAndCacheRemoteProfile()
+            AuthSessionStore.clearPendingVerificationEmail()
+            NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "google-login") }
+            LoginDestination.PROFILE
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (error: ApiException) {
+            when (error.status) {
+                404 -> LoginDestination.COMPLETE_PROFILE
+                401 -> {
+                    AuthSessionStore.clearAccessToken()
+                    ProfileRepository.clearProfile()
+                    throw error
+                }
+                else -> throw error
+            }
+        }
+    }
+
     suspend fun verifyEmail(tokenOrLink: String): String {
         val token = extractTokenFromLink(tokenOrLink)
         val encodedToken = URLEncoder.encode(token, Charsets.UTF_8.name())
@@ -146,7 +208,9 @@ object AuthRepository {
         if (accessToken.isNotBlank()) {
             val userId = response.optJSONObject("user")?.optString("userId")?.trim().orEmpty()
             AuthSessionStore.saveAccessToken(accessToken, rememberMe = true, userId = userId)
+            ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
             PushTokenSync.syncCurrentToken()
+            NotificationsBadge.hydrateIfAuthenticated()
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "email-verified") }
         }
 
@@ -231,8 +295,8 @@ object AuthRepository {
             token = accessToken
         )
 
-        clearLocalAuthState()
         clearDeletedAccountOfflineState()
+        clearLocalAuthState()
         return response.optString("message").ifBlank { "Account deleted successfully." }
     }
 
@@ -269,6 +333,7 @@ object AuthRepository {
         AuthSessionStore.clearAccessToken()
         AuthSessionStore.clearPendingVerificationEmail()
         ProfileRepository.clearProfile()
+        NotificationsBadge.clear()
         ioScope.launch {
             try {
                 NearbyVisibleUsersRepository.clearLocalCache()
