@@ -2,6 +2,7 @@ import { apiRequest } from "@/lib/api";
 
 export const ACCESS_TOKEN_KEY = "neph_access_token";
 export const SIGNUP_DRAFT_KEY = "neph_signup_draft";
+export const WEB_TUTORIAL_PENDING_KEY = "neph_web_tutorial_pending";
 
 export type AuthUser = {
     userId: string;
