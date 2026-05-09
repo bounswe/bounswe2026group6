@@ -134,13 +134,6 @@ export function LoginForm() {
         setError(message);
     };
 
-    const handleSocialAuth = (provider: "Google") => {
-        setError("");
-        setInfo(
-            `${provider} sign-in UI is ready. Real OAuth login will be connected after provider credentials and backend callback setup are completed.`
-        );
-    };
-
     const handleResendVerification = async () => {
         setError("");
         setInfo("");

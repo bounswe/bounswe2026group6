@@ -913,6 +913,21 @@ describe('POST /api/auth/google', () => {
     expect(row.rows[0].is_email_verified).toBe(true);
   });
 
+  test('409 - signup again with the same Google account is rejected', async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+
+    const secondSignup = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+
+    expect(secondSignup.status).toBe(409);
+    expect(secondSignup.body.code).toBe('GOOGLE_ACCOUNT_EXISTS');
+  });
+
   test('200 - existing Google user can log in again', async () => {
     const app = createTestApp();
 
@@ -987,5 +1002,21 @@ describe('POST /api/auth/google', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ACCOUNT_DELETED');
+  });
+
+  test('401 - Google-only account cannot login with password endpoint', async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: GOOGLE_EMAIL, password: 'some-password' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('INVALID_CREDENTIALS');
+    expect(res.body.message).toBe('This account uses Google sign-in. Please continue with Google.');
   });
 });

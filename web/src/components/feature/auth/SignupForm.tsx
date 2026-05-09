@@ -153,13 +153,6 @@ export function SignupForm() {
         setError(message);
     };
 
-    const handleSocialAuth = (provider: "Google" | "Facebook" | "Apple") => {
-        setError("");
-        setInfo(
-            `${provider} sign-up UI is ready. Real OAuth registration will be connected after provider credentials and backend callback setup are completed.`
-        );
-    };
-
     return (
         <>
             <SocialAuthButtons mode="signup" onGoogleSuccess={handleGoogleSuccess} onGoogleError={handleGoogleError} />

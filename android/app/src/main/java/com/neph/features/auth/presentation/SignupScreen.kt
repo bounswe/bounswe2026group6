@@ -47,6 +47,8 @@ import kotlinx.coroutines.launch
 fun SignupScreen(
     onNavigateToLogin: () -> Unit,
     onSignupSuccess: () -> Unit,
+    onGoogleSignupSuccess: () -> Unit,
+    onGoogleProfileCompletionRequired: () -> Unit,
     onNavigateToTerms: () -> Unit,
     onNavigateToPrivacy: () -> Unit
 ) {
@@ -126,8 +128,8 @@ fun SignupScreen(
                 val result = credentialManager.getCredential(context, request)
                 val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
                 when (AuthRepository.loginWithGoogle(googleCredential.idToken, mode = "signup")) {
-                    LoginDestination.PROFILE -> onSignupSuccess()
-                    LoginDestination.COMPLETE_PROFILE -> onSignupSuccess()
+                    LoginDestination.PROFILE -> onGoogleSignupSuccess()
+                    LoginDestination.COMPLETE_PROFILE -> onGoogleProfileCompletionRequired()
                 }
             } catch (cancellationException: kotlinx.coroutines.CancellationException) {
                 throw cancellationException

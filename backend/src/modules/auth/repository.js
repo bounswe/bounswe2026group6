@@ -57,6 +57,7 @@ async function findUserByEmail(email) {
       SELECT
         user_id,
         email,
+        google_id,
         password_hash,
         is_email_verified,
         is_banned,

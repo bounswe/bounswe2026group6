@@ -112,6 +112,12 @@ async function loginUser({ email, password }) {
     throw error;
   }
 
+  if (!user.password_hash) {
+    const error = new Error('This account uses Google sign-in. Please continue with Google.');
+    error.code = 'INVALID_CREDENTIALS';
+    throw error;
+  }
+
   const passwordMatches = await bcrypt.compare(password, user.password_hash);
 
   if (!passwordMatches) {

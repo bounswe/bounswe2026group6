@@ -10,7 +10,13 @@ type SocialAuthButtonsProps = {
 };
 
 export function SocialAuthButtons(props: SocialAuthButtonsProps) {
-    if (!GOOGLE_CLIENT_ID) return null;
+    if (!GOOGLE_CLIENT_ID) {
+        return (
+            <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-raised)] px-4 py-3 text-sm text-[color:var(--text-muted)]">
+                Google sign-in is currently unavailable. Please continue with email.
+            </div>
+        );
+    }
     return <SocialAuthButtonsInner {...props} />;
 }
 
