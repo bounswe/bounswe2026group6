@@ -15,6 +15,12 @@ enum class MobileOnboardingStepId {
     PROFILE_PRIVACY
 }
 
+enum class MobileOnboardingPanelPlacement {
+    TOP,
+    CENTER,
+    BOTTOM
+}
+
 data class MobileOnboardingStep(
     val id: MobileOnboardingStepId,
     val route: String,
@@ -22,6 +28,8 @@ data class MobileOnboardingStep(
     val eyebrow: String,
     val description: String,
     val actionLabel: String,
+    val targetHint: String,
+    val panelPlacement: MobileOnboardingPanelPlacement = MobileOnboardingPanelPlacement.BOTTOM,
     val authenticatedOnly: Boolean = false
 )
 
@@ -33,7 +41,9 @@ object MobileOnboardingJourney {
             title = "Home Dashboard",
             eyebrow = "Your command center",
             description = "Start here to request help, mark yourself safe, review updates, and manage your volunteer status.",
-            actionLabel = "Go to Home"
+            actionLabel = "Tap I need help now",
+            targetHint = "This is the fastest emergency entry point on the home screen.",
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.REQUEST_HELP,
@@ -41,7 +51,9 @@ object MobileOnboardingJourney {
             title = "Request Help",
             eyebrow = "Ask for support clearly",
             description = "Create a help request with accurate type, location, and details so responders understand what is needed.",
-            actionLabel = "Open Request Help"
+            actionLabel = "Tap My Help Requests",
+            targetHint = "After creating or saving a request, this is where you follow its status.",
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.MY_HELP_REQUESTS,
@@ -49,7 +61,9 @@ object MobileOnboardingJourney {
             title = "My Help Requests",
             eyebrow = "Track your requests",
             description = "Follow request status, local/offline saves, and updates after you submit or edit a request.",
-            actionLabel = "Open My Requests"
+            actionLabel = "Tap Help Request Map",
+            targetHint = "Use the map next to understand needs around you.",
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.HELP_REQUEST_MAP,
@@ -57,7 +71,9 @@ object MobileOnboardingJourney {
             title = "Help Request Map",
             eyebrow = "See community needs",
             description = "Use the map to understand active waiting requests around the community and where support is needed.",
-            actionLabel = "Open Help Map"
+            actionLabel = "Tap Gathering Areas",
+            targetHint = "Switch from active requests to safe assembly/support points.",
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.GATHERING_AREAS,
@@ -65,7 +81,9 @@ object MobileOnboardingJourney {
             title = "Gathering Areas",
             eyebrow = "Find safe assembly points",
             description = "Review nearby gathering and support areas before or during an emergency.",
-            actionLabel = "Open Gathering Areas"
+            actionLabel = "Tap Emergency Numbers",
+            targetHint = "Keep direct emergency contacts close when app coordination is not enough.",
+            panelPlacement = MobileOnboardingPanelPlacement.CENTER
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.EMERGENCY_NUMBERS,
@@ -73,7 +91,9 @@ object MobileOnboardingJourney {
             title = "Emergency Numbers",
             eyebrow = "Fast emergency contacts",
             description = "Keep important emergency phone numbers close when you need direct help outside the app.",
-            actionLabel = "Open Emergency Numbers"
+            actionLabel = "Tap News & Announcements",
+            targetHint = "Move to verified community updates after reviewing direct contacts.",
+            panelPlacement = MobileOnboardingPanelPlacement.CENTER
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.NEWS,
@@ -81,7 +101,9 @@ object MobileOnboardingJourney {
             title = "News & Announcements",
             eyebrow = "Verified preparedness updates",
             description = "Read preparedness notes and community announcements without leaving NEPH.",
-            actionLabel = "Open News"
+            actionLabel = "Tap Volunteer Availability",
+            targetHint = "Authenticated users can also tell NEPH when they are ready to help.",
+            panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.VOLUNTEER_AVAILABILITY,
@@ -89,7 +111,9 @@ object MobileOnboardingJourney {
             title = "Volunteer Availability",
             eyebrow = "Tell NEPH when you can help",
             description = "When you are available, NEPH can use your profile and location context for volunteer coordination.",
-            actionLabel = "Return to Home",
+            actionLabel = "Tap Assigned Requests",
+            targetHint = "Once available, assigned work appears in the assigned requests area.",
+            panelPlacement = MobileOnboardingPanelPlacement.TOP,
             authenticatedOnly = true
         ),
         MobileOnboardingStep(
@@ -98,7 +122,9 @@ object MobileOnboardingJourney {
             title = "Assigned Requests",
             eyebrow = "Follow work assigned to you",
             description = "If you volunteer, this is where assigned support requests and next actions appear.",
-            actionLabel = "Open Assigned Requests",
+            actionLabel = "Tap Profile",
+            targetHint = "Your profile and privacy settings control the coordination information others can use.",
+            panelPlacement = MobileOnboardingPanelPlacement.CENTER,
             authenticatedOnly = true
         ),
         MobileOnboardingStep(
@@ -107,7 +133,9 @@ object MobileOnboardingJourney {
             title = "Profile & Privacy",
             eyebrow = "Keep coordination data accurate",
             description = "Update your profile and use Privacy & Security settings to control what others can see.",
-            actionLabel = "Open Profile",
+            actionLabel = "Finish guide",
+            targetHint = "You have reached the end of the guided path.",
+            panelPlacement = MobileOnboardingPanelPlacement.BOTTOM,
             authenticatedOnly = true
         )
     )

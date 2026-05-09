@@ -65,6 +65,8 @@ class MobileOnboardingAndroidE2ETest {
     fun pendingAuthenticatedUser_canFollowGuidedCoreConcepts_once() {
         waitForText("I need help now")
         waitForTag("mobile_onboarding_dialog")
+        waitForTag("mobile_onboarding_blocker")
+        waitForTag("mobile_onboarding_target_action")
         composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals("Home Dashboard")
         composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
 
