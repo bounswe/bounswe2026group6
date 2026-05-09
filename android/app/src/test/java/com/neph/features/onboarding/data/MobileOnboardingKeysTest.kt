@@ -1,7 +1,9 @@
 package com.neph.features.onboarding.data
 
+import com.neph.navigation.Routes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,5 +30,50 @@ class MobileOnboardingKeysTest {
             "mobile_onboarding_seen_user:abc_123",
             MobileOnboardingKeys.scopedKey("mobile_onboarding_seen", "user:abc 123")
         )
+    }
+
+    @Test
+    fun journeySkipsAuthenticatedOnlyStepsForGuests() {
+        val guestSteps = MobileOnboardingJourney.availableSteps(isAuthenticated = false)
+
+        assertEquals(MobileOnboardingStepId.HOME_DASHBOARD, guestSteps.first().id)
+        assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.ASSIGNED_REQUESTS })
+        assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.PROFILE_PRIVACY })
+    }
+
+    @Test
+    fun journeyKeepsCoreRoutesInGuidedOrderForAuthenticatedUsers() {
+        val authenticatedSteps = MobileOnboardingJourney.availableSteps(isAuthenticated = true)
+
+        assertEquals(
+            listOf(
+                MobileOnboardingStepId.HOME_DASHBOARD,
+                MobileOnboardingStepId.REQUEST_HELP,
+                MobileOnboardingStepId.MY_HELP_REQUESTS,
+                MobileOnboardingStepId.HELP_REQUEST_MAP,
+                MobileOnboardingStepId.GATHERING_AREAS,
+                MobileOnboardingStepId.EMERGENCY_NUMBERS,
+                MobileOnboardingStepId.NEWS,
+                MobileOnboardingStepId.VOLUNTEER_AVAILABILITY,
+                MobileOnboardingStepId.ASSIGNED_REQUESTS,
+                MobileOnboardingStepId.PROFILE_PRIVACY
+            ),
+            authenticatedSteps.map { it.id }
+        )
+        assertEquals(Routes.RequestHelp.route, authenticatedSteps[1].route)
+        assertEquals(Routes.Profile.route, authenticatedSteps.last().route)
+    }
+
+    @Test
+    fun journeyCanMoveForwardAndBackward() {
+        assertEquals(
+            MobileOnboardingStepId.REQUEST_HELP,
+            MobileOnboardingJourney.nextStep(MobileOnboardingStepId.HOME_DASHBOARD, isAuthenticated = true)?.id
+        )
+        assertEquals(
+            MobileOnboardingStepId.HOME_DASHBOARD,
+            MobileOnboardingJourney.previousStep(MobileOnboardingStepId.REQUEST_HELP, isAuthenticated = true)?.id
+        )
+        assertNull(MobileOnboardingJourney.previousStep(MobileOnboardingStepId.HOME_DASHBOARD, isAuthenticated = true))
     }
 }

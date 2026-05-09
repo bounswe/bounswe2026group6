@@ -10,6 +10,7 @@ object MobileOnboardingStore {
     private const val PrefsName = "neph_mobile_onboarding"
     internal const val PendingPrefix = "mobile_onboarding_pending"
     internal const val SeenPrefix = "mobile_onboarding_seen"
+    internal const val CurrentStepPrefix = "mobile_onboarding_current_step"
 
     private lateinit var prefs: SharedPreferences
 
@@ -21,8 +22,20 @@ object MobileOnboardingStore {
 
     fun markPendingForCurrentUser() {
         val userKey = currentUserKey() ?: return
+        val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
         prefs.edit()
             .putBoolean(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey), true)
+            .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), firstStep.id.name)
+            .apply()
+    }
+
+    fun restartForCurrentUser() {
+        val userKey = currentUserKey() ?: return
+        val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
+        prefs.edit()
+            .putBoolean(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey), true)
+            .remove(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey))
+            .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), firstStep.id.name)
             .apply()
     }
 
@@ -40,11 +53,31 @@ object MobileOnboardingStore {
         return MobileOnboardingKeys.shouldShow(pending = pending, seen = seen)
     }
 
+    fun currentStepForCurrentUser(isAuthenticated: Boolean): MobileOnboardingStepId? {
+        val userKey = currentUserKey() ?: return null
+        val stored = prefs.getString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), null)
+        val parsed = stored?.let { runCatching { MobileOnboardingStepId.valueOf(it) }.getOrNull() }
+        val valid = parsed?.takeIf { MobileOnboardingJourney.stepFor(it, isAuthenticated) != null }
+        if (valid != null) return valid
+
+        val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated)
+        setCurrentStepForCurrentUser(firstStep.id)
+        return firstStep.id
+    }
+
+    fun setCurrentStepForCurrentUser(stepId: MobileOnboardingStepId) {
+        val userKey = currentUserKey() ?: return
+        prefs.edit()
+            .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), stepId.name)
+            .apply()
+    }
+
     fun markSeenForCurrentUser() {
         val userKey = currentUserKey() ?: return
         prefs.edit()
             .putBoolean(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey), true)
             .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
+            .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
             .apply()
     }
 
@@ -52,6 +85,7 @@ object MobileOnboardingStore {
         val userKey = currentUserKey() ?: return
         prefs.edit()
             .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
+            .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
             .apply()
     }
 

@@ -42,7 +42,8 @@ import com.neph.features.settings.presentation.SettingsScreen
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
-    startDestination: String = Routes.Welcome.route
+    startDestination: String = Routes.Welcome.route,
+    onRestartMobileOnboarding: () -> Unit = {}
 ) {
     val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
     val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
@@ -430,7 +431,8 @@ fun AppNavGraph(
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
-                }
+                },
+                onRestartMobileOnboarding = onRestartMobileOnboarding
             )
         }
 

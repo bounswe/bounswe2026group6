@@ -2,6 +2,7 @@ package com.neph.e2e
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -61,29 +62,44 @@ class MobileOnboardingAndroidE2ETest {
         .around(composeRule)
 
     @Test
-    fun pendingAuthenticatedUser_canFinishMobileOnboarding_once() {
+    fun pendingAuthenticatedUser_canFollowGuidedCoreConcepts_once() {
         waitForText("I need help now")
         waitForTag("mobile_onboarding_dialog")
-        composeRule.onNodeWithText("Home Overview").assertIsDisplayed()
+        composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals("Home Dashboard")
         composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
 
-        repeat(5) {
-            composeRule.onNodeWithTag("mobile_onboarding_next").performClick()
-        }
+        composeRule.onNodeWithTag("mobile_onboarding_next").performClick()
+        waitForGuideTitle("Request Help")
+        waitForText("Create a help request")
 
-        composeRule.onNodeWithText("Your Profile and Privacy").assertIsDisplayed()
-        composeRule.onNodeWithTag("mobile_onboarding_finish").performClick()
+        composeRule.onNodeWithTag("mobile_onboarding_next").performClick()
+        waitForGuideTitle("My Help Requests")
+        waitForText("Follow request status")
+
+        composeRule.activityRule.scenario.recreate()
+        waitForGuideTitle("My Help Requests")
+
+        composeRule.onNodeWithTag("mobile_onboarding_skip").performClick()
         waitUntilTagGone("mobile_onboarding_dialog")
 
         composeRule.activityRule.scenario.recreate()
-        waitForText("I need help now")
+        waitForText("My Help Requests")
         waitUntilTagGone("mobile_onboarding_dialog")
+    }
+
+    private fun waitForGuideTitle(title: String, timeoutMillis: Long = 15_000) {
+        composeRule.waitUntil(timeoutMillis) {
+            runCatching {
+                composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals(title)
+                true
+            }.getOrDefault(false)
+        }
     }
 
     private fun waitForText(text: String, timeoutMillis: Long = 15_000) {
         composeRule.waitUntil(timeoutMillis) {
             runCatching {
-                composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
             }.getOrDefault(false)
         }
     }

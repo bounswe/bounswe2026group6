@@ -47,7 +47,8 @@ fun SettingsScreen(
     profileBadgeText: String,
     onNavigateToPrivacySecurity: () -> Unit,
     onLogout: () -> Unit,
-    onAccountDeleted: () -> Unit
+    onAccountDeleted: () -> Unit,
+    onRestartMobileOnboarding: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val coroutineScope = rememberCoroutineScope()
@@ -163,6 +164,19 @@ fun SettingsScreen(
 
             SectionCard {
                 SectionHeader(
+                    title = "App guide",
+                    subtitle = "Replay the guided tour of NEPH's core concepts."
+                )
+
+                PrimaryButton(
+                    text = "Restart App Guide",
+                    onClick = onRestartMobileOnboarding,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            SectionCard {
+                SectionHeader(
                     title = "Account",
                     subtitle = "Manage your privacy, security, and active session."
                 )
@@ -229,7 +243,8 @@ private fun SettingsScreenPreview() {
             profileBadgeText = "PP",
             onNavigateToPrivacySecurity = {},
             onLogout = {},
-            onAccountDeleted = {}
+            onAccountDeleted = {},
+            onRestartMobileOnboarding = {}
         )
     }
 }

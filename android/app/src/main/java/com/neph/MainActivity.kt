@@ -40,8 +40,10 @@ import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsBadge
+import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.features.onboarding.data.MobileOnboardingStore
-import com.neph.features.onboarding.presentation.MobileOnboardingTutorial
+import com.neph.features.onboarding.presentation.MobileOnboardingGuide
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.navigation.AppNavGraph
@@ -168,15 +170,46 @@ fun NephApp() {
         val currentBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = currentBackStackEntry?.destination?.route
         val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
+        val isAuthenticated = !accessToken.isNullOrBlank()
         var showMobileOnboarding by remember { mutableStateOf(false) }
+        var activeMobileOnboardingStepId by remember { mutableStateOf<MobileOnboardingStepId?>(null) }
         var showExitDialog by remember { mutableStateOf(false) }
         val canPopBackStack = navController.previousBackStackEntry != null
         val shouldConfirmExit = !canPopBackStack && (
             currentRoute == Routes.Home.route || currentRoute == Routes.Welcome.route
         )
 
+        fun navigateForMobileOnboarding(route: String) {
+            navController.navigate(route) {
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+
+        fun setMobileOnboardingStep(stepId: MobileOnboardingStepId) {
+            activeMobileOnboardingStepId = stepId
+            MobileOnboardingStore.setCurrentStepForCurrentUser(stepId)
+            MobileOnboardingJourney.stepFor(stepId, isAuthenticated)?.let { step ->
+                navigateForMobileOnboarding(step.route)
+            }
+        }
+
+        fun restartMobileOnboarding() {
+            MobileOnboardingStore.restartForCurrentUser()
+            val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
+            activeMobileOnboardingStepId = firstStep.id
+            showMobileOnboarding = true
+            navigateForMobileOnboarding(firstStep.route)
+        }
+
         LaunchedEffect(accessToken, currentRoute) {
-            showMobileOnboarding = shouldShowMobileOnboardingForRoute(currentRoute)
+            val shouldShow = shouldShowMobileOnboardingForRoute(currentRoute)
+            showMobileOnboarding = shouldShow
+            activeMobileOnboardingStepId = if (shouldShow) {
+                MobileOnboardingStore.currentStepForCurrentUser(isAuthenticated)
+            } else {
+                null
+            }
         }
 
         BackHandler(enabled = canPopBackStack || shouldConfirmExit) {
@@ -218,14 +251,42 @@ fun NephApp() {
                 }
                 AuthSessionStore.isGuestMode() -> Routes.Home.route
                 else -> Routes.Welcome.route
-            }
+            },
+            onRestartMobileOnboarding = ::restartMobileOnboarding
         )
 
-        if (showMobileOnboarding) {
-            MobileOnboardingTutorial(
-                onDismissCompleted = {
+        val activeStepId = activeMobileOnboardingStepId
+        val activeStep = activeStepId?.let { MobileOnboardingJourney.stepFor(it, isAuthenticated) }
+        if (showMobileOnboarding && activeStepId != null && activeStep != null) {
+            val (stepNumber, totalSteps) = MobileOnboardingJourney.progressFor(activeStepId, isAuthenticated)
+            val routeBase = currentRoute?.substringBefore('?')
+            MobileOnboardingGuide(
+                step = activeStep,
+                stepNumber = stepNumber,
+                totalSteps = totalSteps,
+                isOnTargetRoute = routeBase == activeStep.route,
+                onNavigateToStep = {
+                    navigateForMobileOnboarding(activeStep.route)
+                },
+                onBack = {
+                    MobileOnboardingJourney.previousStep(activeStepId, isAuthenticated)?.let { previousStep ->
+                        setMobileOnboardingStep(previousStep.id)
+                    }
+                },
+                onNext = {
+                    MobileOnboardingJourney.nextStep(activeStepId, isAuthenticated)?.let { nextStep ->
+                        setMobileOnboardingStep(nextStep.id)
+                    }
+                },
+                onSkip = {
                     MobileOnboardingStore.markSeenForCurrentUser()
                     showMobileOnboarding = false
+                    activeMobileOnboardingStepId = null
+                },
+                onFinish = {
+                    MobileOnboardingStore.markSeenForCurrentUser()
+                    showMobileOnboarding = false
+                    activeMobileOnboardingStepId = null
                 }
             )
         }
