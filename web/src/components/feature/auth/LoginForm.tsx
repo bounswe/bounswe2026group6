@@ -119,7 +119,7 @@ export function LoginForm() {
                 if (!profile.profile?.firstName) {
                     router.push("/complete-profile");
                 } else {
-                    router.push("/home");
+                    router.push(safeReturnTo || "/home");
                 }
             } catch {
                 // No profile yet — send to complete-profile.

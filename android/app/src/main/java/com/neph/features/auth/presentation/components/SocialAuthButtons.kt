@@ -33,6 +33,7 @@ enum class SocialAuthMode {
 fun SocialAuthButtons(
     mode: SocialAuthMode,
     onGoogleClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
@@ -45,6 +46,7 @@ fun SocialAuthButtons(
         BrandAuthButton(
             text = "$verb with Google",
             onClick = onGoogleClick,
+            enabled = enabled,
             background = Color(0xFFFFFFFF),
             contentColor = Color(0xFF1F1F1F),
             border = BorderStroke(1.dp, Color(0xFFDADCE0)),
@@ -58,6 +60,7 @@ fun SocialAuthButtons(
 private fun BrandAuthButton(
     text: String,
     onClick: () -> Unit,
+    enabled: Boolean,
     background: Color,
     contentColor: Color,
     border: BorderStroke?,
@@ -68,6 +71,7 @@ private fun BrandAuthButton(
 
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp),

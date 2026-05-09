@@ -321,7 +321,7 @@ async function deleteCurrentUser(userId) {
   };
 }
 
-async function loginWithGoogle({ idToken, mode = 'login' }) {
+async function loginWithGoogle({ idToken, mode = 'login', acceptedTerms = false }) {
   const clientId = process.env.GOOGLE_CLIENT_ID || env.google.clientId;
   if (!clientId) {
     const error = new Error('Google Sign-In is not configured on this server. Set GOOGLE_CLIENT_ID.');
@@ -349,9 +349,29 @@ async function loginWithGoogle({ idToken, mode = 'login' }) {
   }
 
   const normalizedEmail = email.toLowerCase().trim();
+  const existingByGoogleId = await findUserByGoogleId(googleId);
+  let existingByEmail = null;
 
-  // Check if account is banned/deleted via email lookup
-  const existingByEmail = await findUserByEmail(normalizedEmail);
+  if (existingByGoogleId) {
+    if (existingByGoogleId.is_deleted) {
+      const error = new Error('This account has been deleted');
+      error.code = 'ACCOUNT_DELETED';
+      throw error;
+    }
+    if (existingByGoogleId.is_banned) {
+      const error = new Error('Your account is banned. Please contact support.');
+      error.code = 'USER_BANNED';
+      throw error;
+    }
+    if (mode === 'signup') {
+      const error = new Error('An account with this Google email already exists. Please sign in instead.');
+      error.code = 'GOOGLE_ACCOUNT_EXISTS';
+      throw error;
+    }
+  } else {
+    existingByEmail = await findUserByEmail(normalizedEmail);
+  }
+
   if (existingByEmail) {
     if (existingByEmail.is_deleted) {
       const error = new Error('This account has been deleted');
@@ -377,19 +397,27 @@ async function loginWithGoogle({ idToken, mode = 'login' }) {
       error.code = 'GOOGLE_ACCOUNT_EXISTS';
       throw error;
     }
-  } else if (mode === 'login') {
+  }
+
+  if (mode === 'signup' && !acceptedTerms) {
+    const error = new Error('You must accept the terms to continue.');
+    error.code = 'TERMS_NOT_ACCEPTED';
+    throw error;
+  }
+
+  if (!existingByGoogleId && !existingByEmail && mode === 'login') {
     // Login mode: no account exists — reject
     const error = new Error('No account found for this Google email. Please sign up first.');
     error.code = 'GOOGLE_ACCOUNT_NOT_FOUND';
     throw error;
   }
 
-  const userId = existingByEmail?.user_id || uuidv4();
+  const userId = existingByGoogleId?.user_id || existingByEmail?.user_id || uuidv4();
   const user = await upsertGoogleUser({
     userId,
     email: normalizedEmail,
     googleId,
-    acceptedTerms: true,
+    acceptedTerms: Boolean(acceptedTerms),
   });
 
   const adminRecord = await findAdminByUserId(user.user_id);

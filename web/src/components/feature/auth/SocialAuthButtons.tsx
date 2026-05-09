@@ -7,9 +7,13 @@ type SocialAuthButtonsProps = {
     mode: "login" | "signup";
     onGoogleSuccess: (idToken: string) => void;
     onGoogleError: (message: string) => void;
+    disabled?: boolean;
+    disabledMessage?: string;
 };
 
 export function SocialAuthButtons(props: SocialAuthButtonsProps) {
+    const { disabled = false, disabledMessage } = props;
+
     if (!GOOGLE_CLIENT_ID) {
         return (
             <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-raised)] px-4 py-3 text-sm text-[color:var(--text-muted)]">
@@ -17,6 +21,24 @@ export function SocialAuthButtons(props: SocialAuthButtonsProps) {
             </div>
         );
     }
+
+    if (disabled) {
+        return (
+            <div className="flex flex-col gap-2">
+                <button
+                    type="button"
+                    disabled
+                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-raised)] px-4 py-3 text-sm font-semibold text-[color:var(--text-muted)] opacity-70"
+                >
+                    {props.mode === "signup" ? "Sign up with Google" : "Sign in with Google"}
+                </button>
+                {disabledMessage ? (
+                    <p className="text-xs text-[color:var(--text-muted)]">{disabledMessage}</p>
+                ) : null}
+            </div>
+        );
+    }
+
     return <SocialAuthButtonsInner {...props} />;
 }
 

@@ -114,6 +114,13 @@ fun SignupScreen(
 
     fun handleGoogleSignup() {
         error = ""
+        info = ""
+
+        if (!acceptedTerms) {
+            error = "You must accept the terms to continue."
+            return
+        }
+
         loading = true
         scope.launch {
             try {
@@ -127,7 +134,13 @@ fun SignupScreen(
                 val credentialManager = CredentialManager.create(context)
                 val result = credentialManager.getCredential(context, request)
                 val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
-                when (AuthRepository.loginWithGoogle(googleCredential.idToken, mode = "signup")) {
+                when (
+                    AuthRepository.loginWithGoogle(
+                        googleCredential.idToken,
+                        mode = "signup",
+                        acceptedTerms = acceptedTerms
+                    )
+                ) {
                     LoginDestination.PROFILE -> onGoogleSignupSuccess()
                     LoginDestination.COMPLETE_PROFILE -> onGoogleProfileCompletionRequired()
                 }
@@ -161,8 +174,59 @@ fun SignupScreen(
     ) {
         SocialAuthButtons(
             mode = SocialAuthMode.SIGNUP,
-            onGoogleClick = ::handleGoogleSignup
+            onGoogleClick = ::handleGoogleSignup,
+            enabled = acceptedTerms
         )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm)
+        ) {
+            androidx.compose.material3.Checkbox(
+                checked = acceptedTerms,
+                onCheckedChange = { acceptedTerms = it },
+                modifier = Modifier.testTag("signup_terms_checkbox"),
+                colors = androidx.compose.material3.CheckboxDefaults.colors(
+                    checkedColor = MaterialTheme.colorScheme.primary,
+                    uncheckedColor = MaterialTheme.colorScheme.outline,
+                    checkmarkColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "I agree to the",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs)
+                ) {
+                    Text(
+                        text = "Terms of Service",
+                        modifier = Modifier.clickable(onClick = onNavigateToTerms),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Text(
+                        text = "and",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = "Privacy Policy",
+                        modifier = Modifier.clickable(onClick = onNavigateToPrivacy),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -215,56 +279,6 @@ fun SignupScreen(
                     testTag = "signup_confirm_password"
                 )
 
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm)
-                ) {
-                    androidx.compose.material3.Checkbox(
-                        checked = acceptedTerms,
-                        onCheckedChange = { acceptedTerms = it },
-                        modifier = Modifier.testTag("signup_terms_checkbox"),
-                        colors = androidx.compose.material3.CheckboxDefaults.colors(
-                            checkedColor = MaterialTheme.colorScheme.primary,
-                            uncheckedColor = MaterialTheme.colorScheme.outline,
-                            checkmarkColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = "I agree to the",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(spacing.xs)
-                        ) {
-                            Text(
-                                text = "Terms of Service",
-                                modifier = Modifier.clickable(onClick = onNavigateToTerms),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Text(
-                                text = "and",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Text(
-                                text = "Privacy Policy",
-                                modifier = Modifier.clickable(onClick = onNavigateToPrivacy),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
 
                 if (error.isNotBlank()) {
                     Text(

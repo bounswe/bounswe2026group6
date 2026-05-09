@@ -900,7 +900,7 @@ describe('POST /api/auth/google', () => {
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
 
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeDefined();
@@ -918,11 +918,11 @@ describe('POST /api/auth/google', () => {
 
     await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
 
     const secondSignup = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
 
     expect(secondSignup.status).toBe(409);
     expect(secondSignup.body.code).toBe('GOOGLE_ACCOUNT_EXISTS');
@@ -933,7 +933,7 @@ describe('POST /api/auth/google', () => {
 
     await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
 
     const res = await request(app)
       .post('/api/auth/google')
@@ -957,10 +957,21 @@ describe('POST /api/auth/google', () => {
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS');
+  });
+
+  test('400 - signup requires terms acceptance', async () => {
+    const app = createTestApp();
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('TERMS_NOT_ACCEPTED');
   });
 
   test('400 - missing idToken', async () => {
@@ -977,7 +988,7 @@ describe('POST /api/auth/google', () => {
 
     await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
     await query('UPDATE users SET is_banned = TRUE WHERE email = $1', [GOOGLE_EMAIL]);
 
     const res = await request(app)
@@ -993,7 +1004,7 @@ describe('POST /api/auth/google', () => {
 
     await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
     await query('UPDATE users SET is_deleted = TRUE WHERE email = $1', [GOOGLE_EMAIL]);
 
     const res = await request(app)
@@ -1009,7 +1020,7 @@ describe('POST /api/auth/google', () => {
 
     await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
 
     const res = await request(app)
       .post('/api/auth/login')

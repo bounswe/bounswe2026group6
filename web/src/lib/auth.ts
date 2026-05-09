@@ -182,9 +182,13 @@ export async function deleteCurrentAccount(token: string) {
     });
 }
 
-export async function googleLogin(idToken: string, mode: "login" | "signup" = "login") {
+export async function googleLogin(
+    idToken: string,
+    mode: "login" | "signup" = "login",
+    acceptedTerms?: boolean
+) {
     return apiRequest<LoginResponse>("/auth/google", {
         method: "POST",
-        body: { idToken, mode },
+        body: { idToken, mode, acceptedTerms },
     });
 }
