@@ -12,7 +12,7 @@ import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
 import { ApiError } from "@/lib/api";
-import { login, resendVerification, setAccessToken } from "@/lib/auth";
+import { login, googleLogin, resendVerification, setAccessToken } from "@/lib/auth";
 import { fetchMyProfile } from "@/lib/profile";
 import { isValidEmail } from "@/lib/validators/email";
 
@@ -108,6 +108,27 @@ export function LoginForm() {
         router.push(target);
     };
 
+    const handleGoogleSuccess = async (idToken: string) => {
+        setError("");
+        setInfo("");
+        try {
+            const result = await googleLogin(idToken);
+            setAccessToken(result.accessToken);
+            const profile = await fetchMyProfile(result.accessToken);
+            if (!profile.profile?.firstName) {
+                router.push("/complete-profile");
+            } else {
+                router.push("/home");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Google sign-in failed.");
+        }
+    };
+
+    const handleGoogleError = (message: string) => {
+        setError(message);
+    };
+
     const handleSocialAuth = (provider: "Google" | "Facebook" | "Apple") => {
         setError("");
         setInfo(
@@ -146,7 +167,7 @@ export function LoginForm() {
 
     return (
         <>
-            <SocialAuthButtons mode="login" onProviderClick={handleSocialAuth} />
+            <SocialAuthButtons mode="login" onGoogleSuccess={handleGoogleSuccess} onGoogleError={handleGoogleError} />
 
             <div className="my-5 flex items-center gap-3">
                 <Divider className="flex-1" />

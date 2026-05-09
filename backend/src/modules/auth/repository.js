@@ -1,5 +1,56 @@
 const { pool, query } = require('../../db/pool');
 
+async function findUserByGoogleId(googleId) {
+  const result = await query(
+    `
+      SELECT
+        user_id,
+        email,
+        google_id,
+        is_email_verified,
+        is_banned,
+        created_at,
+        is_deleted,
+        accepted_terms
+      FROM users
+      WHERE google_id = $1
+      LIMIT 1
+    `,
+    [googleId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function upsertGoogleUser({ userId, email, googleId, acceptedTerms }) {
+  const result = await query(
+    `
+      INSERT INTO users (
+        user_id,
+        email,
+        google_id,
+        is_email_verified,
+        accepted_terms
+      )
+      VALUES ($1, $2, $3, TRUE, $4)
+      ON CONFLICT (google_id) DO UPDATE
+        SET email = EXCLUDED.email
+      RETURNING
+        user_id,
+        email,
+        google_id,
+        is_email_verified,
+        is_banned,
+        is_deleted,
+        accepted_terms,
+        created_at
+    `,
+    [userId, email, googleId, Boolean(acceptedTerms)]
+  );
+
+  return result.rows[0];
+}
+
 async function findUserByEmail(email) {
   const result = await query(
     `
@@ -475,4 +526,6 @@ module.exports = {
   updateUserPassword,
   findAdminByUserId,
   softDeleteUserAccount,
+  findUserByGoogleId,
+  upsertGoogleUser,
 };

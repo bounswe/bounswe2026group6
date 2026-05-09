@@ -32,7 +32,7 @@ enum class SocialAuthMode {
 @Composable
 fun SocialAuthButtons(
     mode: SocialAuthMode,
-    onProviderClick: (String) -> Unit,
+    onGoogleClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
@@ -44,29 +44,11 @@ fun SocialAuthButtons(
     ) {
         BrandAuthButton(
             text = "$verb with Google",
-            onClick = { onProviderClick("Google") },
+            onClick = onGoogleClick,
             background = Color(0xFFFFFFFF),
             contentColor = Color(0xFF1F1F1F),
             border = BorderStroke(1.dp, Color(0xFFDADCE0)),
             logo = BrandLogos.Google,
-            logoTint = Color.Unspecified
-        )
-        BrandAuthButton(
-            text = "$verb with Apple",
-            onClick = { onProviderClick("Apple") },
-            background = Color(0xFF000000),
-            contentColor = Color(0xFFFFFFFF),
-            border = null,
-            logo = BrandLogos.Apple,
-            logoTint = Color(0xFFFFFFFF)
-        )
-        BrandAuthButton(
-            text = "$verb with Facebook",
-            onClick = { onProviderClick("Facebook") },
-            background = Color(0xFF1877F2),
-            contentColor = Color(0xFFFFFFFF),
-            border = null,
-            logo = BrandLogos.Facebook,
             logoTint = Color.Unspecified
         )
     }

@@ -16,11 +16,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
+import com.neph.features.auth.data.LoginDestination
 import com.neph.features.auth.presentation.components.AuthFooterLinks
 import com.neph.features.auth.presentation.components.AuthFooterMode
 import com.neph.features.auth.presentation.components.SocialAuthButtons
@@ -46,6 +52,7 @@ fun SignupScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var showEmailForm by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
@@ -103,10 +110,35 @@ fun SignupScreen(
         }
     }
 
-    fun handleSocialAuth(provider: String) {
+    fun handleGoogleSignup() {
         error = ""
-        info =
-            "$provider sign-up UI is ready. Real OAuth registration will be connected after provider credentials and backend callback setup are completed."
+        loading = true
+        scope.launch {
+            try {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(com.neph.BuildConfig.GOOGLE_SERVER_CLIENT_ID)
+                    .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+                val credentialManager = CredentialManager.create(context)
+                val result = credentialManager.getCredential(context, request)
+                val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
+                when (AuthRepository.loginWithGoogle(googleCredential.idToken)) {
+                    LoginDestination.PROFILE -> onSignupSuccess()
+                    LoginDestination.COMPLETE_PROFILE -> onSignupSuccess()
+                }
+            } catch (cancellationException: kotlinx.coroutines.CancellationException) {
+                throw cancellationException
+            } catch (errorResponse: ApiException) {
+                error = errorResponse.message.ifBlank { "Google sign-up failed. Please try again." }
+            } catch (_: Exception) {
+                error = "Google sign-up failed. Please try again."
+            } finally {
+                loading = false
+            }
+        }
     }
 
     AuthScaffold(
@@ -127,7 +159,7 @@ fun SignupScreen(
     ) {
         SocialAuthButtons(
             mode = SocialAuthMode.SIGNUP,
-            onProviderClick = ::handleSocialAuth
+            onGoogleClick = ::handleGoogleSignup
         )
 
         Row(

@@ -867,3 +867,119 @@ describe('POST /api/auth/reset-password', () => {
     expect(res.body.message).toBeDefined();
   });
 });
+
+// ─── POST /api/auth/google ────────────────────────────────────────────────────
+
+describe('POST /api/auth/google', () => {
+  const FAKE_GOOGLE_ID = 'google-sub-12345';
+  const GOOGLE_EMAIL = 'googleuser@gmail.com';
+
+  let verifyIdTokenMock;
+
+  beforeEach(() => {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+
+    // Patch OAuth2Client.prototype.verifyIdToken after modules are loaded
+    const { OAuth2Client } = require('google-auth-library');
+    verifyIdTokenMock = jest.spyOn(OAuth2Client.prototype, 'verifyIdToken').mockResolvedValue({
+      getPayload: () => ({
+        sub: FAKE_GOOGLE_ID,
+        email: GOOGLE_EMAIL,
+        email_verified: true,
+      }),
+    });
+  });
+
+  afterEach(() => {
+    verifyIdTokenMock.mockRestore();
+    delete process.env.GOOGLE_CLIENT_ID;
+  });
+
+  test('200 - creates new Google user and returns accessToken', async () => {
+    const app = createTestApp();
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.user.email).toBe(GOOGLE_EMAIL);
+
+    const row = await query('SELECT * FROM users WHERE email = $1', [GOOGLE_EMAIL]);
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].google_id).toBe(FAKE_GOOGLE_ID);
+    expect(row.rows[0].password_hash).toBeNull();
+    expect(row.rows[0].is_email_verified).toBe(true);
+  });
+
+  test('200 - existing Google user can log in again', async () => {
+    const app = createTestApp();
+
+    await request(app).post('/api/auth/google').send({ idToken: 'valid-google-id-token' });
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+
+    const row = await query('SELECT * FROM users WHERE email = $1', [GOOGLE_EMAIL]);
+    expect(row.rows).toHaveLength(1);
+  });
+
+  test('409 - email already registered with password account', async () => {
+    const app = createTestApp();
+
+    await request(app).post('/api/auth/signup').send({
+      email: GOOGLE_EMAIL,
+      password: 'password123',
+      acceptedTerms: true,
+    });
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS');
+  });
+
+  test('400 - missing idToken', async () => {
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/auth/google').send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('403 - banned user cannot sign in with Google', async () => {
+    const app = createTestApp();
+
+    await request(app).post('/api/auth/google').send({ idToken: 'valid-google-id-token' });
+    await query('UPDATE users SET is_banned = TRUE WHERE email = $1', [GOOGLE_EMAIL]);
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('USER_BANNED');
+  });
+
+  test('403 - deleted account cannot sign in with Google', async () => {
+    const app = createTestApp();
+
+    await request(app).post('/api/auth/google').send({ idToken: 'valid-google-id-token' });
+    await query('UPDATE users SET is_deleted = TRUE WHERE email = $1', [GOOGLE_EMAIL]);
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ACCOUNT_DELETED');
+  });
+});

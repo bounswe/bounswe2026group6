@@ -12,7 +12,7 @@ import { Divider } from "@/components/ui/display/Divider";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
-import { SIGNUP_DRAFT_KEY, signup } from "@/lib/auth";
+import { SIGNUP_DRAFT_KEY, signup, googleLogin, setAccessToken } from "@/lib/auth";
 import { isValidEmail } from "@/lib/validators/email";
 
 export function SignupForm() {
@@ -126,6 +126,22 @@ export function SignupForm() {
         }
     };
 
+    const handleGoogleSuccess = async (idToken: string) => {
+        setError("");
+        setInfo("");
+        try {
+            const result = await googleLogin(idToken);
+            setAccessToken(result.accessToken);
+            router.push("/complete-profile");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Google sign-in failed.");
+        }
+    };
+
+    const handleGoogleError = (message: string) => {
+        setError(message);
+    };
+
     const handleSocialAuth = (provider: "Google" | "Facebook" | "Apple") => {
         setError("");
         setInfo(
@@ -135,7 +151,7 @@ export function SignupForm() {
 
     return (
         <>
-            <SocialAuthButtons mode="signup" onProviderClick={handleSocialAuth} />
+            <SocialAuthButtons mode="signup" onGoogleSuccess={handleGoogleSuccess} onGoogleError={handleGoogleError} />
 
             <div className="my-5 flex items-center gap-3">
                 <Divider className="flex-1" />

@@ -181,3 +181,10 @@ export async function deleteCurrentAccount(token: string) {
         token: token.trim(),
     });
 }
+
+export async function googleLogin(idToken: string) {
+    return apiRequest<LoginResponse>("/auth/google", {
+        method: "POST",
+        body: { idToken },
+    });
+}
