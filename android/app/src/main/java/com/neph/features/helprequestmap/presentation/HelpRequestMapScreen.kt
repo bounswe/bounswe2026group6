@@ -198,9 +198,12 @@ fun HelpRequestMapScreen(
         if (!isLeafletViewportDiscoverable(viewport)) {
             requests = emptyList()
             selectedRequestId = null
+            errorMessage = ""
+            loading = false
             infoMessage = ResourceZoomedOutMessage
             return
         }
+        errorMessage = ""
         pendingViewport = viewport
         viewportRefreshNonce += 1
     }
@@ -289,8 +292,36 @@ fun HelpRequestMapScreen(
         selectedRequestId = reconcileSelectedRequestId(selectedRequestId, visibleRequests)
     }
 
+    fun handleViewportChanged(viewport: LeafletMapViewport) {
+        currentViewport = viewport
+        if (isLeafletViewportDiscoverable(viewport)) {
+            errorMessage = ""
+            if (infoMessage == ResourceZoomedOutMessage) {
+                infoMessage = ""
+            }
+            pendingViewport = viewport
+        } else {
+            viewportRequestSerial += 1
+            requests = emptyList()
+            selectedRequestId = null
+            lastFetchedViewportKey = null
+            errorMessage = ""
+            loading = false
+            infoMessage = ResourceZoomedOutMessage
+        }
+    }
+
     val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId }
     val isFilterEmpty = !loading && requests.isNotEmpty() && visibleRequests.isEmpty()
+    val mapEmptyMarkersMessage = when {
+        loading -> ResourceLoadingMessage
+        errorMessage.isNotBlank() -> ResourceErrorMessage
+        currentViewport == null -> ResourceInitialMessage
+        !isLeafletViewportDiscoverable(currentViewport) -> ResourceZoomedOutMessage
+        isFilterEmpty -> "No help requests match the selected request type filters."
+        lastFetchedViewportKey != null -> ResourceEmptyMessage
+        else -> ResourceInitialMessage
+    }
 
     AppDrawerScaffold(
         title = "Help Request Map",
@@ -330,36 +361,19 @@ fun HelpRequestMapScreen(
                 }
             }
 
+            SectionCard {
+                CrisisRequestMapPanel(
+                    requests = visibleRequests,
+                    selectedRequestId = selectedRequest?.requestId,
+                    emptyMarkersMessage = mapEmptyMarkersMessage,
+                    loadingResources = loading,
+                    onViewportChanged = ::handleViewportChanged,
+                    onSelectRequest = { selectedRequestId = it }
+                )
+            }
+
             when {
                 requests.isEmpty() -> {
-                    SectionCard {
-                        CrisisRequestMapPanel(
-                            requests = emptyList(),
-                            selectedRequestId = null,
-                            emptyMarkersMessage = when {
-                                loading -> ResourceLoadingMessage
-                                errorMessage.isNotBlank() -> ResourceErrorMessage
-                                currentViewport == null -> ResourceInitialMessage
-                                !isLeafletViewportDiscoverable(currentViewport) -> ResourceZoomedOutMessage
-                                else -> ResourceEmptyMessage
-                            },
-                            loadingResources = loading,
-                            onViewportChanged = { viewport ->
-                                currentViewport = viewport
-                                if (isLeafletViewportDiscoverable(viewport)) {
-                                    pendingViewport = viewport
-                                } else {
-                                    viewportRequestSerial += 1
-                                    requests = emptyList()
-                                    selectedRequestId = null
-                                    lastFetchedViewportKey = null
-                                    infoMessage = ResourceZoomedOutMessage
-                                }
-                            },
-                            onSelectRequest = { selectedRequestId = it }
-                        )
-                    }
-
                     if (
                         lastFetchedViewportKey != null &&
                         !loading &&
@@ -393,27 +407,6 @@ fun HelpRequestMapScreen(
                                 }
                             },
                             onClear = { selectedTypes = emptySet() }
-                        )
-                    }
-
-                    SectionCard {
-                        CrisisRequestMapPanel(
-                            requests = visibleRequests,
-                            selectedRequestId = selectedRequest?.requestId,
-                            loadingResources = loading,
-                            onViewportChanged = { viewport ->
-                                currentViewport = viewport
-                                if (isLeafletViewportDiscoverable(viewport)) {
-                                    pendingViewport = viewport
-                                } else {
-                                    viewportRequestSerial += 1
-                                    requests = emptyList()
-                                    selectedRequestId = null
-                                    lastFetchedViewportKey = null
-                                    infoMessage = ResourceZoomedOutMessage
-                                }
-                            },
-                            onSelectRequest = { selectedRequestId = it }
                         )
                     }
 
