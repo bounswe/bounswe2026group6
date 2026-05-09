@@ -112,13 +112,18 @@ export function LoginForm() {
         setError("");
         setInfo("");
         try {
-            const result = await googleLogin(idToken);
+            const result = await googleLogin(idToken, "login");
             setAccessToken(result.accessToken);
-            const profile = await fetchMyProfile(result.accessToken);
-            if (!profile.profile?.firstName) {
+            try {
+                const profile = await fetchMyProfile(result.accessToken);
+                if (!profile.profile?.firstName) {
+                    router.push("/complete-profile");
+                } else {
+                    router.push("/home");
+                }
+            } catch {
+                // No profile yet — send to complete-profile.
                 router.push("/complete-profile");
-            } else {
-                router.push("/home");
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Google sign-in failed.");
@@ -129,7 +134,7 @@ export function LoginForm() {
         setError(message);
     };
 
-    const handleSocialAuth = (provider: "Google" | "Facebook" | "Apple") => {
+    const handleSocialAuth = (provider: "Google") => {
         setError("");
         setInfo(
             `${provider} sign-in UI is ready. Real OAuth login will be connected after provider credentials and backend callback setup are completed.`

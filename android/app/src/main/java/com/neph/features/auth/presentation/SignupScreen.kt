@@ -125,7 +125,7 @@ fun SignupScreen(
                 val credentialManager = CredentialManager.create(context)
                 val result = credentialManager.getCredential(context, request)
                 val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
-                when (AuthRepository.loginWithGoogle(googleCredential.idToken)) {
+                when (AuthRepository.loginWithGoogle(googleCredential.idToken, mode = "signup")) {
                     LoginDestination.PROFILE -> onSignupSuccess()
                     LoginDestination.COMPLETE_PROFILE -> onSignupSuccess()
                 }

@@ -315,7 +315,7 @@ async function deleteCurrentUser(userId) {
   };
 }
 
-async function loginWithGoogle({ idToken }) {
+async function loginWithGoogle({ idToken, mode = 'login' }) {
   const clientId = env.google.clientId;
   if (!clientId) {
     const error = new Error('Google Sign-In is not configured on this server. Set GOOGLE_CLIENT_ID.');
@@ -365,6 +365,17 @@ async function loginWithGoogle({ idToken }) {
       error.code = 'EMAIL_ALREADY_EXISTS';
       throw error;
     }
+    // Signup mode: account already linked to Google — reject
+    if (mode === 'signup' && existingByEmail.google_id) {
+      const error = new Error('An account with this Google email already exists. Please sign in instead.');
+      error.code = 'GOOGLE_ACCOUNT_EXISTS';
+      throw error;
+    }
+  } else if (mode === 'login') {
+    // Login mode: no account exists — reject
+    const error = new Error('No account found for this Google email. Please sign up first.');
+    error.code = 'GOOGLE_ACCOUNT_NOT_FOUND';
+    throw error;
   }
 
   const userId = existingByEmail?.user_id || uuidv4();

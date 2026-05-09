@@ -282,11 +282,12 @@ module.exports = {
 
 async function googleLogin(req, res) {
   try {
-    const { idToken } = req.body;
+    const { idToken, mode } = req.body;
     if (!idToken || typeof idToken !== 'string') {
       return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'idToken is required' });
     }
-    const result = await loginWithGoogle({ idToken });
+    const normalizedMode = mode === 'signup' ? 'signup' : 'login';
+    const result = await loginWithGoogle({ idToken, mode: normalizedMode });
     return res.status(200).json(result);
   } catch (error) {
     if (error.code === 'INVALID_GOOGLE_TOKEN') {
@@ -306,6 +307,12 @@ async function googleLogin(req, res) {
     }
     if (error.code === 'EMAIL_ALREADY_EXISTS') {
       return res.status(409).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'GOOGLE_ACCOUNT_EXISTS') {
+      return res.status(409).json({ code: error.code, message: error.message });
+    }
+    if (error.code === 'GOOGLE_ACCOUNT_NOT_FOUND') {
+      return res.status(404).json({ code: error.code, message: error.message });
     }
     console.error('Google login error:', error);
     return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Something went wrong' });

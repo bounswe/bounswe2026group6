@@ -36,7 +36,7 @@ fun SocialAuthButtons(
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
-    val verb = if (mode == SocialAuthMode.LOGIN) "Continue" else "Sign up"
+    val verb = if (mode == SocialAuthMode.LOGIN) "Sign in" else "Sign up"
 
     Column(
         modifier = modifier,

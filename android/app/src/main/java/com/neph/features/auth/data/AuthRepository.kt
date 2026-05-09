@@ -137,11 +137,13 @@ object AuthRepository {
         }
     }
 
-    suspend fun loginWithGoogle(idToken: String): LoginDestination {
+    suspend fun loginWithGoogle(idToken: String, mode: String = "login"): LoginDestination {
         val response = JsonHttpClient.request(
             path = "/auth/google",
             method = "POST",
-            body = JSONObject().put("idToken", idToken)
+            body = JSONObject()
+                .put("idToken", idToken)
+                .put("mode", mode)
         )
 
         val accessToken = response.optString("accessToken")

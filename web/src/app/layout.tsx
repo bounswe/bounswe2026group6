@@ -16,7 +16,11 @@ function ConditionalGoogleProvider({
     children: React.ReactNode;
 }) {
     if (!clientId) return <>{children}</>;
-    return <GoogleOAuthProvider clientId={clientId}>{children}</GoogleOAuthProvider>;
+    return (
+        <GoogleOAuthProvider clientId={clientId} locale="en">
+            {children}
+        </GoogleOAuthProvider>
+    );
 }
 
 export const metadata: Metadata = {

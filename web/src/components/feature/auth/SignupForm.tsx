@@ -13,6 +13,7 @@ import { HelperText } from "@/components/ui/display/HelperText";
 import { AuthFooterLinks } from "@/components/feature/auth/AuthFooterLinks";
 import { SocialAuthButtons } from "@/components/feature/auth/SocialAuthButtons";
 import { SIGNUP_DRAFT_KEY, signup, googleLogin, setAccessToken } from "@/lib/auth";
+import { fetchMyProfile } from "@/lib/profile";
 import { isValidEmail } from "@/lib/validators/email";
 
 export function SignupForm() {
@@ -130,9 +131,19 @@ export function SignupForm() {
         setError("");
         setInfo("");
         try {
-            const result = await googleLogin(idToken);
+            const result = await googleLogin(idToken, "signup");
             setAccessToken(result.accessToken);
-            router.push("/complete-profile");
+            try {
+                const profile = await fetchMyProfile(result.accessToken);
+                if (!profile.profile?.firstName) {
+                    router.push("/complete-profile");
+                } else {
+                    router.push("/home");
+                }
+            } catch {
+                // No profile yet for the new Google account — send to complete-profile.
+                router.push("/complete-profile");
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Google sign-in failed.");
         }
