@@ -173,6 +173,7 @@ fun NephApp() {
         val isAuthenticated = !accessToken.isNullOrBlank()
         var showMobileOnboarding by remember { mutableStateOf(false) }
         var activeMobileOnboardingStepId by remember { mutableStateOf<MobileOnboardingStepId?>(null) }
+        var mobileOnboardingFeedback by remember { mutableStateOf<String?>(null) }
         var showExitDialog by remember { mutableStateOf(false) }
         val canPopBackStack = navController.previousBackStackEntry != null
         val shouldConfirmExit = !canPopBackStack && (
@@ -198,8 +199,23 @@ fun NephApp() {
             MobileOnboardingStore.restartForCurrentUser()
             val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
             activeMobileOnboardingStepId = firstStep.id
+            mobileOnboardingFeedback = null
             showMobileOnboarding = true
             navigateForMobileOnboarding(firstStep.route)
+        }
+
+        fun completeMobileOnboardingStep(message: String?) {
+            val currentStepId = activeMobileOnboardingStepId ?: return
+            mobileOnboardingFeedback = message
+            val nextStep = MobileOnboardingJourney.nextStep(currentStepId, isAuthenticated)
+            if (nextStep == null) {
+                MobileOnboardingStore.markSeenForCurrentUser()
+                showMobileOnboarding = false
+                activeMobileOnboardingStepId = null
+                mobileOnboardingFeedback = null
+            } else {
+                setMobileOnboardingStep(nextStep.id)
+            }
         }
 
         LaunchedEffect(accessToken, currentRoute) {
@@ -208,6 +224,7 @@ fun NephApp() {
             activeMobileOnboardingStepId = if (shouldShow) {
                 MobileOnboardingStore.currentStepForCurrentUser(isAuthenticated)
             } else {
+                mobileOnboardingFeedback = null
                 null
             }
         }
@@ -252,7 +269,9 @@ fun NephApp() {
                 AuthSessionStore.isGuestMode() -> Routes.Home.route
                 else -> Routes.Welcome.route
             },
-            onRestartMobileOnboarding = ::restartMobileOnboarding
+            onRestartMobileOnboarding = ::restartMobileOnboarding,
+            mobileOnboardingStepId = activeMobileOnboardingStepId.takeIf { showMobileOnboarding },
+            onMobileOnboardingStepCompleted = ::completeMobileOnboardingStep
         )
 
         val activeStepId = activeMobileOnboardingStepId
@@ -265,28 +284,27 @@ fun NephApp() {
                 stepNumber = stepNumber,
                 totalSteps = totalSteps,
                 isOnTargetRoute = routeBase == activeStep.route,
+                feedbackMessage = mobileOnboardingFeedback,
                 onNavigateToStep = {
                     navigateForMobileOnboarding(activeStep.route)
                 },
                 onBack = {
                     MobileOnboardingJourney.previousStep(activeStepId, isAuthenticated)?.let { previousStep ->
                         setMobileOnboardingStep(previousStep.id)
-                    }
-                },
-                onNext = {
-                    MobileOnboardingJourney.nextStep(activeStepId, isAuthenticated)?.let { nextStep ->
-                        setMobileOnboardingStep(nextStep.id)
+                        mobileOnboardingFeedback = null
                     }
                 },
                 onSkip = {
                     MobileOnboardingStore.markSeenForCurrentUser()
                     showMobileOnboarding = false
                     activeMobileOnboardingStepId = null
+                    mobileOnboardingFeedback = null
                 },
                 onFinish = {
                     MobileOnboardingStore.markSeenForCurrentUser()
                     showMobileOnboarding = false
                     activeMobileOnboardingStepId = null
+                    mobileOnboardingFeedback = null
                 }
             )
         }

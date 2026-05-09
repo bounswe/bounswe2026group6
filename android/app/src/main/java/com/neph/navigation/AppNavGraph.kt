@@ -38,12 +38,15 @@ import com.neph.features.profile.presentation.ProfileScreen
 import com.neph.features.requesthelp.presentation.RequestHelpScreen
 import com.neph.features.safetycircles.presentation.SafetyCirclesScreen
 import com.neph.features.settings.presentation.SettingsScreen
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
     startDestination: String = Routes.Welcome.route,
-    onRestartMobileOnboarding: () -> Unit = {}
+    onRestartMobileOnboarding: () -> Unit = {},
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
     val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
@@ -141,7 +144,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -474,7 +479,9 @@ fun AppNavGraph(
                 },
                 onNavigateToMyHelpRequests = {
                     navigateToDrawerRoute(Routes.MyHelpRequests.route)
-                }
+                },
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 

@@ -4,7 +4,12 @@ import com.neph.navigation.Routes
 
 enum class MobileOnboardingStepId {
     HOME_DASHBOARD,
-    REQUEST_HELP,
+    REQUEST_HELP_BACK,
+    HOME_REQUEST_HELP_REOPEN,
+    REQUEST_HELP_TYPE,
+    REQUEST_HELP_RISK_FIRE,
+    REQUEST_HELP_CONFIRM,
+    REQUEST_HELP_SEND,
     MY_HELP_REQUESTS,
     HELP_REQUEST_MAP,
     GATHERING_AREAS,
@@ -29,6 +34,8 @@ data class MobileOnboardingStep(
     val description: String,
     val actionLabel: String,
     val targetHint: String,
+    val completionMessage: String? = null,
+    val usesExistingTarget: Boolean = false,
     val panelPlacement: MobileOnboardingPanelPlacement = MobileOnboardingPanelPlacement.BOTTOM,
     val authenticatedOnly: Boolean = false
 )
@@ -43,16 +50,80 @@ object MobileOnboardingJourney {
             description = "Start here to request help, mark yourself safe, review updates, and manage your volunteer status.",
             actionLabel = "Tap I need help now",
             targetHint = "This is the fastest emergency entry point on the home screen.",
+            completionMessage = "You opened the emergency help request flow.",
+            usesExistingTarget = true,
             panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(
-            id = MobileOnboardingStepId.REQUEST_HELP,
+            id = MobileOnboardingStepId.REQUEST_HELP_BACK,
+            route = Routes.RequestHelp.route,
+            title = "Request Help Page",
+            eyebrow = "Know how to leave safely",
+            description = "This is the request creation form. Before filling it, try the real Back action so you know how to leave without submitting.",
+            actionLabel = "Tap Back",
+            targetHint = "Back returns you to the previous page without sending a request.",
+            completionMessage = "You returned from the request form without sending anything.",
+            usesExistingTarget = true,
+            panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
+        ),
+        MobileOnboardingStep(
+            id = MobileOnboardingStepId.HOME_REQUEST_HELP_REOPEN,
+            route = Routes.Home.route,
+            title = "Start Request Creation",
+            eyebrow = "Continue the request flow",
+            description = "Now reopen the request form and walk through the important creation actions.",
+            actionLabel = "Tap I need help now",
+            targetHint = "This brings you back to the request form.",
+            completionMessage = "You reopened the request form.",
+            usesExistingTarget = true,
+            panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
+        ),
+        MobileOnboardingStep(
+            id = MobileOnboardingStepId.REQUEST_HELP_TYPE,
             route = Routes.RequestHelp.route,
             title = "Request Help",
             eyebrow = "Ask for support clearly",
-            description = "Create a help request with accurate type, location, and details so responders understand what is needed.",
-            actionLabel = "Tap My Help Requests",
-            targetHint = "After creating or saving a request, this is where you follow its status.",
+            description = "Create a help request with accurate type, location, and details so responders understand what is needed. Start by choosing the type of support.",
+            actionLabel = "Tap Fire Brigade",
+            targetHint = "Use this chip when the emergency needs fire-related support.",
+            completionMessage = "You selected Fire Brigade as the help type.",
+            usesExistingTarget = true,
+            panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
+        ),
+        MobileOnboardingStep(
+            id = MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
+            route = Routes.RequestHelp.route,
+            title = "Risk Flags",
+            eyebrow = "Add danger context",
+            description = "Risk flags help responders understand hazards before they arrive.",
+            actionLabel = "Tap Fire",
+            targetHint = "Mark Fire when flames, smoke, or fire risk are part of the situation.",
+            completionMessage = "You marked fire as a risk flag.",
+            usesExistingTarget = true,
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
+        ),
+        MobileOnboardingStep(
+            id = MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
+            route = Routes.RequestHelp.route,
+            title = "Confirmation",
+            eyebrow = "Confirm sharing",
+            description = "Before sending, confirm the request details can be shared for emergency coordination.",
+            actionLabel = "Tap the confirmation checkbox",
+            targetHint = "This consent is required before NEPH can send the help request.",
+            completionMessage = "You confirmed the request can be shared for emergency coordination.",
+            usesExistingTarget = true,
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
+        ),
+        MobileOnboardingStep(
+            id = MobileOnboardingStepId.REQUEST_HELP_SEND,
+            route = Routes.RequestHelp.route,
+            title = "Send Help Request",
+            eyebrow = "Submit the request",
+            description = "The final action saves the request locally and queues it for sync.",
+            actionLabel = "Tap Send Help Request",
+            targetHint = "This sends the help request using the information in the form.",
+            completionMessage = "You sent a help request and moved to your request history.",
+            usesExistingTarget = true,
             panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(

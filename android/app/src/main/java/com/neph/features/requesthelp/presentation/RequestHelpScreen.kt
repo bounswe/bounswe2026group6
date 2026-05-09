@@ -1,6 +1,7 @@
 package com.neph.features.requesthelp.presentation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -30,6 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
@@ -55,6 +59,9 @@ import com.neph.features.profile.data.locationData
 import com.neph.features.profile.data.normalizeBloodType
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.operationallocation.data.OperationalLocationRepository
+import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.onboarding.presentation.mobileOnboardingPulse
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
 import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
 import com.neph.features.profile.presentation.components.LocationSelector
@@ -83,6 +90,7 @@ import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -499,11 +507,33 @@ private fun resolveEventLocationAutofillSelection(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun rememberMobileOnboardingTargetModifier(
+    active: Boolean,
+    testTag: String
+): Modifier {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(active) {
+        if (active) {
+            delay(250)
+            bringIntoViewRequester.bringIntoView()
+        }
+    }
+
+    return Modifier
+        .bringIntoViewRequester(bringIntoViewRequester)
+        .mobileOnboardingPulse(active)
+        .then(if (active) Modifier.testTag(testTag) else Modifier)
+}
+
+@Composable
 fun RequestHelpScreen(
     draftLocalId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToMyHelpRequests: () -> Unit
+    onNavigateToMyHelpRequests: () -> Unit,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -533,6 +563,23 @@ fun RequestHelpScreen(
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
     var currentLocationLoading by remember { mutableStateOf(false) }
+    val requestHelpOnboardingSteps = setOf(
+        MobileOnboardingStepId.REQUEST_HELP_BACK,
+        MobileOnboardingStepId.REQUEST_HELP_TYPE,
+        MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
+        MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
+        MobileOnboardingStepId.REQUEST_HELP_SEND
+    )
+    val isMobileOnboardingActive = mobileOnboardingStepId in requestHelpOnboardingSteps
+    val isHelpTypeOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_TYPE
+    val isFireRiskOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE
+    val isConfirmationOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_CONFIRM
+    val isSendOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_SEND
+
+    fun completeRequestHelpOnboardingStep(stepId: MobileOnboardingStepId) {
+        val message = MobileOnboardingJourney.stepFor(stepId, isAuthenticated = isLoggedIn)?.completionMessage
+        onMobileOnboardingStepCompleted(message)
+    }
 
     fun applyPendingCoordinateSnapshot(
         baseState: RequestHelpFormState,
@@ -892,6 +939,9 @@ fun RequestHelpScreen(
                 }
                 activeDraftLocalId = result.requestId
                 infoMessage = "Help request saved on this device and queued for sync."
+                if (isSendOnboardingTarget) {
+                    completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_SEND)
+                }
                 onNavigateToMyHelpRequests()
             } catch (error: ApiException) {
                 if (error.status == 401) {
@@ -915,7 +965,10 @@ fun RequestHelpScreen(
         topBar = {
             RequestHelpStickyTopBar(
                 draft = observedDraft,
-                onNavigateBack = onNavigateBack
+                onNavigateBack = onNavigateBack,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                isLoggedIn = isLoggedIn
             )
         }
     ) {
@@ -947,6 +1000,19 @@ fun RequestHelpScreen(
                                 helpTypes = toggleSelection(formState.helpTypes, it),
                                 otherHelpType = if (it == "Other" && "Other" in formState.helpTypes) "" else formState.otherHelpType
                             )
+                            if (isHelpTypeOnboardingTarget && it == "Fire Brigade") {
+                                completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_TYPE)
+                            }
+                        },
+                        optionModifier = { option ->
+                            rememberMobileOnboardingTargetModifier(
+                                active = isHelpTypeOnboardingTarget && option == "Fire Brigade",
+                                testTag = "mobile_onboarding_target_fire_brigade"
+                            )
+                        },
+                        optionEnabled = { option ->
+                            !isMobileOnboardingActive ||
+                                (isHelpTypeOnboardingTarget && option == "Fire Brigade")
                         },
                         error = fieldErrors.helpTypes
                     )
@@ -989,6 +1055,19 @@ fun RequestHelpScreen(
                             formState = formState.copy(
                                 riskFlags = toggleSelection(formState.riskFlags, it)
                             )
+                            if (isFireRiskOnboardingTarget && it == "Fire") {
+                                completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE)
+                            }
+                        },
+                        optionModifier = { option ->
+                            rememberMobileOnboardingTargetModifier(
+                                active = isFireRiskOnboardingTarget && option == "Fire",
+                                testTag = "mobile_onboarding_target_fire_risk"
+                            )
+                        },
+                        optionEnabled = { option ->
+                            !isMobileOnboardingActive ||
+                                (isFireRiskOnboardingTarget && option == "Fire")
                         }
                     )
 
@@ -1193,8 +1272,16 @@ fun RequestHelpScreen(
                         checked = formState.confirmationAccepted,
                         onCheckedChange = {
                             formState = formState.copy(confirmationAccepted = it)
+                            if (isConfirmationOnboardingTarget && it) {
+                                completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_CONFIRM)
+                            }
                         },
+                        modifier = rememberMobileOnboardingTargetModifier(
+                            active = isConfirmationOnboardingTarget,
+                            testTag = "mobile_onboarding_target_confirmation"
+                        ),
                         label = "I confirm this information can be shared for emergency coordination.",
+                        enabled = !isMobileOnboardingActive || isConfirmationOnboardingTarget,
                         error = fieldErrors.confirmationAccepted
                     )
                 }
@@ -1215,13 +1302,21 @@ fun RequestHelpScreen(
             PrimaryButton(
                 text = "Send Help Request",
                 onClick = ::handleSubmit,
+                modifier = Modifier
+                    .then(
+                        rememberMobileOnboardingTargetModifier(
+                            active = isSendOnboardingTarget,
+                            testTag = "mobile_onboarding_target_send_help_request"
+                        )
+                    ),
+                enabled = !isMobileOnboardingActive || isSendOnboardingTarget,
                 loading = loading
             )
 
             SecondaryButton(
                 text = "Cancel",
                 onClick = onNavigateBack,
-                enabled = !loading
+                enabled = !loading && !isMobileOnboardingActive
             )
         }
     }
@@ -1230,9 +1325,13 @@ fun RequestHelpScreen(
 @Composable
 private fun RequestHelpStickyTopBar(
     draft: HelpRequestEntity?,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    isLoggedIn: Boolean = false
 ) {
     val spacing = LocalNephSpacing.current
+    val isBackOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_BACK
     Surface(color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -1245,7 +1344,21 @@ private fun RequestHelpStickyTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TextActionButton(text = "Back", onClick = onNavigateBack)
+                TextActionButton(
+                    text = "Back",
+                    onClick = {
+                        onNavigateBack()
+                        if (isBackOnboardingTarget) {
+                            val message = MobileOnboardingJourney
+                                .stepFor(MobileOnboardingStepId.REQUEST_HELP_BACK, isAuthenticated = isLoggedIn)
+                                ?.completionMessage
+                            onMobileOnboardingStepCompleted(message)
+                        }
+                    },
+                    modifier = Modifier
+                        .mobileOnboardingPulse(isBackOnboardingTarget)
+                        .testTag("mobile_onboarding_target_request_help_back")
+                )
                 Text(
                     text = "Request Help",
                     style = MaterialTheme.typography.titleMedium,

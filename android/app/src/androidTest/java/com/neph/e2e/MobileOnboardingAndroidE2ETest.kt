@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.neph.MainActivity
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.onboarding.data.MobileOnboardingStore
@@ -65,27 +66,39 @@ class MobileOnboardingAndroidE2ETest {
     fun pendingAuthenticatedUser_canFollowGuidedCoreConcepts_once() {
         waitForText("I need help now")
         waitForTag("mobile_onboarding_dialog")
-        waitForTag("mobile_onboarding_blocker")
-        waitForTag("mobile_onboarding_target_action")
         composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals("Home Dashboard")
         composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
 
-        composeRule.onNodeWithTag("mobile_onboarding_next").performClick()
+        composeRule.onNodeWithTag("home_request_help_action").performClick()
+        waitForGuideTitle("Request Help Page")
+        waitForTag("mobile_onboarding_target_request_help_back")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_request_help_back").performClick()
+        waitForGuideTitle("Start Request Creation")
+        waitForText("You returned from the request form")
+
+        composeRule.onNodeWithTag("home_request_help_action").performClick()
         waitForGuideTitle("Request Help")
         waitForText("Create a help request")
+        waitForTag("mobile_onboarding_target_fire_brigade")
 
-        composeRule.onNodeWithTag("mobile_onboarding_next").performClick()
-        waitForGuideTitle("My Help Requests")
-        waitForText("Follow request status")
+        composeRule.onNodeWithTag("mobile_onboarding_target_fire_brigade").performClick()
+        waitForGuideTitle("Risk Flags")
+        waitForText("You selected Fire Brigade")
+        waitForTag("mobile_onboarding_target_fire_risk")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_fire_risk").performScrollTo().performClick()
+        waitForGuideTitle("Confirmation")
+        waitForText("You marked fire")
 
         composeRule.activityRule.scenario.recreate()
-        waitForGuideTitle("My Help Requests")
+        waitForGuideTitle("Confirmation")
 
         composeRule.onNodeWithTag("mobile_onboarding_skip").performClick()
         waitUntilTagGone("mobile_onboarding_dialog")
 
         composeRule.activityRule.scenario.recreate()
-        waitForText("My Help Requests")
+        waitForText("Request Help")
         waitUntilTagGone("mobile_onboarding_dialog")
     }
 

@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -52,6 +53,9 @@ import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
 import com.neph.features.operationallocation.data.OperationalLocationRepository
+import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.onboarding.presentation.mobileOnboardingPulse
 import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
@@ -82,6 +86,8 @@ fun HomeScreen(
     onProfileClick: () -> Unit,
     profileBadgeText: String,
     isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
@@ -135,6 +141,9 @@ fun HomeScreen(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isMobileOnboardingActive = mobileOnboardingStepId != null
+    val isRequestHelpOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.HOME_DASHBOARD ||
+        mobileOnboardingStepId == MobileOnboardingStepId.HOME_REQUEST_HELP_REOPEN
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -533,13 +542,26 @@ fun HomeScreen(
 
             EmergencyHelpAction(
                 loading = requestHelpLoading,
-                enabled = !availabilityLoading && !markSafeLoading,
-                onClick = ::handleRequestHelp
+                enabled = !availabilityLoading &&
+                    !markSafeLoading &&
+                    (!isMobileOnboardingActive || isRequestHelpOnboardingTarget),
+                modifier = Modifier.mobileOnboardingPulse(isRequestHelpOnboardingTarget),
+                onClick = {
+                    if (isRequestHelpOnboardingTarget) {
+                        onRequestHelp(null)
+                        val message = MobileOnboardingJourney
+                            .stepFor(requireNotNull(mobileOnboardingStepId), isAuthenticated)
+                            ?.completionMessage
+                        onMobileOnboardingStepCompleted(message)
+                    } else {
+                        handleRequestHelp()
+                    }
+                }
             )
 
             MarkSafeRow(
                 loading = markSafeLoading,
-                enabled = !availabilityLoading && !requestHelpLoading && !markSafeLoading,
+                enabled = !isMobileOnboardingActive && !availabilityLoading && !requestHelpLoading && !markSafeLoading,
                 statusMessage = buildSafetyStatusSyncMessage(safetyStatusState),
                 isError = safetyStatusState.isFailedSync,
                 onClick = ::requestMarkSafeConfirmation
@@ -582,8 +604,8 @@ fun HomeScreen(
                         else -> ""
                     },
                     syncIndicator = availabilitySyncIndicator,
-                    onRefreshLocationAndBecomeAvailable = { handleAvailabilityChange(true) },
-                    onAvailabilityChange = ::handleAvailabilityChange
+                    onRefreshLocationAndBecomeAvailable = { if (!isMobileOnboardingActive) handleAvailabilityChange(true) },
+                    onAvailabilityChange = { if (!isMobileOnboardingActive) handleAvailabilityChange(it) }
                 )
             }
 
@@ -688,6 +710,7 @@ private fun HomeGreetingHero(
 private fun EmergencyHelpAction(
     loading: Boolean,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -700,6 +723,8 @@ private fun EmergencyHelpAction(
     )
     Row(
         modifier = Modifier
+            .then(modifier)
+            .testTag("home_request_help_action")
             .fillMaxWidth()
             .heightIn(min = 96.dp)
             .background(brush = gradient, shape = RoundedCornerShape(24.dp))
