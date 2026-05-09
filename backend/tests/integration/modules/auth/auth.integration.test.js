@@ -900,7 +900,7 @@ describe('POST /api/auth/google', () => {
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
 
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeDefined();
@@ -916,11 +916,13 @@ describe('POST /api/auth/google', () => {
   test('200 - existing Google user can log in again', async () => {
     const app = createTestApp();
 
-    await request(app).post('/api/auth/google').send({ idToken: 'valid-google-id-token' });
+    await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token' });
+      .send({ idToken: 'valid-google-id-token', mode: 'login' });
 
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeDefined();
@@ -940,7 +942,7 @@ describe('POST /api/auth/google', () => {
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token' });
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS');
@@ -958,12 +960,14 @@ describe('POST /api/auth/google', () => {
   test('403 - banned user cannot sign in with Google', async () => {
     const app = createTestApp();
 
-    await request(app).post('/api/auth/google').send({ idToken: 'valid-google-id-token' });
+    await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
     await query('UPDATE users SET is_banned = TRUE WHERE email = $1', [GOOGLE_EMAIL]);
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token' });
+      .send({ idToken: 'valid-google-id-token', mode: 'login' });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('USER_BANNED');
@@ -972,12 +976,14 @@ describe('POST /api/auth/google', () => {
   test('403 - deleted account cannot sign in with Google', async () => {
     const app = createTestApp();
 
-    await request(app).post('/api/auth/google').send({ idToken: 'valid-google-id-token' });
+    await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup' });
     await query('UPDATE users SET is_deleted = TRUE WHERE email = $1', [GOOGLE_EMAIL]);
 
     const res = await request(app)
       .post('/api/auth/google')
-      .send({ idToken: 'valid-google-id-token' });
+      .send({ idToken: 'valid-google-id-token', mode: 'login' });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ACCOUNT_DELETED');
