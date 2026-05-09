@@ -4,8 +4,6 @@ import com.neph.navigation.Routes
 
 enum class MobileOnboardingStepId {
     HOME_DASHBOARD,
-    REQUEST_HELP_BACK,
-    HOME_REQUEST_HELP_REOPEN,
     REQUEST_HELP_TYPE,
     REQUEST_HELP_RISK_FIRE,
     REQUEST_HELP_CONFIRM,
@@ -51,30 +49,6 @@ object MobileOnboardingJourney {
             actionLabel = "Tap I need help now",
             targetHint = "This is the fastest emergency entry point on the home screen.",
             completionMessage = "You opened the emergency help request flow.",
-            usesExistingTarget = true,
-            panelPlacement = MobileOnboardingPanelPlacement.TOP
-        ),
-        MobileOnboardingStep(
-            id = MobileOnboardingStepId.REQUEST_HELP_BACK,
-            route = Routes.RequestHelp.route,
-            title = "Request Help Page",
-            eyebrow = "Know how to leave safely",
-            description = "This is the request creation form. Before filling it, try the real Back action so you know how to leave without submitting.",
-            actionLabel = "Tap Back",
-            targetHint = "Back returns you to the previous page without sending a request.",
-            completionMessage = "You returned from the request form without sending anything.",
-            usesExistingTarget = true,
-            panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
-        ),
-        MobileOnboardingStep(
-            id = MobileOnboardingStepId.HOME_REQUEST_HELP_REOPEN,
-            route = Routes.Home.route,
-            title = "Start Request Creation",
-            eyebrow = "Continue the request flow",
-            description = "Now reopen the request form and walk through the important creation actions.",
-            actionLabel = "Tap I need help now",
-            targetHint = "This brings you back to the request form.",
-            completionMessage = "You reopened the request form.",
             usesExistingTarget = true,
             panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
         ),

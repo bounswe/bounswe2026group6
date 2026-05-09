@@ -564,7 +564,6 @@ fun RequestHelpScreen(
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
     var currentLocationLoading by remember { mutableStateOf(false) }
     val requestHelpOnboardingSteps = setOf(
-        MobileOnboardingStepId.REQUEST_HELP_BACK,
         MobileOnboardingStepId.REQUEST_HELP_TYPE,
         MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
         MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
@@ -965,10 +964,7 @@ fun RequestHelpScreen(
         topBar = {
             RequestHelpStickyTopBar(
                 draft = observedDraft,
-                onNavigateBack = onNavigateBack,
-                mobileOnboardingStepId = mobileOnboardingStepId,
-                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
-                isLoggedIn = isLoggedIn
+                onNavigateBack = onNavigateBack
             )
         }
     ) {
@@ -1325,13 +1321,9 @@ fun RequestHelpScreen(
 @Composable
 private fun RequestHelpStickyTopBar(
     draft: HelpRequestEntity?,
-    onNavigateBack: () -> Unit,
-    mobileOnboardingStepId: MobileOnboardingStepId? = null,
-    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
-    isLoggedIn: Boolean = false
+    onNavigateBack: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
-    val isBackOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_BACK
     Surface(color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -1346,18 +1338,7 @@ private fun RequestHelpStickyTopBar(
             ) {
                 TextActionButton(
                     text = "Back",
-                    onClick = {
-                        onNavigateBack()
-                        if (isBackOnboardingTarget) {
-                            val message = MobileOnboardingJourney
-                                .stepFor(MobileOnboardingStepId.REQUEST_HELP_BACK, isAuthenticated = isLoggedIn)
-                                ?.completionMessage
-                            onMobileOnboardingStepCompleted(message)
-                        }
-                    },
-                    modifier = Modifier
-                        .mobileOnboardingPulse(isBackOnboardingTarget)
-                        .testTag("mobile_onboarding_target_request_help_back")
+                    onClick = onNavigateBack
                 )
                 Text(
                     text = "Request Help",

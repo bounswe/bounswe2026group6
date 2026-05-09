@@ -48,8 +48,6 @@ class MobileOnboardingKeysTest {
         assertEquals(
             listOf(
                 MobileOnboardingStepId.HOME_DASHBOARD,
-                MobileOnboardingStepId.REQUEST_HELP_BACK,
-                MobileOnboardingStepId.HOME_REQUEST_HELP_REOPEN,
                 MobileOnboardingStepId.REQUEST_HELP_TYPE,
                 MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
                 MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
@@ -72,11 +70,11 @@ class MobileOnboardingKeysTest {
     @Test
     fun journeyCanMoveForwardAndBackward() {
         assertEquals(
-            MobileOnboardingStepId.REQUEST_HELP_BACK,
+            MobileOnboardingStepId.REQUEST_HELP_TYPE,
             MobileOnboardingJourney.nextStep(MobileOnboardingStepId.HOME_DASHBOARD, isAuthenticated = true)?.id
         )
         assertEquals(
-            MobileOnboardingStepId.HOME_REQUEST_HELP_REOPEN,
+            MobileOnboardingStepId.HOME_DASHBOARD,
             MobileOnboardingJourney.previousStep(MobileOnboardingStepId.REQUEST_HELP_TYPE, isAuthenticated = true)?.id
         )
         assertNull(MobileOnboardingJourney.previousStep(MobileOnboardingStepId.HOME_DASHBOARD, isAuthenticated = true))

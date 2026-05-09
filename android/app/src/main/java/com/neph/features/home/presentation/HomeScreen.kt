@@ -142,8 +142,7 @@ fun HomeScreen(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val isMobileOnboardingActive = mobileOnboardingStepId != null
-    val isRequestHelpOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.HOME_DASHBOARD ||
-        mobileOnboardingStepId == MobileOnboardingStepId.HOME_REQUEST_HELP_REOPEN
+    val isRequestHelpOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.HOME_DASHBOARD
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->

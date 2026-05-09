@@ -70,14 +70,6 @@ class MobileOnboardingAndroidE2ETest {
         composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
 
         composeRule.onNodeWithTag("home_request_help_action").performClick()
-        waitForGuideTitle("Request Help Page")
-        waitForTag("mobile_onboarding_target_request_help_back")
-
-        composeRule.onNodeWithTag("mobile_onboarding_target_request_help_back").performClick()
-        waitForGuideTitle("Start Request Creation")
-        waitForText("You returned from the request form")
-
-        composeRule.onNodeWithTag("home_request_help_action").performClick()
         waitForGuideTitle("Request Help")
         waitForText("Create a help request")
         waitForTag("mobile_onboarding_target_fire_brigade")
