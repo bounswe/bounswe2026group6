@@ -21,10 +21,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CustomCredential
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
@@ -119,25 +125,79 @@ fun LoginScreen(
 
     fun handleGoogleLogin() {
         error = ""
+        info = ""
+
+        val serverClientId = com.neph.BuildConfig.GOOGLE_SERVER_CLIENT_ID.trim()
+        if (serverClientId.isBlank()) {
+            error = "Google sign-in is not configured for this build. Set GOOGLE_SERVER_CLIENT_ID in android/keystore.properties."
+            return
+        }
+
         loading = true
         scope.launch {
             try {
-                val googleIdOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(com.neph.BuildConfig.GOOGLE_SERVER_CLIENT_ID)
-                    .build()
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
                 val credentialManager = CredentialManager.create(context)
-                val result = credentialManager.getCredential(context, request)
-                val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
+
+                // Primary flow for explicit login button: Sign In with Google option.
+                // If unavailable on device, fallback to the generic Google ID option.
+                val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(serverClientId)
+                    .build()
+                val signInRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(signInWithGoogleOption)
+                    .build()
+
+                val result = try {
+                    credentialManager.getCredential(context, signInRequest)
+                } catch (noCredential: NoCredentialException) {
+                    val googleIdOption = GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setAutoSelectEnabled(false)
+                        .setServerClientId(serverClientId)
+                        .build()
+                    val fallbackRequest = GetCredentialRequest.Builder()
+                        .addCredentialOption(googleIdOption)
+                        .build()
+                    credentialManager.getCredential(context, fallbackRequest)
+                }
+
+                val credential = result.credential
+                if (
+                    credential !is CustomCredential ||
+                    (
+                        credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL &&
+                            credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_SIWG_CREDENTIAL
+                        )
+                ) {
+                    error = "Could not read Google sign-in response. Please try again."
+                    return@launch
+                }
+
+                val googleCredential = try {
+                    GoogleIdTokenCredential.createFrom(credential.data)
+                } catch (_: GoogleIdTokenParsingException) {
+                    error = "Could not parse Google sign-in response. Please try again."
+                    return@launch
+                }
+
+                if (googleCredential.idToken.isBlank()) {
+                    error = "Google sign-in response did not include a valid token."
+                    return@launch
+                }
+
                 when (AuthRepository.loginWithGoogle(googleCredential.idToken, mode = "login")) {
                     LoginDestination.PROFILE -> onLoginSuccess()
                     LoginDestination.COMPLETE_PROFILE -> onProfileCompletionRequired()
                 }
             } catch (cancellationException: kotlinx.coroutines.CancellationException) {
                 throw cancellationException
+            } catch (credentialException: GetCredentialException) {
+                error = when (credentialException) {
+                    is GetCredentialCancellationException -> "Google sign-in was cancelled."
+                    is NoCredentialException -> "No usable Google credential found. Ensure the account is added under device Accounts and Google Play Services is available."
+                    else -> credentialException.message?.ifBlank {
+                        "Could not open Google sign-in. Please try again."
+                    } ?: "Could not open Google sign-in. Please try again."
+                }
             } catch (errorResponse: ApiException) {
                 error = errorResponse.message.ifBlank { "Google sign-in failed. Please try again." }
             } catch (_: Exception) {
@@ -166,7 +226,8 @@ fun LoginScreen(
     ) {
         SocialAuthButtons(
             mode = SocialAuthMode.LOGIN,
-            onGoogleClick = ::handleGoogleLogin
+            onGoogleClick = ::handleGoogleLogin,
+            enabled = !loading
         )
 
         Row(
@@ -273,6 +334,14 @@ fun LoginScreen(
 
         if (!showEmailForm && info.isNotBlank()) {
             HelperText(text = info)
+        }
+
+        if (!showEmailForm && error.isNotBlank()) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
         }
     }
 }

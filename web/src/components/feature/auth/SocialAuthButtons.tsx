@@ -47,8 +47,43 @@ function SocialAuthButtonsInner({
     onGoogleSuccess,
     onGoogleError,
 }: SocialAuthButtonsProps) {
+    const containerRef = React.useRef<HTMLDivElement | null>(null);
+    const [buttonWidth, setButtonWidth] = React.useState(0);
+
+    React.useEffect(() => {
+        const container = containerRef.current;
+        if (!container) {
+            return;
+        }
+
+        const updateWidth = () => {
+            const measuredWidth = Math.floor(container.getBoundingClientRect().width);
+            if (measuredWidth <= 0) {
+                return;
+            }
+
+            setButtonWidth((prev) => (prev === measuredWidth ? prev : measuredWidth));
+        };
+
+        updateWidth();
+
+        if (typeof ResizeObserver === "undefined") {
+            return;
+        }
+
+        const observer = new ResizeObserver(() => {
+            updateWidth();
+        });
+
+        observer.observe(container);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, []);
+
     return (
-        <div className="flex flex-col gap-3">
+        <div ref={containerRef} className="flex w-full flex-col gap-3">
             <GoogleLogin
                 onSuccess={(credentialResponse) => {
                     const idToken = credentialResponse.credential;
@@ -59,10 +94,14 @@ function SocialAuthButtonsInner({
                     onGoogleSuccess(idToken);
                 }}
                 onError={() => onGoogleError("Google sign-in was cancelled or failed.")}
-                width="100%"
+                width={buttonWidth || undefined}
                 text={mode === "signup" ? "signup_with" : "signin_with"}
                 shape="rectangular"
                 logo_alignment="left"
+                containerProps={{
+                    className: "w-full",
+                    style: { width: "100%" },
+                }}
             />
         </div>
     );
