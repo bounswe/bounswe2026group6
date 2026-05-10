@@ -9,6 +9,7 @@ import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
 import { fetchUnreadNotificationCount } from "@/lib/notifications";
 import { fetchMyProfile } from "@/lib/profile";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const navItemsOrdered = [
     { label: "Home", href: "/home" },
@@ -244,6 +245,7 @@ export function TopNavbar() {
                 </nav>
 
                 <div className="top-navbar-right">
+                    {isAuthenticated ? <ThemeToggle variant="navbar" /> : null}
                     <Link
                         href="/notifications"
                         className={`top-navbar-notification-button${pathname === "/notifications" || pathname.startsWith("/notifications/") ? " is-active" : ""}`}
