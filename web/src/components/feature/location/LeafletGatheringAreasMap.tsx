@@ -20,6 +20,7 @@ type GatheringAreaMapFeature = {
 
 type LeafletGatheringAreasMapProps = {
     center: LatLng;
+    showLiveLocation?: boolean;
     features: GatheringAreaMapFeature[];
     selectedFeatureId: string | null;
     onSelectFeature: (featureId: string) => void;
@@ -119,6 +120,7 @@ function createPopupContent(feature: GatheringAreaMapFeature) {
 
 export function LeafletGatheringAreasMap({
     center,
+    showLiveLocation = false,
     features,
     selectedFeatureId,
     onSelectFeature,
@@ -167,6 +169,14 @@ export function LeafletGatheringAreasMap({
             animate: true,
         });
 
+        if (!showLiveLocation) {
+            if (centerMarkerRef.current) {
+                map.removeLayer(centerMarkerRef.current);
+                centerMarkerRef.current = null;
+            }
+            return;
+        }
+
         if (!centerMarkerRef.current) {
             centerMarkerRef.current = L.marker([center.latitude, center.longitude], {
                 icon: createLiveLocationIcon(),
@@ -176,7 +186,7 @@ export function LeafletGatheringAreasMap({
         } else {
             centerMarkerRef.current.setLatLng([center.latitude, center.longitude]);
         }
-    }, [center.latitude, center.longitude]);
+    }, [center.latitude, center.longitude, showLiveLocation]);
 
     React.useEffect(() => {
         const markerLayer = markerLayerRef.current;
