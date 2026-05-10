@@ -144,11 +144,11 @@ class MobileOnboardingAndroidE2ETest {
         composeRule.onNodeWithTag("home_request_help_action").performClick()
         waitForGuideTitle("Request Help")
         waitForText("Create a help request")
-        waitForTag("mobile_onboarding_target_fire_brigade")
+        waitForTag("mobile_onboarding_target_search_rescue")
 
-        composeRule.onNodeWithTag("mobile_onboarding_target_fire_brigade").performClick()
+        composeRule.onNodeWithTag("mobile_onboarding_target_search_rescue").performClick()
         waitForGuideTitle("Risk Flags")
-        waitForText("You selected Fire Brigade")
+        waitForText("You selected Search & Rescue")
         waitForTag("mobile_onboarding_target_fire_risk")
 
         composeRule.onNodeWithTag("mobile_onboarding_target_fire_risk").performScrollTo().performClick()
@@ -165,7 +165,7 @@ class MobileOnboardingAndroidE2ETest {
         waitForGuideTitle("My Help Requests")
         waitForText("No real help request was saved")
         waitForText("Guide preview only")
-        waitForText("Fire Brigade")
+        waitForText("Search & Rescue")
 
         composeRule.onNodeWithTag("mobile_onboarding_continue").performClick()
         waitForGuideTitle("Open the Menu")

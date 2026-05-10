@@ -100,13 +100,9 @@ import java.util.TimeZone
 
 private val helpTypeOptions = listOf(
     "First Aid",
-    "Search & Rescue",
-    "Fire Brigade",
-    "Evacuation / Transport",
     "Food & Water",
     "Shelter",
-    "Security Support",
-    "Other"
+    "Search & Rescue"
 )
 
 private val riskFlagOptions = listOf(
@@ -172,13 +168,9 @@ private data class RequestHelpFieldErrors(
 
 private val helpTypeApiValues = mapOf(
     "First Aid" to "first_aid",
-    "Search & Rescue" to "search_rescue",
-    "Fire Brigade" to "fire_brigade",
-    "Evacuation / Transport" to "evacuation_transport",
     "Food & Water" to "food_water",
     "Shelter" to "shelter",
-    "Security Support" to "security_support",
-    "Other" to "other"
+    "Search & Rescue" to "search_rescue"
 )
 
 private val helpTypeLabelsByApiValue = helpTypeApiValues.entries.associate { (label, value) -> value to label }
@@ -1029,19 +1021,19 @@ fun RequestHelpScreen(
                                 helpTypes = toggleSelection(formState.helpTypes, it),
                                 otherHelpType = if (it == "Other" && "Other" in formState.helpTypes) "" else formState.otherHelpType
                             )
-                            if (isHelpTypeOnboardingTarget && it == "Fire Brigade") {
+                            if (isHelpTypeOnboardingTarget && it == "Search & Rescue") {
                                 completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_TYPE)
                             }
                         },
                         optionModifier = { option ->
                             rememberMobileOnboardingTargetModifier(
-                                active = isHelpTypeOnboardingTarget && option == "Fire Brigade",
-                                testTag = "mobile_onboarding_target_fire_brigade"
+                                active = isHelpTypeOnboardingTarget && option == "Search & Rescue",
+                                testTag = "mobile_onboarding_target_search_rescue"
                             )
                         },
                         optionEnabled = { option ->
                             !isMobileOnboardingActive ||
-                                (isHelpTypeOnboardingTarget && option == "Fire Brigade")
+                                (isHelpTypeOnboardingTarget && option == "Search & Rescue")
                         },
                         error = fieldErrors.helpTypes
                     )

@@ -77,9 +77,9 @@ object MobileOnboardingJourney {
             title = "Request Help",
             eyebrow = "Ask for support clearly",
             description = "Create a help request with accurate type, location, and details so responders understand what is needed. Start by choosing the type of support.",
-            actionLabel = "Tap Fire Brigade",
-            targetHint = "Use this chip when the emergency needs fire-related support.",
-            completionMessage = "You selected Fire Brigade as the help type.",
+            actionLabel = "Tap Search & Rescue",
+            targetHint = "Use this chip when the situation requires locating or extracting people.",
+            completionMessage = "You selected Search & Rescue as the help type.",
             usesExistingTarget = true,
             panelPlacement = MobileOnboardingPanelPlacement.BOTTOM
         ),

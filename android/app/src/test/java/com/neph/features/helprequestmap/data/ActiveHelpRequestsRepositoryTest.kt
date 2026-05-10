@@ -196,7 +196,7 @@ class ActiveHelpRequestsRepositoryTest {
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("food"))
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("water"))
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("food_water"))
-        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("fire_brigade"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_rescue"))
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_and_rescue"))
         assertEquals(CrisisRequestType.OTHER, ActiveHelpRequestsRepository.normalizeRequestType("unknown"))
     }
