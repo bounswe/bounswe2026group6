@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,8 @@ import com.neph.features.helprequestmap.data.ActiveHelpRequestsResult
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsRepository
 import com.neph.features.helprequestmap.data.CrisisRequestType
 import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
@@ -49,11 +52,13 @@ import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.display.SectionCard
 import com.neph.ui.components.display.SectionHeader
 import com.neph.ui.layout.AppDrawerScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMapViewport
 import com.neph.ui.map.LeafletMarkerMap
+import com.neph.ui.map.MapLocationControl
 import com.neph.ui.map.NephMapIntegration
 import com.neph.ui.map.effectiveLeafletViewportKey
 import com.neph.ui.map.isLeafletMapInitializedForInstance
@@ -66,20 +71,25 @@ import com.neph.ui.map.newLeafletMapInstanceId
 import com.neph.ui.map.shouldApplyLeafletMapError
 import com.neph.ui.map.shouldApplyLeafletMapTimeout
 import com.neph.ui.map.shouldClearLeafletMapErrorForSignal
+import com.neph.ui.map.shouldFetchLeafletViewport
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val HelpRequestMapHeightCssPx = 280
 private const val TurkeyOverviewLatitude = 39.0
 private const val TurkeyOverviewLongitude = 35.0
 private const val TurkeyOverviewZoom = 5
+internal const val HelpRequestMapCurrentLocationZoom = 15
 private const val ResourceInitialMessage = "Zoom in or use your device location to see resources in this area."
 private const val ResourceZoomedOutMessage = "Zoom in to see resources in this area."
 private const val ResourceLoadingMessage = "Loading resources in this area..."
+private const val ResourceUpdatingMessage = "Updating visible area..."
 private const val ResourceEmptyMessage = "No resources were found in this visible area."
 private const val ResourceErrorMessage = "Resources could not be loaded for this area. Please try again."
+private const val ResourceFilterEmptyMessage = "No help requests match the selected request type filters."
 
 private val RequestTypeFilterOrder = listOf(
     CrisisRequestType.FIRST_AID,
@@ -167,6 +177,38 @@ internal fun helpRequestMapInstanceKey(
     )
 }
 
+internal fun helpRequestMapEmptyMessage(
+    blockingLoading: Boolean,
+    errorMessage: String,
+    currentViewport: LeafletMapViewport?,
+    isFilterEmpty: Boolean,
+    hasFetchedViewport: Boolean
+): String {
+    return when {
+        blockingLoading -> ResourceLoadingMessage
+        errorMessage.isNotBlank() -> "Request markers are unavailable for this area."
+        currentViewport == null -> ResourceInitialMessage
+        !isLeafletViewportDiscoverable(currentViewport) -> ResourceZoomedOutMessage
+        isFilterEmpty -> "No request markers to display with these filters."
+        hasFetchedViewport -> "No request markers to display in this visible area."
+        else -> ResourceInitialMessage
+    }
+}
+
+internal fun shouldShowPreviousHelpRequestsDuringViewportFetch(
+    requests: List<ActiveHelpRequestMapItem>,
+    manualRefresh: Boolean
+): Boolean {
+    return requests.isNotEmpty() && !manualRefresh
+}
+
+internal fun markersShouldFitBounds(
+    requests: List<ActiveHelpRequestMapItem>,
+    mapResetToken: Int
+): Boolean {
+    return mapResetToken == 0 && requests.any { it.hasValidMapCoordinates() }
+}
+
 private fun ActiveHelpRequestMapItem.hasValidMapCoordinates(): Boolean {
     return latitude.isFinite() &&
         longitude.isFinite() &&
@@ -186,8 +228,10 @@ fun HelpRequestMapScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var loading by remember { mutableStateOf(false) }
+    var backgroundUpdating by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var infoMessage by remember { mutableStateOf("") }
     var requests by remember { mutableStateOf(emptyList<ActiveHelpRequestMapItem>()) }
@@ -198,6 +242,10 @@ fun HelpRequestMapScreen(
     var lastFetchedViewportKey by remember { mutableStateOf<String?>(null) }
     var viewportRefreshNonce by remember { mutableStateOf(0) }
     var viewportRequestSerial by remember { mutableStateOf(0) }
+    var mapCenterLatitude by remember { mutableStateOf(TurkeyOverviewLatitude) }
+    var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
+    var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
+    var mapResetNonce by remember { mutableStateOf(0) }
 
     fun applyRequestResult(result: ActiveHelpRequestsResult, viewportKey: String?) {
         requests = result.requests
@@ -220,12 +268,60 @@ fun HelpRequestMapScreen(
             selectedRequestId = null
             errorMessage = ""
             loading = false
-            infoMessage = ResourceZoomedOutMessage
+            backgroundUpdating = false
+            infoMessage = ""
             return
         }
         errorMessage = ""
         pendingViewport = viewport
         viewportRefreshNonce += 1
+    }
+
+    fun requestCurrentLocationAndRefresh() {
+        scope.launch {
+            loading = true
+            backgroundUpdating = false
+            errorMessage = ""
+            infoMessage = ""
+
+            try {
+                val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                    context = context,
+                    sharingEnabled = true
+                )
+
+                val location = attempt.location
+                if (location != null) {
+                    viewportRequestSerial += 1
+                    currentViewport = null
+                    pendingViewport = null
+                    requests = emptyList()
+                    mapCenterLatitude = location.latitude
+                    mapCenterLongitude = location.longitude
+                    mapZoom = HelpRequestMapCurrentLocationZoom
+                    mapResetNonce += 1
+                    selectedRequestId = null
+                    lastFetchedViewportKey = null
+                    loading = false
+                    backgroundUpdating = false
+                    return@launch
+                }
+
+                loading = false
+                infoMessage = when (attempt.warning) {
+                    CurrentLocationShareWarning.PERMISSION_DENIED ->
+                        "Location permission was denied. Help request map was not recentered."
+
+                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                    null -> "Current location is unavailable. Help request map was not recentered."
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                loading = false
+                infoMessage = "Current location is unavailable. Help request map was not recentered."
+            }
+        }
     }
 
     fun openRequestInMap(item: ActiveHelpRequestMapItem) {
@@ -281,15 +377,21 @@ fun HelpRequestMapScreen(
         val viewport = pendingViewport ?: return@LaunchedEffect
         if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
         val viewportKey = effectiveLeafletViewportKey(viewport) ?: return@LaunchedEffect
-        if (viewportKey == lastFetchedViewportKey && viewportRefreshNonce == 0) {
+        val manualRefresh = viewportRefreshNonce > 0
+        if (!shouldFetchLeafletViewport(viewportKey, lastFetchedViewportKey, manualRefresh)) {
             return@LaunchedEffect
         }
         delay(450)
         val requestSerial = viewportRequestSerial + 1
         viewportRequestSerial = requestSerial
-        loading = true
+        val blockingLoading = !shouldShowPreviousHelpRequestsDuringViewportFetch(
+            requests = requests,
+            manualRefresh = manualRefresh
+        )
+        loading = blockingLoading
+        backgroundUpdating = !blockingLoading
         errorMessage = ""
-        infoMessage = ResourceLoadingMessage
+        infoMessage = ""
 
         try {
             val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests(
@@ -303,21 +405,43 @@ fun HelpRequestMapScreen(
         } catch (error: ApiException) {
             if (requestSerial == viewportRequestSerial) {
                 errorMessage = error.message.ifBlank { ResourceErrorMessage }
-                requests = emptyList()
-                selectedRequestId = null
                 infoMessage = ""
+                if (requests.isEmpty()) {
+                    selectedRequestId = null
+                }
             }
         } catch (_: Exception) {
             if (requestSerial == viewportRequestSerial) {
                 errorMessage = ResourceErrorMessage
-                requests = emptyList()
-                selectedRequestId = null
                 infoMessage = ""
+                if (requests.isEmpty()) {
+                    selectedRequestId = null
+                }
             }
         } finally {
             if (requestSerial == viewportRequestSerial) {
                 loading = false
+                backgroundUpdating = false
             }
+        }
+    }
+
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        if (result.granted) {
+            requestCurrentLocationAndRefresh()
+        } else {
+            errorMessage = ""
+            loading = false
+            backgroundUpdating = false
+            infoMessage = "Location permission was denied. Help request map was not recentered."
+        }
+    }
+
+    fun showCurrentLocationOnMap() {
+        if (locationPermissionRequester.refreshPermissionState()) {
+            requestCurrentLocationAndRefresh()
+        } else {
+            locationPermissionRequester.requestPermission()
         }
     }
 
@@ -329,6 +453,8 @@ fun HelpRequestMapScreen(
 
     fun handleViewportChanged(viewport: LeafletMapViewport) {
         currentViewport = viewport
+        mapCenterLatitude = viewport.centerLatitude
+        mapCenterLongitude = viewport.centerLongitude
         if (isLeafletViewportDiscoverable(viewport)) {
             errorMessage = ""
             if (infoMessage == ResourceZoomedOutMessage) {
@@ -342,21 +468,20 @@ fun HelpRequestMapScreen(
             lastFetchedViewportKey = null
             errorMessage = ""
             loading = false
-            infoMessage = ResourceZoomedOutMessage
+            backgroundUpdating = false
+            infoMessage = ""
         }
     }
 
     val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId }
     val isFilterEmpty = !loading && requests.isNotEmpty() && visibleRequests.isEmpty()
-    val mapEmptyMarkersMessage = when {
-        loading -> ResourceLoadingMessage
-        errorMessage.isNotBlank() -> ResourceErrorMessage
-        currentViewport == null -> ResourceInitialMessage
-        !isLeafletViewportDiscoverable(currentViewport) -> ResourceZoomedOutMessage
-        isFilterEmpty -> "No help requests match the selected request type filters."
-        lastFetchedViewportKey != null -> ResourceEmptyMessage
-        else -> ResourceInitialMessage
-    }
+    val mapEmptyMarkersMessage = helpRequestMapEmptyMessage(
+        blockingLoading = loading,
+        errorMessage = errorMessage,
+        currentViewport = currentViewport,
+        isFilterEmpty = isFilterEmpty,
+        hasFetchedViewport = lastFetchedViewportKey != null
+    )
 
     AppDrawerScaffold(
         title = "Help Request Map",
@@ -404,6 +529,13 @@ fun HelpRequestMapScreen(
                     selectedRequestId = selectedRequest?.requestId,
                     emptyMarkersMessage = mapEmptyMarkersMessage,
                     loadingResources = loading,
+                    updatingResources = backgroundUpdating,
+                    mapCenterLatitude = mapCenterLatitude,
+                    mapCenterLongitude = mapCenterLongitude,
+                    mapZoom = mapZoom,
+                    mapResetToken = mapResetNonce,
+                    onShowCurrentLocation = ::showCurrentLocationOnMap,
+                    showCurrentLocationEnabled = !loading,
                     onViewportChanged = ::handleViewportChanged,
                     onSelectRequest = { selectedRequestId = it }
                 )
@@ -501,7 +633,7 @@ fun HelpRequestMapScreen(
 
             if (isFilterEmpty) {
                 SectionCard {
-                    HelperText(text = "No help requests match the selected request type filters.")
+                    HelperText(text = ResourceFilterEmptyMessage)
                 }
             }
 
@@ -622,6 +754,7 @@ private fun RequestTypeFiltersCard(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun RequestDetails(
     item: ActiveHelpRequestMapItem,
     onOpenMap: () -> Unit,
@@ -659,9 +792,10 @@ private fun RequestDetails(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.End,
+            verticalArrangement = Arrangement.spacedBy(spacing.xs)
         ) {
             TextActionButton(
                 text = "Get Directions",
@@ -676,6 +810,7 @@ private fun RequestDetails(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun RequestListItem(
     item: ActiveHelpRequestMapItem,
     selected: Boolean,
@@ -703,31 +838,57 @@ private fun RequestListItem(
         verticalArrangement = Arrangement.spacedBy(spacing.xs)
     ) {
         Spacer(modifier = Modifier.height(spacing.sm))
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.md),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(spacing.sm)
         ) {
-            PinGlyph(type = item.type)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.typeLabel,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = textColor,
-                    fontWeight = FontWeight.SemiBold
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PinGlyph(type = item.type)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.typeLabel,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = textColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Priority: ${ActiveHelpRequestsRepository.formatPriority(item.priorityLevel)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                    Text(
+                        text = "${item.district}, ${item.city}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalArrangement = Arrangement.spacedBy(spacing.xs)
+            ) {
+                TextActionButton(
+                    text = "Get Directions",
+                    onClick = onGetDirections
                 )
-                Text(
-                    text = "Priority: ${ActiveHelpRequestsRepository.formatPriority(item.priorityLevel)} | ${item.district}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                TextActionButton(
+                    text = "Open in Map",
+                    onClick = onOpenMap
                 )
             }
-            TextActionButton(text = "Get Directions", onClick = onGetDirections)
-            TextActionButton(text = "Open in Map", onClick = onOpenMap)
         }
         Spacer(modifier = Modifier.height(spacing.sm))
     }
@@ -739,6 +900,13 @@ private fun CrisisRequestMapPanel(
     selectedRequestId: String?,
     emptyMarkersMessage: String = ResourceEmptyMessage,
     loadingResources: Boolean = false,
+    updatingResources: Boolean = false,
+    mapCenterLatitude: Double = TurkeyOverviewLatitude,
+    mapCenterLongitude: Double = TurkeyOverviewLongitude,
+    mapZoom: Int = TurkeyOverviewZoom,
+    mapResetToken: Int = 0,
+    onShowCurrentLocation: (() -> Unit)? = null,
+    showCurrentLocationEnabled: Boolean = true,
     onViewportChanged: (LeafletMapViewport) -> Unit,
     onSelectRequest: (String) -> Unit
 ) {
@@ -748,7 +916,11 @@ private fun CrisisRequestMapPanel(
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
     var mapError by remember { mutableStateOf("") }
     val mapInstanceKey = helpRequestMapInstanceKey(requests)
-    val mapInstanceId = remember(mapInstanceKey) {
+    val shouldFitRequestMarkers = markersShouldFitBounds(requests, mapResetToken)
+    val effectiveCenterLatitude = if (shouldFitRequestMarkers) mapInstanceKey.centerLatitude else mapCenterLatitude
+    val effectiveCenterLongitude = if (shouldFitRequestMarkers) mapInstanceKey.centerLongitude else mapCenterLongitude
+    val effectiveZoom = if (shouldFitRequestMarkers) 13 else mapZoom
+    val mapInstanceId = remember(mapResetToken, mapInstanceKey) {
         newLeafletMapInstanceId()
     }
     val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
@@ -809,53 +981,64 @@ private fun CrisisRequestMapPanel(
         SectionHeader(
             title = "Live Help Request Map",
             subtitle = if (markers.isEmpty()) {
-                "No request markers match the selected filters."
+                "Map markers appear after a discoverable area loads."
             } else {
                 "Tap a marker to preview that help request."
             }
         )
 
-        LeafletMarkerMap(
-            mapInstanceId = mapInstanceId,
-            currentMapInstanceId = { currentMapInstanceIdState.value },
-            centerLatitude = mapInstanceKey.centerLatitude,
-            centerLongitude = mapInstanceKey.centerLongitude,
-            markers = markers,
-            selectedMarkerId = selectedRequestId,
-            mapHeightCssPx = HelpRequestMapHeightCssPx,
-            zoom = if (markers.isEmpty()) TurkeyOverviewZoom else 13,
-            showCenterMarker = false,
-            fitBoundsToMarkers = markers.isNotEmpty(),
-            onMarkerSelected = { markerInstanceId, markerId ->
-                if (markerInstanceId == currentMapInstanceIdState.value) {
-                    onSelectRequest(markerId)
-                }
-            },
-            onMapReady = { initializedInstanceId, source ->
-                markMapAlive(initializedInstanceId, source)
-            },
-            onMapError = { errorInstanceId, message ->
-                if (
-                    shouldApplyLeafletMapError(
-                        activeInstanceId = errorInstanceId,
-                        currentInstanceId = currentMapInstanceIdState.value,
-                        tileLoadedInstanceId = tileLoadedInstanceIdState.value,
-                        errorMessage = message
-                    )
-                ) {
-                    errorInstanceIdState.value = errorInstanceId
-                    mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
-                }
-            },
-            onViewportChanged = { viewportInstanceId, viewport ->
-                if (viewportInstanceId == currentMapInstanceIdState.value) {
-                    onViewportChanged(viewport)
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(HelpRequestMapHeightCssPx.dp)
-        )
+        Box {
+            LeafletMarkerMap(
+                mapInstanceId = mapInstanceId,
+                currentMapInstanceId = { currentMapInstanceIdState.value },
+                centerLatitude = effectiveCenterLatitude,
+                centerLongitude = effectiveCenterLongitude,
+                markers = markers,
+                selectedMarkerId = selectedRequestId,
+                mapHeightCssPx = HelpRequestMapHeightCssPx,
+                zoom = effectiveZoom,
+                showCenterMarker = false,
+                fitBoundsToMarkers = shouldFitRequestMarkers,
+                onMarkerSelected = { markerInstanceId, markerId ->
+                    if (markerInstanceId == currentMapInstanceIdState.value) {
+                        onSelectRequest(markerId)
+                    }
+                },
+                onMapReady = { initializedInstanceId, source ->
+                    markMapAlive(initializedInstanceId, source)
+                },
+                onMapError = { errorInstanceId, message ->
+                    if (
+                        shouldApplyLeafletMapError(
+                            activeInstanceId = errorInstanceId,
+                            currentInstanceId = currentMapInstanceIdState.value,
+                            tileLoadedInstanceId = tileLoadedInstanceIdState.value,
+                            errorMessage = message
+                        )
+                    ) {
+                        errorInstanceIdState.value = errorInstanceId
+                        mapError = message.ifBlank { "Map failed to load. Check your connection and try again." }
+                    }
+                },
+                onViewportChanged = { viewportInstanceId, viewport ->
+                    if (viewportInstanceId == currentMapInstanceIdState.value) {
+                        onViewportChanged(viewport)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(HelpRequestMapHeightCssPx.dp)
+            )
+            onShowCurrentLocation?.let { showCurrentLocation ->
+                MapLocationControl(
+                    onClick = showCurrentLocation,
+                    enabled = showCurrentLocationEnabled,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(spacing.sm)
+                )
+            }
+        }
 
         if (!activeMapInitialized && activeMapError.isBlank()) {
             HelperText(text = "Loading map...")
@@ -869,7 +1052,11 @@ private fun CrisisRequestMapPanel(
             HelperText(text = ResourceLoadingMessage)
         }
 
-        if (markers.isEmpty()) {
+        if (updatingResources && markers.isNotEmpty()) {
+            HelperText(text = ResourceUpdatingMessage)
+        }
+
+        if (markers.isEmpty() && !loadingResources) {
             HelperText(text = emptyMarkersMessage)
         }
 
