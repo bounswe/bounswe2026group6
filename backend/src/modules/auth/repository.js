@@ -22,17 +22,16 @@ async function findUserByGoogleId(googleId) {
   return result.rows[0] || null;
 }
 
-async function upsertGoogleUser({ userId, email, googleId, acceptedTerms }) {
+async function upsertGoogleUser({ userId, email, googleId }) {
   const result = await query(
     `
       INSERT INTO users (
         user_id,
         email,
         google_id,
-        is_email_verified,
-        accepted_terms
+        is_email_verified
       )
-      VALUES ($1, $2, $3, TRUE, $4)
+      VALUES ($1, $2, $3, TRUE)
       ON CONFLICT (google_id) DO UPDATE
         SET email = EXCLUDED.email
       RETURNING
@@ -45,7 +44,7 @@ async function upsertGoogleUser({ userId, email, googleId, acceptedTerms }) {
         accepted_terms,
         created_at
     `,
-    [userId, email, googleId, Boolean(acceptedTerms)]
+    [userId, email, googleId]
   );
 
   return result.rows[0];

@@ -185,11 +185,10 @@ export async function deleteCurrentAccount(token: string) {
 
 export async function googleLogin(
     idToken: string,
-    mode: "login" | "signup" = "login",
-    acceptedTerms?: boolean
+    mode: "login" | "signup" = "login"
 ) {
     return apiRequest<LoginResponse>("/auth/google", {
         method: "POST",
-        body: { idToken, mode, acceptedTerms },
+        body: { idToken, mode },
     });
 }

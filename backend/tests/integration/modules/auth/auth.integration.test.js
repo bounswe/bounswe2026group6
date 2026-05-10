@@ -963,15 +963,15 @@ describe('POST /api/auth/google', () => {
     expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS');
   });
 
-  test('400 - signup requires terms acceptance', async () => {
+  test('200 - signup does not require terms acceptance for Google', async () => {
     const app = createTestApp();
 
     const res = await request(app)
       .post('/api/auth/google')
       .send({ idToken: 'valid-google-id-token', mode: 'signup' });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('TERMS_NOT_ACCEPTED');
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
   });
 
   test('400 - missing idToken', async () => {

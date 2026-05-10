@@ -321,7 +321,7 @@ async function deleteCurrentUser(userId) {
   };
 }
 
-async function loginWithGoogle({ idToken, mode = 'login', acceptedTerms = false }) {
+async function loginWithGoogle({ idToken, mode = 'login' }) {
   const clientId = process.env.GOOGLE_CLIENT_ID || env.google.clientId;
   if (!clientId) {
     const error = new Error('Google Sign-In is not configured on this server. Set GOOGLE_CLIENT_ID.');
@@ -399,12 +399,6 @@ async function loginWithGoogle({ idToken, mode = 'login', acceptedTerms = false 
     }
   }
 
-  if (mode === 'signup' && !acceptedTerms) {
-    const error = new Error('You must accept the terms to continue.');
-    error.code = 'TERMS_NOT_ACCEPTED';
-    throw error;
-  }
-
   if (!existingByGoogleId && !existingByEmail && mode === 'login') {
     // Login mode: no account exists — reject
     const error = new Error('No account found for this Google email. Please sign up first.');
@@ -417,7 +411,6 @@ async function loginWithGoogle({ idToken, mode = 'login', acceptedTerms = false 
     userId,
     email: normalizedEmail,
     googleId,
-    acceptedTerms: Boolean(acceptedTerms),
   });
 
   const adminRecord = await findAdminByUserId(user.user_id);
