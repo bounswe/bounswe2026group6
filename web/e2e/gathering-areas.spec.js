@@ -152,7 +152,11 @@ test('shows empty state and then error state for gathering areas retrieval', asy
 
   await page.goto('/gathering-areas');
 
-  await expect(page.getByText('No resources were found in this visible area.')).toBeVisible();
+  await expect(
+    page
+      .locator('.gathering-areas-status-box')
+      .filter({ hasText: 'No resources were found in this visible area.' })
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Retry Results' }).click();
 
@@ -328,12 +332,19 @@ test('supports multi-select category filters and clear filters reset', async ({ 
   await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Hospital Beta/i })).toBeVisible();
   const filterPanel = page.locator('.crisis-filters-panel');
+  const resultsList = page.locator('.gathering-areas-list');
+  const hospitalFilterChip = filterPanel.locator('.crisis-filter-chip', { hasText: 'Hospital' });
+  const assemblyFilterChip = filterPanel.locator('.crisis-filter-chip', { hasText: 'Assembly Point' });
 
-  await filterPanel.getByRole('button', { name: 'Hospital', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Hospital Beta/i })).toHaveCount(0);
+  await expect(hospitalFilterChip).toHaveClass(/is-active/);
+  await hospitalFilterChip.click();
+  await expect(hospitalFilterChip).not.toHaveClass(/is-active/);
+  await expect(resultsList.getByRole('button', { name: /Hospital Beta/i })).toHaveCount(0);
 
-  await filterPanel.getByRole('button', { name: 'Assembly Point', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Assembly Alpha/i })).toHaveCount(0);
+  await expect(assemblyFilterChip).toHaveClass(/is-active/);
+  await assemblyFilterChip.click();
+  await expect(assemblyFilterChip).not.toHaveClass(/is-active/);
+  await expect(resultsList.getByRole('button', { name: /Assembly Alpha/i })).toHaveCount(0);
 
   await expect(page.getByText('No results match the selected categories.')).toBeVisible();
 
