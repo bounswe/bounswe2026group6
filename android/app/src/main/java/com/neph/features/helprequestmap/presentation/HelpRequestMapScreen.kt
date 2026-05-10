@@ -41,6 +41,7 @@ import com.neph.features.helprequestmap.data.ActiveHelpRequestMapItem
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsResult
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsRepository
 import com.neph.features.helprequestmap.data.CrisisRequestType
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
@@ -179,7 +180,9 @@ fun HelpRequestMapScreen(
     onOpenSettings: (() -> Unit)?,
     onProfileClick: () -> Unit,
     profileBadgeText: String,
-    isAuthenticated: Boolean
+    isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
@@ -372,7 +375,9 @@ fun HelpRequestMapScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing.lg)

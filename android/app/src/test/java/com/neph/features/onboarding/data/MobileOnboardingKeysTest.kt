@@ -40,7 +40,7 @@ class MobileOnboardingKeysTest {
         assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU })
         assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST })
         assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.ASSIGNED_REQUESTS })
-        assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.PROFILE_PRIVACY })
+        assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.SETTINGS })
     }
 
     @Test
@@ -57,13 +57,35 @@ class MobileOnboardingKeysTest {
                 MobileOnboardingStepId.MY_HELP_REQUESTS,
                 MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU,
                 MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST,
-                MobileOnboardingStepId.ASSIGNED_REQUESTS
+                MobileOnboardingStepId.ASSIGNED_REQUESTS,
+                MobileOnboardingStepId.OPEN_EMERGENCY_NUMBERS_MENU,
+                MobileOnboardingStepId.SELECT_EMERGENCY_NUMBERS,
+                MobileOnboardingStepId.EMERGENCY_NUMBERS,
+                MobileOnboardingStepId.OPEN_HELP_REQUEST_MAP_MENU,
+                MobileOnboardingStepId.SELECT_HELP_REQUEST_MAP,
+                MobileOnboardingStepId.HELP_REQUEST_MAP,
+                MobileOnboardingStepId.OPEN_NEARBY_USERS_MENU,
+                MobileOnboardingStepId.SELECT_NEARBY_USERS,
+                MobileOnboardingStepId.NEARBY_USERS,
+                MobileOnboardingStepId.OPEN_GATHERING_AREAS_MENU,
+                MobileOnboardingStepId.SELECT_GATHERING_AREAS,
+                MobileOnboardingStepId.GATHERING_AREAS,
+                MobileOnboardingStepId.OPEN_SAFETY_CIRCLES_MENU,
+                MobileOnboardingStepId.SELECT_SAFETY_CIRCLES,
+                MobileOnboardingStepId.SAFETY_CIRCLES,
+                MobileOnboardingStepId.OPEN_NOTIFICATIONS_MENU,
+                MobileOnboardingStepId.SELECT_NOTIFICATIONS,
+                MobileOnboardingStepId.NOTIFICATIONS,
+                MobileOnboardingStepId.OPEN_SETTINGS_MENU,
+                MobileOnboardingStepId.SELECT_SETTINGS,
+                MobileOnboardingStepId.SETTINGS
             ),
             authenticatedSteps.map { it.id }
         )
         assertEquals(Routes.RequestHelp.route, authenticatedSteps[1].route)
         assertEquals(Routes.MyHelpRequests.route, authenticatedSteps[5].route)
-        assertEquals(Routes.AssignedRequest.route, authenticatedSteps.last().route)
+        assertEquals(Routes.Settings.route, authenticatedSteps.last().route)
+        assertEquals(Routes.AssignedRequest.route, authenticatedSteps[8].route)
     }
 
     @Test

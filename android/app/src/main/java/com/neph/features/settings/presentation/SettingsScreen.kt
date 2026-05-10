@@ -29,6 +29,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.neph.core.theme.ThemePreferenceStore
 import com.neph.features.auth.data.AuthRepository
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.display.IconListRow
@@ -48,7 +49,9 @@ fun SettingsScreen(
     onNavigateToPrivacySecurity: () -> Unit,
     onLogout: () -> Unit,
     onAccountDeleted: () -> Unit,
-    onRestartMobileOnboarding: () -> Unit
+    onRestartMobileOnboarding: () -> Unit,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val coroutineScope = rememberCoroutineScope()
@@ -115,7 +118,9 @@ fun SettingsScreen(
         drawerItems = Routes.authenticatedDrawerItems,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = "Profile"
+        profileLabel = "Profile",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),

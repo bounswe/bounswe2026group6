@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -114,8 +115,10 @@ fun AppDrawerScaffold(
     val effectiveAlertCount = maxOf(alertCount, badgeUnread)
 
     var menuOpen by remember { mutableStateOf(false) }
-    val isOpenMenuOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU
-    val isSelectAssignedOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST
+    val activeMobileOnboardingStep = mobileOnboardingStepId?.let { stepId ->
+        MobileOnboardingJourney.stepFor(stepId, isAuthenticated = true)
+    }
+    val isOpenMenuOnboardingTarget = activeMobileOnboardingStep?.opensMenu == true
     val isMobileOnboardingActive = mobileOnboardingStepId != null
 
     fun completeMobileOnboardingStep(stepId: MobileOnboardingStepId) {
@@ -171,7 +174,7 @@ fun AppDrawerScaffold(
 
                                 menuOpen = !menuOpen
                                 if (isOpenMenuOnboardingTarget) {
-                                    completeMobileOnboardingStep(MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU)
+                                    completeMobileOnboardingStep(mobileOnboardingStepId)
                                 }
                             },
                             modifier = Modifier
@@ -371,7 +374,10 @@ private fun BoxScope.MenuOverlay(
     mobileOnboardingStepId: MobileOnboardingStepId?,
     onMobileOnboardingStepCompleted: (MobileOnboardingStepId) -> Unit
 ) {
-    val isSelectAssignedOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST
+    val activeMobileOnboardingStep = mobileOnboardingStepId?.let { stepId ->
+        MobileOnboardingJourney.stepFor(stepId, isAuthenticated = true)
+    }
+    val mobileOnboardingMenuTargetRoute = activeMobileOnboardingStep?.menuTargetRoute
     val isMobileOnboardingActive = mobileOnboardingStepId != null
 
     // Translucent scrim — taps outside dismiss
@@ -406,6 +412,8 @@ private fun BoxScope.MenuOverlay(
         Column(
             modifier = Modifier
                 .width(260.dp)
+                .heightIn(max = 520.dp)
+                .verticalScroll(rememberScrollState())
                 .background(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
                     shape = RoundedCornerShape(20.dp)
@@ -416,7 +424,7 @@ private fun BoxScope.MenuOverlay(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onProfileClick() }
+                        .clickable(enabled = !isMobileOnboardingActive) { onProfileClick() }
                         .padding(horizontal = spacing.md, vertical = spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(spacing.md)
@@ -458,27 +466,27 @@ private fun BoxScope.MenuOverlay(
             }
 
             drawerItems.forEach { item ->
+                val isMobileOnboardingMenuTarget = item.route == mobileOnboardingMenuTargetRoute
                 MenuRow(
                     icon = bottomNavIconFor(item),
                     label = item.drawerLabel.orEmpty(),
                     selected = currentRoute == item.route,
                     onClick = {
-                        if (isSelectAssignedOnboardingTarget && item == Routes.AssignedRequest) {
-                            onMobileOnboardingStepCompleted(MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST)
+                        if (isMobileOnboardingMenuTarget) {
+                            onMobileOnboardingStepCompleted(mobileOnboardingStepId)
                         }
                         onSelect(item.route)
                     },
-                    enabled = !isMobileOnboardingActive ||
-                        (isSelectAssignedOnboardingTarget && item == Routes.AssignedRequest),
+                    enabled = !isMobileOnboardingActive || isMobileOnboardingMenuTarget,
                     modifier = Modifier
                         .then(
-                            if (item == Routes.AssignedRequest) {
-                                Modifier.testTag("mobile_onboarding_target_assigned_request_menu")
+                            if (isMobileOnboardingMenuTarget) {
+                                Modifier.testTag(mobileOnboardingMenuTargetTag(item.route))
                             } else {
                                 Modifier
                             }
                         )
-                        .mobileOnboardingPulse(isSelectAssignedOnboardingTarget && item == Routes.AssignedRequest),
+                        .mobileOnboardingPulse(isMobileOnboardingMenuTarget),
                     spacing = spacing
                 )
             }
@@ -488,12 +496,27 @@ private fun BoxScope.MenuOverlay(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     modifier = Modifier.padding(horizontal = spacing.md)
                 )
+                val isSettingsOnboardingTarget = mobileOnboardingMenuTargetRoute == Routes.Settings.route
                 MenuRow(
                     icon = Icons.Filled.Settings,
                     label = "Settings",
-                    selected = false,
-                    onClick = onOpenSettings,
-                    enabled = !isMobileOnboardingActive,
+                    selected = currentRoute == Routes.Settings.route,
+                    onClick = {
+                        if (isSettingsOnboardingTarget) {
+                            onMobileOnboardingStepCompleted(mobileOnboardingStepId)
+                        }
+                        onOpenSettings()
+                    },
+                    enabled = !isMobileOnboardingActive || isSettingsOnboardingTarget,
+                    modifier = Modifier
+                        .then(
+                            if (isSettingsOnboardingTarget) {
+                                Modifier.testTag(mobileOnboardingMenuTargetTag(Routes.Settings.route))
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .mobileOnboardingPulse(isSettingsOnboardingTarget),
                     spacing = spacing
                 )
             }
@@ -549,6 +572,13 @@ private fun MenuRow(
             )
         }
     }
+}
+
+private fun mobileOnboardingMenuTargetTag(route: String): String {
+    if (route == Routes.AssignedRequest.route) {
+        return "mobile_onboarding_target_assigned_request_menu"
+    }
+    return "mobile_onboarding_target_menu_${route.replace('-', '_')}"
 }
 
 private fun bottomNavIconFor(item: Routes): ImageVector {

@@ -32,6 +32,7 @@ import com.neph.features.gatheringareas.data.GatheringAreasRepository
 import com.neph.features.gatheringareas.data.NearbyGatheringAreasResult
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
@@ -119,7 +120,9 @@ fun GatheringAreasScreen(
     onOpenSettings: (() -> Unit)?,
     onProfileClick: () -> Unit,
     profileBadgeText: String,
-    isAuthenticated: Boolean
+    isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -358,7 +361,9 @@ fun GatheringAreasScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing.lg)

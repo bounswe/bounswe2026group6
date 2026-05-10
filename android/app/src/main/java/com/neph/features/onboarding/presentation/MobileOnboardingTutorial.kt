@@ -1,13 +1,16 @@
 package com.neph.features.onboarding.presentation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
@@ -16,13 +19,23 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.neph.features.onboarding.data.MobileOnboardingPanelPlacement
 import com.neph.features.onboarding.data.MobileOnboardingStep
 import com.neph.ui.theme.LocalNephSpacing
+import kotlin.math.roundToInt
 
 @Composable
 fun MobileOnboardingGuide(
@@ -38,17 +51,46 @@ fun MobileOnboardingGuide(
     onFinish: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
+    val density = LocalDensity.current
     val isFirstStep = stepNumber <= 1
     val isLastStep = stepNumber >= totalSteps
     val progress = stepNumber.toFloat() / totalSteps.toFloat()
+    var dragOffsetPx by remember(step.id) { mutableStateOf(0f) }
+    var panelHeightPx by remember(step.id) { mutableStateOf(0f) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val containerHeightPx = with(density) { maxHeight.toPx() }
+        val topInsetPx = with(density) { 16.dp.toPx() }
+        val reservedBottomPx = with(density) { 140.dp.toPx() }
+        val dragBounds = calculateGuideDragBounds(
+            placement = step.panelPlacement,
+            containerHeightPx = containerHeightPx,
+            panelHeightPx = panelHeightPx,
+            topInsetPx = topInsetPx,
+            reservedBottomPx = reservedBottomPx
+        )
+
+        LaunchedEffect(dragBounds.start, dragBounds.endInclusive) {
+            dragOffsetPx = dragOffsetPx.coerceIn(dragBounds.start, dragBounds.endInclusive)
+        }
+
         Surface(
             modifier = Modifier
                 .align(step.panelPlacement.panelAlignment())
+                .offset { IntOffset(x = 0, y = dragOffsetPx.roundToInt()) }
                 .fillMaxWidth()
                 .padding(16.dp)
                 .navigationBarsPadding()
+                .onGloballyPositioned { coordinates ->
+                    panelHeightPx = coordinates.size.height.toFloat()
+                }
+                .pointerInput(step.id, dragBounds.start, dragBounds.endInclusive) {
+                    detectVerticalDragGestures { change, dragAmount ->
+                        change.consume()
+                        dragOffsetPx = (dragOffsetPx + dragAmount)
+                            .coerceIn(dragBounds.start, dragBounds.endInclusive)
+                    }
+                }
                 .testTag("mobile_onboarding_dialog"),
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surface,
@@ -182,5 +224,32 @@ private fun MobileOnboardingPanelPlacement.panelAlignment(): Alignment {
         MobileOnboardingPanelPlacement.TOP -> Alignment.TopCenter
         MobileOnboardingPanelPlacement.CENTER -> Alignment.Center
         MobileOnboardingPanelPlacement.BOTTOM -> Alignment.BottomCenter
+    }
+}
+
+private fun calculateGuideDragBounds(
+    placement: MobileOnboardingPanelPlacement,
+    containerHeightPx: Float,
+    panelHeightPx: Float,
+    topInsetPx: Float,
+    reservedBottomPx: Float
+): ClosedFloatingPointRange<Float> {
+    if (containerHeightPx <= 0f || panelHeightPx <= 0f) {
+        return 0f..0f
+    }
+
+    val baseY = when (placement) {
+        MobileOnboardingPanelPlacement.TOP -> topInsetPx
+        MobileOnboardingPanelPlacement.CENTER -> (containerHeightPx - panelHeightPx) / 2f
+        MobileOnboardingPanelPlacement.BOTTOM -> containerHeightPx - panelHeightPx - reservedBottomPx
+    }.coerceAtLeast(topInsetPx)
+
+    val minOffset = topInsetPx - baseY
+    val maxOffset = (containerHeightPx - reservedBottomPx - panelHeightPx) - baseY
+
+    return if (maxOffset < minOffset) {
+        0f..0f
+    } else {
+        minOffset..maxOffset
     }
 }

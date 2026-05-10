@@ -292,7 +292,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -315,7 +317,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -338,7 +342,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -363,7 +369,9 @@ fun AppNavGraph(
                 onNavigateToLogin = {
                     navigateToLogin()
                 },
-                profileBadgeText = profileBadgeText
+                profileBadgeText = profileBadgeText,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -386,7 +394,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -411,7 +421,9 @@ fun AppNavGraph(
                 onNavigateToLogin = {
                     navigateToLogin()
                 },
-                profileBadgeText = profileBadgeText
+                profileBadgeText = profileBadgeText,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -447,7 +459,9 @@ fun AppNavGraph(
                         launchSingleTop = true
                     }
                 },
-                onRestartMobileOnboarding = onRestartMobileOnboarding
+                onRestartMobileOnboarding = onRestartMobileOnboarding,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 

@@ -111,6 +111,49 @@ class MobileOnboardingAndroidE2ETest {
         waitForText("There is no assigned request for you right now.")
         waitForText("No assigned request right now.")
 
+        continueThroughDrawerPage(
+            pageTitle = "Emergency Numbers",
+            menuTargetTag = "mobile_onboarding_target_menu_emergency_info",
+            menuInstruction = "Tap Emergency Numbers",
+            pageText = "Emergency Contact List"
+        )
+        continueThroughDrawerPage(
+            pageTitle = "Help Request Map",
+            menuTargetTag = "mobile_onboarding_target_menu_help_request_map",
+            menuInstruction = "Tap Help Request Map",
+            pageText = "Showing waiting help requests"
+        )
+        continueThroughDrawerPage(
+            pageTitle = "Nearby Users",
+            menuTargetTag = "mobile_onboarding_target_menu_nearby_users",
+            menuInstruction = "Tap Nearby Users",
+            pageText = "Based on your residential"
+        )
+        continueThroughDrawerPage(
+            pageTitle = "Gathering Areas",
+            menuTargetTag = "mobile_onboarding_target_menu_gathering_areas",
+            menuInstruction = "Tap Gathering Areas",
+            pageText = "Location-based assembly"
+        )
+        continueThroughDrawerPage(
+            pageTitle = "Safety Circles",
+            menuTargetTag = "mobile_onboarding_target_menu_safety_circles",
+            menuInstruction = "Tap Safety Circles",
+            pageText = "Create Circle"
+        )
+        continueThroughDrawerPage(
+            pageTitle = "Notifications",
+            menuTargetTag = "mobile_onboarding_target_menu_notifications",
+            menuInstruction = "Tap Notifications",
+            pageText = "Notifications"
+        )
+        continueThroughDrawerPage(
+            pageTitle = "Settings",
+            menuTargetTag = "mobile_onboarding_target_menu_settings",
+            menuInstruction = "Tap Settings",
+            pageText = "Appearance"
+        )
+
         composeRule.onNodeWithTag("mobile_onboarding_finish").performClick()
         waitUntilTagGone("mobile_onboarding_dialog")
         waitForText("I need help now")
@@ -118,6 +161,26 @@ class MobileOnboardingAndroidE2ETest {
         composeRule.activityRule.scenario.recreate()
         waitForText("I need help now")
         waitUntilTagGone("mobile_onboarding_dialog")
+    }
+
+
+    private fun continueThroughDrawerPage(
+        pageTitle: String,
+        menuTargetTag: String,
+        menuInstruction: String,
+        pageText: String
+    ) {
+        composeRule.onNodeWithTag("mobile_onboarding_continue").performClick()
+        waitForGuideTitle("Open the Menu")
+        waitForTag("mobile_onboarding_target_menu")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_menu").performClick()
+        waitForText(menuInstruction)
+        waitForTag(menuTargetTag)
+
+        composeRule.onNodeWithTag(menuTargetTag).performScrollTo().performClick()
+        waitForGuideTitle(pageTitle)
+        waitForText(pageText)
     }
 
     private fun waitForGuideTitle(title: String, timeoutMillis: Long = 15_000) {

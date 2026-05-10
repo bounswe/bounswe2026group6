@@ -35,6 +35,7 @@ import com.neph.features.safetycircles.data.SafetyCircleInvite
 import com.neph.features.safetycircles.data.SafetyCircleMember
 import com.neph.features.safetycircles.data.SafetyCircleSummary
 import com.neph.features.safetycircles.data.SafetyCirclesRepository
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
@@ -52,7 +53,9 @@ fun SafetyCirclesScreen(
     onProfileClick: () -> Unit,
     onNavigateToLogin: () -> Unit,
     profileBadgeText: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -282,7 +285,9 @@ fun SafetyCirclesScreen(
         profileBadgeText = profileBadgeText,
         profileLabel = "Profile",
         contentMaxWidth = 560.dp,
-        contentAlignment = Alignment.TopCenter
+        contentAlignment = Alignment.TopCenter,
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
