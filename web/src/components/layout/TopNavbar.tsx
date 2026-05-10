@@ -5,10 +5,12 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { useTheme } from "@/components/theme/ThemeProvider";
 import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
 import { fetchUnreadNotificationCount } from "@/lib/notifications";
 import { fetchMyProfile } from "@/lib/profile";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const navItemsOrdered = [
     { label: "Home", href: "/home" },
@@ -217,13 +219,15 @@ export function TopNavbar() {
             ? `Notifications (${unreadCount} unread)`
             : "Notifications";
 
+    const { isDarkTheme } = useTheme();
+
     return (
         <header className="top-navbar">
             <PageContainer className="top-navbar-inner">
                 <Link href="/home" className="top-navbar-brand">
                     NEPH
                     <Image
-                        src="/neph_logo_only.png"
+                        src={isDarkTheme ? "/dark_neph_logo_only.png" : "/neph_logo_only.png"}
                         alt="NEPH icon"
                         width={48}
                         height={48}
@@ -244,6 +248,7 @@ export function TopNavbar() {
                 </nav>
 
                 <div className="top-navbar-right">
+                    {isAuthenticated ? <ThemeToggle variant="navbar" /> : null}
                     <Link
                         href="/notifications"
                         className={`top-navbar-notification-button${pathname === "/notifications" || pathname.startsWith("/notifications/") ? " is-active" : ""}`}

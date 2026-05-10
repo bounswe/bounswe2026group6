@@ -207,7 +207,7 @@ fun PrivacySecurityScreen(
                         verticalArrangement = Arrangement.spacedBy(spacing.md)
                     ) {
                         Text(
-                            text = "Choose who can see profile, health, and location details.",
+                            text = "Choose who can see profile and location details.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -216,14 +216,6 @@ fun PrivacySecurityScreen(
                             value = profileVisibility,
                             onValueChange = { profileVisibility = it },
                             label = "Profile visibility",
-                            options = visibilityOptions,
-                            vertical = true
-                        )
-
-                        AppRadioGroup(
-                            value = healthInfoVisibility,
-                            onValueChange = { healthInfoVisibility = it },
-                            label = "Health information visibility",
                             options = visibilityOptions,
                             vertical = true
                         )
@@ -240,7 +232,7 @@ fun PrivacySecurityScreen(
                             checked = shareLocation,
                             onCheckedChange = { shareLocation = it },
                             label = "Share Current Location",
-                            description = "Allow emergency coordination flows to use your saved current-location status."
+                            description = "Used to make your current or saved location available for emergency coordination features, such as nearby visibility and location-aware support. This is a sharing preference, not where you edit your saved address."
                         )
                     }
                 }

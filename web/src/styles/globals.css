@@ -203,6 +203,25 @@ textarea::placeholder {
     transform: translateY(-1px);
 }
 
+.theme-toggle-navbar {
+    display: inline-flex;
+    height: 40px;
+    width: 40px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.theme-toggle-navbar:hover {
+    color: var(--primary-500);
+    background: var(--surface-soft);
+}
+
 .page-bg {
     background: var(--background-page);
 }

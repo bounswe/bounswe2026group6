@@ -10,10 +10,12 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.neph.core.theme.ThemePreferenceStore
@@ -144,9 +147,13 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(spacing.md)
                 ) {
                     androidx.compose.material3.Icon(
-                        imageVector = Icons.Filled.DarkMode,
+                        imageVector = if (darkThemeEnabled) Icons.Filled.DarkMode else Icons.Filled.WbSunny,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (darkThemeEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -162,7 +169,27 @@ fun SettingsScreen(
                     }
                     Switch(
                         checked = darkThemeEnabled,
-                        onCheckedChange = { ThemePreferenceStore.setDarkThemeEnabled(it) }
+                        onCheckedChange = { ThemePreferenceStore.setDarkThemeEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.outlineVariant,
+                            uncheckedBorderColor = MaterialTheme.colorScheme.outline
+                        ),
+                        thumbContent = {
+                            androidx.compose.material3.Icon(
+                                imageVector = if (darkThemeEnabled) Icons.Filled.DarkMode else Icons.Filled.WbSunny,
+                                contentDescription = null,
+                                modifier = Modifier.size(SwitchDefaults.IconSize),
+                                tint = if (darkThemeEnabled) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outline
+                                }
+                            )
+                        }
                     )
                 }
             }

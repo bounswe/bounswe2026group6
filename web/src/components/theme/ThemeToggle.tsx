@@ -3,18 +3,23 @@
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { cn } from "@/lib/cn";
 
+type ThemeToggleVariant = "corner" | "navbar";
+
 type ThemeToggleProps = {
     className?: string;
+    variant?: ThemeToggleVariant;
 };
 
-export function ThemeToggle({ className }: ThemeToggleProps) {
+export function ThemeToggle({ className, variant = "corner" }: ThemeToggleProps) {
     const { isDarkTheme, setTheme } = useTheme();
     const nextTheme = isDarkTheme ? "light" : "dark";
+
+    const baseClass = variant === "navbar" ? "theme-toggle-navbar" : "theme-toggle-corner";
 
     return (
         <button
             type="button"
-            className={cn("theme-toggle-corner", className)}
+            className={cn(baseClass, className)}
             aria-label={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
             title={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
             onClick={() => setTheme(nextTheme)}
