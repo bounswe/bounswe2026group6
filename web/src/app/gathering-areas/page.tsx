@@ -32,6 +32,7 @@ const ResourceLoadingMessage = "Loading resources in this area...";
 const ResourceEmptyMessage = "No resources were found in this visible area.";
 const ResourceErrorMessage = "Resources could not be loaded for this area. Please try again.";
 const ResourceProviderUnavailableMessage = "Gathering areas provider is temporarily unavailable. Please retry.";
+const CurrentLocationResolvingMessage = "Resolving your current location...";
 
 type CategoryOption = {
     key: string;
@@ -433,7 +434,7 @@ export default function GatheringAreasPage() {
             return;
         }
 
-        setInfoMessage("Resolving your current location...");
+        setInfoMessage(CurrentLocationResolvingMessage);
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -505,7 +506,9 @@ export default function GatheringAreasPage() {
         setLastFetchedViewportKey(null);
         setError("");
         setFetchState("idle");
-        setInfoMessage(ResourceZoomedOutMessage);
+        setInfoMessage((current) =>
+            current === CurrentLocationResolvingMessage ? current : ResourceZoomedOutMessage
+        );
     }, []);
 
     React.useEffect(() => {
