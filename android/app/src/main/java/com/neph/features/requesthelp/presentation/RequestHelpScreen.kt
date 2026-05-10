@@ -1278,6 +1278,7 @@ fun RequestHelpScreen(
                         ),
                         label = "I confirm this information can be shared for emergency coordination.",
                         enabled = !isMobileOnboardingActive || isConfirmationOnboardingTarget,
+                        testTag = "mobile_onboarding_confirmation_checkbox",
                         error = fieldErrors.confirmationAccepted
                     )
                 }

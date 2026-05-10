@@ -2,6 +2,7 @@ package com.neph.e2e
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -82,9 +83,12 @@ class MobileOnboardingAndroidE2ETest {
         composeRule.onNodeWithTag("mobile_onboarding_target_fire_risk").performScrollTo().performClick()
         waitForGuideTitle("Confirmation")
         waitForText("You marked fire")
+        waitForTag("mobile_onboarding_confirmation_checkbox")
 
-        composeRule.activityRule.scenario.recreate()
-        waitForGuideTitle("Confirmation")
+        composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").performScrollTo().performClick()
+        waitForGuideTitle("Send Help Request")
+        composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").assertIsOn()
+        waitForTag("mobile_onboarding_target_send_help_request")
 
         composeRule.onNodeWithTag("mobile_onboarding_skip").performClick()
         waitUntilTagGone("mobile_onboarding_dialog")

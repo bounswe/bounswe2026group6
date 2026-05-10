@@ -1,13 +1,13 @@
 package com.neph
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -21,7 +21,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -165,7 +164,7 @@ fun NephApp() {
     )
 
     NephTheme(darkTheme = darkThemeEnabled) {
-        val activity = LocalContext.current as? Activity
+        val activity = LocalActivity.current
         val navController = rememberNavController()
         val currentBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = currentBackStackEntry?.destination?.route
@@ -191,7 +190,10 @@ fun NephApp() {
             activeMobileOnboardingStepId = stepId
             MobileOnboardingStore.setCurrentStepForCurrentUser(stepId)
             MobileOnboardingJourney.stepFor(stepId, isAuthenticated)?.let { step ->
-                navigateForMobileOnboarding(step.route)
+                val routeBase = currentRoute?.substringBefore('?')
+                if (routeBase != step.route) {
+                    navigateForMobileOnboarding(step.route)
+                }
             }
         }
 
