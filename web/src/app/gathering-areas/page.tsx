@@ -711,7 +711,7 @@ export default function GatheringAreasPage() {
                                         </p>
                                     ) : (
                                         <p className="gathering-areas-empty-detail">
-                                            {infoMessage || ResourceInitialMessage}
+                                            {ResourceInitialMessage}
                                         </p>
                                     )}
                                 </div>
