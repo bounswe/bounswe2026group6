@@ -29,6 +29,7 @@ out/
 web/.next/
 web/out/
 web/next-env.d.ts
+*.tsbuildinfo
 
 # General build outputs
 dist/
