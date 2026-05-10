@@ -5,6 +5,7 @@ const { OAuth2Client } = require('google-auth-library');
 const {
   findUserByEmail,
   createUser,
+  releaseDeletedUserIdentity,
   markEmailVerified,
   findUserById,
   findAdminByUserId,
@@ -66,9 +67,13 @@ async function signupUser({ email, password, acceptedTerms }) {
   const existingUser = await findUserByEmail(normalizedEmail);
 
   if (existingUser) {
-    const error = new Error('Email already exists');
-    error.code = 'EMAIL_ALREADY_EXISTS';
-    throw error;
+    if (existingUser.is_deleted) {
+      await releaseDeletedUserIdentity(existingUser.user_id);
+    } else {
+      const error = new Error('Email already exists');
+      error.code = 'EMAIL_ALREADY_EXISTS';
+      throw error;
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -349,36 +354,34 @@ async function loginWithGoogle({ idToken, mode = 'login', acceptedTerms = false 
   }
 
   const normalizedEmail = email.toLowerCase().trim();
-  const existingByGoogleId = await findUserByGoogleId(googleId);
+  let existingByGoogleId = await findUserByGoogleId(googleId);
   let existingByEmail = null;
 
   if (existingByGoogleId) {
     if (existingByGoogleId.is_deleted) {
-      const error = new Error('This account has been deleted');
-      error.code = 'ACCOUNT_DELETED';
-      throw error;
-    }
-    if (existingByGoogleId.is_banned) {
+      await releaseDeletedUserIdentity(existingByGoogleId.user_id);
+      existingByGoogleId = null;
+      existingByEmail = await findUserByEmail(normalizedEmail);
+    } else if (existingByGoogleId.is_banned) {
       const error = new Error('Your account is banned. Please contact support.');
       error.code = 'USER_BANNED';
       throw error;
-    }
-    if (mode === 'signup') {
+    } else if (mode === 'signup') {
       const error = new Error('An account with this Google email already exists. Please sign in instead.');
       error.code = 'GOOGLE_ACCOUNT_EXISTS';
       throw error;
     }
-  } else {
+  }
+
+  if (!existingByGoogleId && !existingByEmail) {
     existingByEmail = await findUserByEmail(normalizedEmail);
   }
 
   if (existingByEmail) {
     if (existingByEmail.is_deleted) {
-      const error = new Error('This account has been deleted');
-      error.code = 'ACCOUNT_DELETED';
-      throw error;
-    }
-    if (existingByEmail.is_banned) {
+      await releaseDeletedUserIdentity(existingByEmail.user_id);
+      existingByEmail = null;
+    } else if (existingByEmail.is_banned) {
       const error = new Error('Your account is banned. Please contact support.');
       error.code = 'USER_BANNED';
       throw error;

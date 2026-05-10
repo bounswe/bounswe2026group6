@@ -23,6 +23,7 @@ const {
 const {
   findUserByEmail,
   createUser,
+  releaseDeletedUserIdentity,
   markEmailVerified,
   findUserById,
   findAdminByUserId,
@@ -74,6 +75,41 @@ describe('signupUser', () => {
       password: '12345678',
       acceptedTerms: true,
     })).rejects.toMatchObject({ code: 'EMAIL_ALREADY_EXISTS' });
+  });
+
+  test('creates a fresh account after releasing a deleted email identity', async () => {
+    findUserByEmail.mockResolvedValue({
+      user_id: 'deleted-uuid',
+      email: 'test@test.com',
+      is_deleted: true,
+    });
+    releaseDeletedUserIdentity.mockResolvedValue({
+      user_id: 'deleted-uuid',
+      email: 'deleted+abc@deleted.invalid',
+      google_id: null,
+      is_deleted: true,
+    });
+    createUser.mockResolvedValue({
+      user_id: 'uuid-1',
+      email: 'test@test.com',
+      is_email_verified: false,
+      accepted_terms: true,
+      created_at: new Date(),
+    });
+    sendVerificationEmail.mockResolvedValue();
+
+    const result = await signupUser({
+      email: 'test@test.com',
+      password: '12345678',
+      acceptedTerms: true,
+    });
+
+    expect(releaseDeletedUserIdentity).toHaveBeenCalledWith('deleted-uuid');
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'test-uuid-1234',
+      email: 'test@test.com',
+    }));
+    expect(result.user.email).toBe('test@test.com');
   });
 
   test('throws if email sending fails', async () => {
