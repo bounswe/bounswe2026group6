@@ -313,6 +313,14 @@ fun HomeScreen(
         scope.launch {
             requestHelpLoading = true
             try {
+                if (isAuthenticated && !sessionToken.isNullOrBlank()) {
+                    runCatching {
+                        SafetyStatusRepository.clearSafeStatusForRequestHelp(sessionToken)
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
+                    }
+                }
+
                 val hasActiveRequest = try {
                     if (!sessionToken.isNullOrBlank()) {
                         RequestHelpRepository.hasActiveHelpRequest(sessionToken)
