@@ -1,5 +1,7 @@
+"use client";
 import * as React from "react";
 import Image from "next/image";
+import { useTheme } from "@/components/theme/ThemeProvider";
 import { AuthCard } from "@/components/ui/display/AuthCard";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AuthShowcase } from "@/components/feature/auth/AuthShowcase";
@@ -11,6 +13,8 @@ type AuthLayoutProps = {
 };
 
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
+    const { isDarkTheme } = useTheme();
+
     return (
         <div className="min-h-screen bg-[color:var(--background-page)]">
             <PageContainer className="py-10">
@@ -23,7 +27,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
                         <AuthCard className="w-full max-w-md">
                             <div className="mb-6 flex flex-col items-center text-center">
                                 <Image
-                                    src="/neph_logo.png"
+                                    src={isDarkTheme ? "/dark_neph_logo.png" : "/neph_logo.png"}
                                     alt="NEPH logo"
                                     width={180}
                                     height={52}

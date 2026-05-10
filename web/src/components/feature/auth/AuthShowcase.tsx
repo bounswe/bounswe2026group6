@@ -112,7 +112,7 @@ export function AuthShowcase() {
                 className="absolute -left-16 bottom-0 h-40 w-40 rounded-full opacity-50"
                 style={{ backgroundColor: "var(--hero-from)" }}
             />
-            <div className="absolute right-8 top-10 h-28 w-28 rounded-full bg-white/10" />
+
             <div className="absolute bottom-16 right-14 h-16 w-16 rounded-full bg-white/10" />
         </section>
     );
