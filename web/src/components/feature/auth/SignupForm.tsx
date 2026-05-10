@@ -131,13 +131,8 @@ export function SignupForm() {
         setError("");
         setInfo("");
 
-        if (!acceptedTerms) {
-            setError("You must accept the terms to continue.");
-            return;
-        }
-
         try {
-            const result = await googleLogin(idToken, "signup", acceptedTerms);
+            const result = await googleLogin(idToken, "signup");
             setAccessToken(result.accessToken);
             try {
                 const profile = await fetchMyProfile(result.accessToken);
@@ -218,7 +213,6 @@ export function SignupForm() {
                     >
                         Continue with Email
                     </SecondaryButton>
-                    {termsConsent}
                 </div>
             ) : (
                 <form className="flex flex-col gap-4" onSubmit={handleSubmit}>

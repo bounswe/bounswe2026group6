@@ -131,11 +131,6 @@ fun SignupScreen(
             return
         }
 
-        if (!acceptedTerms) {
-            error = "You must accept the terms to continue."
-            return
-        }
-
         loading = true
         scope.launch {
             try {
@@ -174,8 +169,7 @@ fun SignupScreen(
                 when (
                     AuthRepository.loginWithGoogle(
                         googleCredential.idToken,
-                        mode = "signup",
-                        acceptedTerms = acceptedTerms
+                        mode = "signup"
                     )
                 ) {
                     LoginDestination.PROFILE -> onGoogleSignupSuccess()
@@ -343,6 +337,8 @@ fun SignupScreen(
                     testTag = "signup_confirm_password"
                 )
 
+                TermsConsentRow()
+
                 if (error.isNotBlank()) {
                     Text(
                         text = error,
@@ -366,7 +362,5 @@ fun SignupScreen(
         if (!showEmailForm && info.isNotBlank()) {
             HelperText(text = info)
         }
-
-        TermsConsentRow()
     }
 }
