@@ -426,7 +426,7 @@ fun AppNavGraph(
                     }
                 },
                 onAccountDeleted = {
-                    navController.navigate(Routes.Welcome.route) {
+                    navController.navigate(Routes.Login.route) {
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
