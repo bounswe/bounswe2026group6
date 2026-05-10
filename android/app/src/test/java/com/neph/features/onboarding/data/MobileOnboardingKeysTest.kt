@@ -37,6 +37,8 @@ class MobileOnboardingKeysTest {
         val guestSteps = MobileOnboardingJourney.availableSteps(isAuthenticated = false)
 
         assertEquals(MobileOnboardingStepId.HOME_DASHBOARD, guestSteps.first().id)
+        assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU })
+        assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST })
         assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.ASSIGNED_REQUESTS })
         assertFalse(guestSteps.any { it.id == MobileOnboardingStepId.PROFILE_PRIVACY })
     }
@@ -52,19 +54,14 @@ class MobileOnboardingKeysTest {
                 MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
                 MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
                 MobileOnboardingStepId.REQUEST_HELP_SEND,
-                MobileOnboardingStepId.MY_HELP_REQUESTS,
-                MobileOnboardingStepId.HELP_REQUEST_MAP,
-                MobileOnboardingStepId.GATHERING_AREAS,
-                MobileOnboardingStepId.EMERGENCY_NUMBERS,
-                MobileOnboardingStepId.NEWS,
-                MobileOnboardingStepId.VOLUNTEER_AVAILABILITY,
-                MobileOnboardingStepId.ASSIGNED_REQUESTS,
-                MobileOnboardingStepId.PROFILE_PRIVACY
+                MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU,
+                MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST,
+                MobileOnboardingStepId.ASSIGNED_REQUESTS
             ),
             authenticatedSteps.map { it.id }
         )
         assertEquals(Routes.RequestHelp.route, authenticatedSteps[1].route)
-        assertEquals(Routes.Profile.route, authenticatedSteps.last().route)
+        assertEquals(Routes.AssignedRequest.route, authenticatedSteps.last().route)
     }
 
     @Test

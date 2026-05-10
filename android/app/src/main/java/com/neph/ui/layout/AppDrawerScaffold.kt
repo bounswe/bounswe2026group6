@@ -66,10 +66,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import com.neph.features.notifications.data.NotificationsBadge
+import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.onboarding.presentation.mobileOnboardingPulse
 import com.neph.navigation.Routes
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephSpacing
@@ -97,6 +101,8 @@ fun AppDrawerScaffold(
     contentScrollable: Boolean = !contentFillMaxSize,
     contentAlignment: Alignment = Alignment.TopCenter,
     alertCount: Int = 0,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
     topBarActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit
 ) {
@@ -108,6 +114,14 @@ fun AppDrawerScaffold(
     val effectiveAlertCount = maxOf(alertCount, badgeUnread)
 
     var menuOpen by remember { mutableStateOf(false) }
+    val isOpenMenuOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU
+    val isSelectAssignedOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST
+    val isMobileOnboardingActive = mobileOnboardingStepId != null
+
+    fun completeMobileOnboardingStep(stepId: MobileOnboardingStepId) {
+        val message = MobileOnboardingJourney.stepFor(stepId, isAuthenticated = true)?.completionMessage
+        onMobileOnboardingStepCompleted(message)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -150,7 +164,19 @@ fun AppDrawerScaffold(
                         // Hamburger menu — opens the slide-up panel
                         NavigationBarItem(
                             selected = menuOpen,
-                            onClick = { menuOpen = !menuOpen },
+                            onClick = {
+                                if (isMobileOnboardingActive && !isOpenMenuOnboardingTarget) {
+                                    return@NavigationBarItem
+                                }
+
+                                menuOpen = !menuOpen
+                                if (isOpenMenuOnboardingTarget) {
+                                    completeMobileOnboardingStep(MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU)
+                                }
+                            },
+                            modifier = Modifier
+                                .testTag("mobile_onboarding_target_menu")
+                                .mobileOnboardingPulse(isOpenMenuOnboardingTarget),
                             icon = {
                                 Icon(
                                     imageVector = Icons.Filled.Menu,
@@ -176,6 +202,7 @@ fun AppDrawerScaffold(
                                 currentRoute = currentRoute,
                                 effectiveAlertCount = effectiveAlertCount,
                                 itemColors = itemColors,
+                                mobileOnboardingActive = isMobileOnboardingActive,
                                 onNavigateToRoute = onNavigateToRoute
                             )
                         }
@@ -185,6 +212,7 @@ fun AppDrawerScaffold(
                             currentRoute = currentRoute,
                             effectiveAlertCount = effectiveAlertCount,
                             itemColors = itemColors,
+                            mobileOnboardingActive = isMobileOnboardingActive,
                             onNavigateToRoute = onNavigateToRoute
                         )
 
@@ -194,6 +222,7 @@ fun AppDrawerScaffold(
                                 currentRoute = currentRoute,
                                 effectiveAlertCount = effectiveAlertCount,
                                 itemColors = itemColors,
+                                mobileOnboardingActive = isMobileOnboardingActive,
                                 onNavigateToRoute = onNavigateToRoute
                             )
                         }
@@ -237,7 +266,11 @@ fun AppDrawerScaffold(
         // Translucent scrim + small slide-up menu anchored bottom-left
         MenuOverlay(
             visible = menuOpen,
-            onDismiss = { menuOpen = false },
+            onDismiss = {
+                if (!isMobileOnboardingActive) {
+                    menuOpen = false
+                }
+            },
             spacing = spacing,
             drawerItems = safeDrawerItems,
             currentRoute = currentRoute,
@@ -260,7 +293,9 @@ fun AppDrawerScaffold(
                     menuOpen = false
                     it()
                 }
-            }
+            },
+            mobileOnboardingStepId = mobileOnboardingStepId,
+            onMobileOnboardingStepCompleted = ::completeMobileOnboardingStep
         )
     }
 }
@@ -271,6 +306,7 @@ private fun RowScope.BottomNavRouteItem(
     currentRoute: String,
     effectiveAlertCount: Int,
     itemColors: NavigationBarItemColors,
+    mobileOnboardingActive: Boolean,
     onNavigateToRoute: (String) -> Unit
 ) {
     val selected = currentRoute == item.route
@@ -278,6 +314,10 @@ private fun RowScope.BottomNavRouteItem(
     NavigationBarItem(
         selected = selected,
         onClick = {
+            if (mobileOnboardingActive) {
+                return@NavigationBarItem
+            }
+
             if (currentRoute != item.route) {
                 onNavigateToRoute(item.route)
             }
@@ -327,8 +367,13 @@ private fun BoxScope.MenuOverlay(
     onProfileClick: (() -> Unit)?,
     profileBadgeText: String,
     profileLabel: String,
-    onOpenSettings: (() -> Unit)?
+    onOpenSettings: (() -> Unit)?,
+    mobileOnboardingStepId: MobileOnboardingStepId?,
+    onMobileOnboardingStepCompleted: (MobileOnboardingStepId) -> Unit
 ) {
+    val isSelectAssignedOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST
+    val isMobileOnboardingActive = mobileOnboardingStepId != null
+
     // Translucent scrim — taps outside dismiss
     AnimatedVisibility(
         visible = visible,
@@ -417,7 +462,23 @@ private fun BoxScope.MenuOverlay(
                     icon = bottomNavIconFor(item),
                     label = item.drawerLabel.orEmpty(),
                     selected = currentRoute == item.route,
-                    onClick = { onSelect(item.route) },
+                    onClick = {
+                        if (isSelectAssignedOnboardingTarget && item == Routes.AssignedRequest) {
+                            onMobileOnboardingStepCompleted(MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST)
+                        }
+                        onSelect(item.route)
+                    },
+                    enabled = !isMobileOnboardingActive ||
+                        (isSelectAssignedOnboardingTarget && item == Routes.AssignedRequest),
+                    modifier = Modifier
+                        .then(
+                            if (item == Routes.AssignedRequest) {
+                                Modifier.testTag("mobile_onboarding_target_assigned_request_menu")
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .mobileOnboardingPulse(isSelectAssignedOnboardingTarget && item == Routes.AssignedRequest),
                     spacing = spacing
                 )
             }
@@ -432,6 +493,7 @@ private fun BoxScope.MenuOverlay(
                     label = "Settings",
                     selected = false,
                     onClick = onOpenSettings,
+                    enabled = !isMobileOnboardingActive,
                     spacing = spacing
                 )
             }
@@ -445,17 +507,21 @@ private fun MenuRow(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     spacing: NephSpacing
 ) {
     val contentColor = if (selected) {
         MaterialTheme.colorScheme.primary
+    } else if (!enabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
     } else {
         MaterialTheme.colorScheme.onSurface
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = spacing.md, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(spacing.md)

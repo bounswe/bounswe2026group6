@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -527,7 +529,9 @@ fun HomeScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -538,6 +542,10 @@ fun HomeScreen(
                 displayName = profileDisplayName,
                 safetyStatus = safetyStatusState.status
             )
+
+            if (isRequestHelpOnboardingTarget) {
+                MobileOnboardingWelcomeMessage()
+            }
 
             EmergencyHelpAction(
                 loading = requestHelpLoading,
@@ -770,6 +778,56 @@ private fun EmergencyHelpAction(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
             )
+        }
+    }
+}
+
+@Composable
+private fun MobileOnboardingWelcomeMessage() {
+    val spacing = LocalNephSpacing.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("mobile_onboarding_welcome_message")
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .blur(18.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f),
+                    shape = RoundedCornerShape(24.dp)
+                )
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                    shape = RoundedCornerShape(24.dp)
+                ),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            tonalElevation = 6.dp,
+            shadowElevation = 2.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs)
+            ) {
+                Text(
+                    text = "Welcome to NEPH",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "This short app guide is a safe practice flow. Follow the highlighted controls; it will not create a real help request.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

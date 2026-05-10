@@ -860,10 +860,12 @@ fun RequestHelpScreen(
         }
 
         try {
-            val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
-            if (hasActiveRequest) {
-                onNavigateToMyHelpRequests()
-                return@LaunchedEffect
+            if (!isMobileOnboardingActive) {
+                val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                if (hasActiveRequest) {
+                    onNavigateToMyHelpRequests()
+                    return@LaunchedEffect
+                }
             }
 
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
@@ -901,6 +903,15 @@ fun RequestHelpScreen(
     }
 
     fun handleSubmit() {
+        if (isSendOnboardingTarget) {
+            fieldErrors = RequestHelpFieldErrors()
+            errorMessage = ""
+            infoMessage = "Practice complete. No real help request was saved."
+            mapActionMessage = ""
+            completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_SEND)
+            return
+        }
+
         val nextFieldErrors = validateForm(formState)
         fieldErrors = nextFieldErrors
         errorMessage = ""

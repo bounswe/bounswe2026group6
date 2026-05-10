@@ -67,6 +67,7 @@ class MobileOnboardingAndroidE2ETest {
     fun pendingAuthenticatedUser_canFollowGuidedCoreConcepts_once() {
         waitForText("I need help now")
         waitForTag("mobile_onboarding_dialog")
+        waitForTag("mobile_onboarding_welcome_message")
         composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals("Home Dashboard")
         composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
 
@@ -90,11 +91,26 @@ class MobileOnboardingAndroidE2ETest {
         composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").assertIsOn()
         waitForTag("mobile_onboarding_target_send_help_request")
 
-        composeRule.onNodeWithTag("mobile_onboarding_skip").performClick()
+        composeRule.onNodeWithTag("mobile_onboarding_target_send_help_request").performScrollTo().performClick()
+        waitForGuideTitle("Open the Menu")
+        waitForText("No real help request was saved")
+        waitForTag("mobile_onboarding_target_menu")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_menu").performClick()
+        waitForGuideTitle("Assigned Request")
+        waitForText("Tap Assigned Request")
+        waitForTag("mobile_onboarding_target_assigned_request_menu")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_assigned_request_menu").performClick()
+        waitForGuideTitle("Assigned Requests")
+        waitForText("There is no assigned request for you right now.")
+        waitForText("No assigned request right now.")
+
+        composeRule.onNodeWithTag("mobile_onboarding_finish").performClick()
         waitUntilTagGone("mobile_onboarding_dialog")
 
         composeRule.activityRule.scenario.recreate()
-        waitForText("Request Help")
+        waitForText("Assigned Request")
         waitUntilTagGone("mobile_onboarding_dialog")
     }
 

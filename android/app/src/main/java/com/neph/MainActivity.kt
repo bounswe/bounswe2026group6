@@ -220,6 +220,12 @@ fun NephApp() {
             }
         }
 
+        fun updateMobileOnboardingFeedback(message: String?) {
+            if (showMobileOnboarding) {
+                mobileOnboardingFeedback = message
+            }
+        }
+
         LaunchedEffect(accessToken, currentRoute) {
             val shouldShow = shouldShowMobileOnboardingForRoute(currentRoute)
             showMobileOnboarding = shouldShow
@@ -228,6 +234,14 @@ fun NephApp() {
             } else {
                 mobileOnboardingFeedback = null
                 null
+            }
+        }
+
+        LaunchedEffect(showMobileOnboarding, activeMobileOnboardingStepId, currentRoute, isAuthenticated) {
+            val step = activeMobileOnboardingStepId?.let { MobileOnboardingJourney.stepFor(it, isAuthenticated) }
+            val routeBase = currentRoute?.substringBefore('?')
+            if (showMobileOnboarding && step != null && routeBase != step.route) {
+                navigateForMobileOnboarding(step.route)
             }
         }
 
@@ -273,19 +287,25 @@ fun NephApp() {
             },
             onRestartMobileOnboarding = ::restartMobileOnboarding,
             mobileOnboardingStepId = activeMobileOnboardingStepId.takeIf { showMobileOnboarding },
-            onMobileOnboardingStepCompleted = ::completeMobileOnboardingStep
+            onMobileOnboardingStepCompleted = ::completeMobileOnboardingStep,
+            onMobileOnboardingFeedbackChanged = ::updateMobileOnboardingFeedback
         )
 
         val activeStepId = activeMobileOnboardingStepId
         val activeStep = activeStepId?.let { MobileOnboardingJourney.stepFor(it, isAuthenticated) }
-        if (showMobileOnboarding && activeStepId != null && activeStep != null) {
+        val activeRouteBase = currentRoute?.substringBefore('?')
+        if (
+            showMobileOnboarding &&
+            activeStepId != null &&
+            activeStep != null &&
+            activeRouteBase == activeStep.route
+        ) {
             val (stepNumber, totalSteps) = MobileOnboardingJourney.progressFor(activeStepId, isAuthenticated)
-            val routeBase = currentRoute?.substringBefore('?')
             MobileOnboardingGuide(
                 step = activeStep,
                 stepNumber = stepNumber,
                 totalSteps = totalSteps,
-                isOnTargetRoute = routeBase == activeStep.route,
+                isOnTargetRoute = true,
                 feedbackMessage = mobileOnboardingFeedback,
                 onNavigateToStep = {
                     navigateForMobileOnboarding(activeStep.route)

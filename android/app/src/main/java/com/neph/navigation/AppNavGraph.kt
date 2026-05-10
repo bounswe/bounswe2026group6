@@ -46,7 +46,8 @@ fun AppNavGraph(
     startDestination: String = Routes.Welcome.route,
     onRestartMobileOnboarding: () -> Unit = {},
     mobileOnboardingStepId: MobileOnboardingStepId? = null,
-    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    onMobileOnboardingFeedbackChanged: (String?) -> Unit = {}
 ) {
     val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
     val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
@@ -222,7 +223,10 @@ fun AppNavGraph(
                 profileBadgeText = profileBadgeText,
                 onNavigateToLogin = {
                     navigateToLogin()
-                }
+                },
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                onMobileOnboardingFeedbackChanged = onMobileOnboardingFeedbackChanged
             )
         }
 
