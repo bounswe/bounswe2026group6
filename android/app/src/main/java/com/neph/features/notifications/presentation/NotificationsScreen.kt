@@ -29,6 +29,7 @@ import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.notifications.data.NotificationUiModel
 import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.notifications.data.NotificationsRepository
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.display.EmptyState
 import com.neph.ui.components.display.SectionCard
@@ -49,7 +50,9 @@ fun NotificationsScreen(
     onOpenSettings: (() -> Unit)?,
     onProfileClick: () -> Unit,
     profileBadgeText: String,
-    isAuthenticated: Boolean
+    isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val coroutineScope = rememberCoroutineScope()
@@ -103,7 +106,9 @@ fun NotificationsScreen(
         profileBadgeText = profileBadgeText,
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
         contentFillMaxSize = true,
-        contentScrollable = false
+        contentScrollable = false,
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),

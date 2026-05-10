@@ -34,6 +34,7 @@ import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
@@ -58,7 +59,9 @@ fun NearbyVisibleUsersScreen(
     onProfileClick: () -> Unit,
     onNavigateToLogin: () -> Unit,
     profileBadgeText: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -228,7 +231,9 @@ fun NearbyVisibleUsersScreen(
         profileBadgeText = profileBadgeText,
         profileLabel = "Profile",
         contentMaxWidth = 560.dp,
-        contentAlignment = Alignment.TopCenter
+        contentAlignment = Alignment.TopCenter,
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),

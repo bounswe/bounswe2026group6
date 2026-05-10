@@ -138,7 +138,7 @@ object ActiveHelpRequestsRepository {
         return when (rawType.trim().lowercase(Locale.ROOT)) {
             "shelter" -> CrisisRequestType.SHELTER
             "first_aid" -> CrisisRequestType.FIRST_AID
-            "fire_brigade",
+            "search_rescue",
             "search_and_rescue" -> CrisisRequestType.SEARCH_AND_RESCUE
             "food",
             "water",

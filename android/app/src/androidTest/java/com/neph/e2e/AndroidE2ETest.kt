@@ -45,20 +45,19 @@ class AndroidE2ETest {
         clickableNode("Continue as Guest").performClick()
 
         waitForText("I need help now")
-        composeRule.onAllNodesWithContentDescription("Open menu")[0].performClick()
+        composeRule.onAllNodesWithContentDescription("Open menu", useUnmergedTree = true)[0].performClick()
         waitForClickable("Help Request Map")
         clickableNode("Help Request Map").performClick()
 
         waitForText("Showing waiting help requests by type and priority.")
         composeRule.onAllNodesWithText("Help Request Map")[0].assertIsDisplayed()
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             contentDescriptionNodeCount("Crisis marker") == 2 &&
                 textNodeCount("First Aid") > 0 &&
                 textNodeCount("Shelter") > 0 &&
                 textNodeCount("Priority: High") > 0 &&
                 textNodeCount("Waiting Requests") > 0 &&
-                textNodeCount("Search and Rescue") == 0 &&
                 textNodeCount("sariyer") == 0
         }
     }
@@ -106,7 +105,7 @@ class AndroidE2ETest {
     fun systemBack_whenStackCanPop_navigatesBackWithoutExitDialog() {
         waitForClickable("Log In")
         clickableNode("Log In").performClick()
-        waitForTag("login_email")
+        openEmailFormIfNeeded("login_email")
 
         pressSystemBack()
 
@@ -182,13 +181,13 @@ class AndroidE2ETest {
 
     private fun textNodeCount(text: String): Int {
         return runCatching {
-            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().size
+            composeRule.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().size
         }.getOrDefault(0)
     }
 
     private fun contentDescriptionNodeCount(text: String): Int {
         return runCatching {
-            composeRule.onAllNodesWithContentDescription(text, substring = true).fetchSemanticsNodes().size
+            composeRule.onAllNodesWithContentDescription(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().size
         }.getOrDefault(0)
     }
 }

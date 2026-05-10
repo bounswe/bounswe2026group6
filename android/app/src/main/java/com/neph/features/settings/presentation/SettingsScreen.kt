@@ -32,6 +32,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.neph.core.theme.ThemePreferenceStore
 import com.neph.features.auth.data.AuthRepository
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.display.IconListRow
@@ -50,7 +51,10 @@ fun SettingsScreen(
     profileBadgeText: String,
     onNavigateToPrivacySecurity: () -> Unit,
     onLogout: () -> Unit,
-    onAccountDeleted: () -> Unit
+    onAccountDeleted: () -> Unit,
+    onRestartMobileOnboarding: () -> Unit,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val coroutineScope = rememberCoroutineScope()
@@ -117,7 +121,9 @@ fun SettingsScreen(
         drawerItems = Routes.authenticatedDrawerItems,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = "Profile"
+        profileLabel = "Profile",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -190,6 +196,19 @@ fun SettingsScreen(
 
             SectionCard {
                 SectionHeader(
+                    title = "App guide",
+                    subtitle = "Replay the guided tour of NEPH's core concepts."
+                )
+
+                PrimaryButton(
+                    text = "Restart App Guide",
+                    onClick = onRestartMobileOnboarding,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            SectionCard {
+                SectionHeader(
                     title = "Account",
                     subtitle = "Manage your privacy, security, and active session."
                 )
@@ -256,7 +275,8 @@ private fun SettingsScreenPreview() {
             profileBadgeText = "PP",
             onNavigateToPrivacySecurity = {},
             onLogout = {},
-            onAccountDeleted = {}
+            onAccountDeleted = {},
+            onRestartMobileOnboarding = {}
         )
     }
 }

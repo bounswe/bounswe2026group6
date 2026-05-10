@@ -32,13 +32,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
 import com.neph.features.helprequestmap.data.ActiveHelpRequestMapItem
+import com.neph.features.helprequestmap.data.ActiveHelpRequestsResult
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsRepository
 import com.neph.features.helprequestmap.data.CrisisRequestType
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.navigation.Routes
@@ -198,6 +202,13 @@ internal fun shouldShowPreviousHelpRequestsDuringViewportFetch(
     return requests.isNotEmpty() && !manualRefresh
 }
 
+internal fun markersShouldFitBounds(
+    requests: List<ActiveHelpRequestMapItem>,
+    mapResetToken: Int
+): Boolean {
+    return mapResetToken == 0 && requests.any { it.hasValidMapCoordinates() }
+}
+
 private fun ActiveHelpRequestMapItem.hasValidMapCoordinates(): Boolean {
     return latitude.isFinite() &&
         longitude.isFinite() &&
@@ -211,7 +222,9 @@ fun HelpRequestMapScreen(
     onOpenSettings: (() -> Unit)?,
     onProfileClick: () -> Unit,
     profileBadgeText: String,
-    isAuthenticated: Boolean
+    isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
@@ -233,6 +246,20 @@ fun HelpRequestMapScreen(
     var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
     var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
     var mapResetNonce by remember { mutableStateOf(0) }
+
+    fun applyRequestResult(result: ActiveHelpRequestsResult, viewportKey: String?) {
+        requests = result.requests
+        viewportKey?.let { lastFetchedViewportKey = it }
+        viewportRefreshNonce = 0
+        selectedRequestId = selectedRequestId
+            ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
+        infoMessage = when {
+            result.requests.isEmpty() -> ResourceEmptyMessage
+            result.skippedCount > 0 ->
+                "${result.skippedCount} inactive or malformed request entries were hidden."
+            else -> ""
+        }
+    }
 
     fun queueViewportRefresh() {
         val viewport = currentViewport
@@ -321,6 +348,31 @@ fun HelpRequestMapScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        loading = true
+        errorMessage = ""
+        infoMessage = ResourceLoadingMessage
+
+        try {
+            val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests()
+            applyRequestResult(result, viewportKey = null)
+        } catch (cancellationException: CancellationException) {
+            throw cancellationException
+        } catch (error: ApiException) {
+            errorMessage = error.message.ifBlank { ResourceErrorMessage }
+            requests = emptyList()
+            selectedRequestId = null
+            infoMessage = ""
+        } catch (_: Exception) {
+            errorMessage = ResourceErrorMessage
+            requests = emptyList()
+            selectedRequestId = null
+            infoMessage = ""
+        } finally {
+            loading = false
+        }
+    }
+
     LaunchedEffect(effectiveLeafletViewportKey(pendingViewport), viewportRefreshNonce) {
         val viewport = pendingViewport ?: return@LaunchedEffect
         if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
@@ -346,16 +398,7 @@ fun HelpRequestMapScreen(
                 bbox = leafletViewportBboxString(viewport)
             )
             if (requestSerial == viewportRequestSerial) {
-                requests = result.requests
-                lastFetchedViewportKey = viewportKey
-                viewportRefreshNonce = 0
-                selectedRequestId = selectedRequestId
-                    ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
-                infoMessage = when {
-                    result.skippedCount > 0 ->
-                        "${result.skippedCount} inactive or malformed request entries were hidden."
-                    else -> ""
-                }
+                applyRequestResult(result, viewportKey = viewportKey)
             }
         } catch (cancellationException: CancellationException) {
             throw cancellationException
@@ -457,7 +500,9 @@ fun HelpRequestMapScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing.lg)
@@ -870,7 +915,12 @@ private fun CrisisRequestMapPanel(
     val tileLoadedInstanceIdState = remember { mutableStateOf<String?>(null) }
     val errorInstanceIdState = remember { mutableStateOf<String?>(null) }
     var mapError by remember { mutableStateOf("") }
-    val mapInstanceId = remember(mapResetToken) {
+    val mapInstanceKey = helpRequestMapInstanceKey(requests)
+    val shouldFitRequestMarkers = markersShouldFitBounds(requests, mapResetToken)
+    val effectiveCenterLatitude = if (shouldFitRequestMarkers) mapInstanceKey.centerLatitude else mapCenterLatitude
+    val effectiveCenterLongitude = if (shouldFitRequestMarkers) mapInstanceKey.centerLongitude else mapCenterLongitude
+    val effectiveZoom = if (shouldFitRequestMarkers) 13 else mapZoom
+    val mapInstanceId = remember(mapResetToken, mapInstanceKey) {
         newLeafletMapInstanceId()
     }
     val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
@@ -941,14 +991,14 @@ private fun CrisisRequestMapPanel(
             LeafletMarkerMap(
                 mapInstanceId = mapInstanceId,
                 currentMapInstanceId = { currentMapInstanceIdState.value },
-                centerLatitude = mapCenterLatitude,
-                centerLongitude = mapCenterLongitude,
+                centerLatitude = effectiveCenterLatitude,
+                centerLongitude = effectiveCenterLongitude,
                 markers = markers,
                 selectedMarkerId = selectedRequestId,
                 mapHeightCssPx = HelpRequestMapHeightCssPx,
-                zoom = mapZoom,
+                zoom = effectiveZoom,
                 showCenterMarker = false,
-                fitBoundsToMarkers = false,
+                fitBoundsToMarkers = shouldFitRequestMarkers,
                 onMarkerSelected = { markerInstanceId, markerId ->
                     if (markerInstanceId == currentMapInstanceIdState.value) {
                         onSelectRequest(markerId)
@@ -1023,6 +1073,7 @@ private fun PinGlyph(type: CrisisRequestType, selected: Boolean = false) {
     Box(
         modifier = Modifier
             .size(if (selected) 40.dp else 34.dp)
+            .semantics { contentDescription = "Crisis marker: ${ActiveHelpRequestsRepository.labelForType(type)}" }
             .background(
                 color = style.dotColor,
                 shape = RoundedCornerShape(
