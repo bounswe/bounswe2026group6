@@ -406,8 +406,7 @@ fun HomeScreen(
         emergencyInfo = ""
 
         if (!isAuthenticated || sessionToken.isNullOrBlank()) {
-            emergencyError = "Please log in before marking yourself safe."
-            onNavigateToLogin()
+            emergencyError = "Please log in to mark yourself safe."
             return
         }
 
