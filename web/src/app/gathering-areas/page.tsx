@@ -797,7 +797,7 @@ export default function GatheringAreasPage() {
 
                     {isInitialState ? (
                         <div className="gathering-areas-status-box">
-                            <p>{ResourceInitialMessage}</p>
+                            <p>{infoMessage || ResourceInitialMessage}</p>
                         </div>
                     ) : null}
                 </SectionCard>

@@ -12,7 +12,7 @@ function runQuery(executor, text, params = []) {
 
 const DEFAULT_MAX_MATCH_DISTANCE_METERS = 1000;
 const FIRST_AID_HELP_TYPES = new Set(['first_aid', 'medical']);
-const SEARCH_AND_RESCUE_HELP_TYPES = new Set(['search_and_rescue', 'sar', 'fire_brigade', 'rescue']);
+const SEARCH_AND_RESCUE_HELP_TYPES = new Set(['search_rescue', 'search_and_rescue', 'sar', 'rescue']);
 const SUPPLIES_HELP_TYPES = new Set(['food', 'water', 'basic_supplies', 'supplies']);
 const SHELTER_HELP_TYPES = new Set(['shelter']);
 const FIRST_AID_EXPERTISE_MARKERS = new Set(['first_aid', 'medical']);
