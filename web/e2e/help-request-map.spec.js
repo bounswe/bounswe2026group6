@@ -149,17 +149,17 @@ test('shows empty state and supports refresh after active request lookup fails',
   await page.goto('/crisis-map');
 
   await expect(page.getByText('No waiting requests in view.')).toBeVisible();
+  await expect(
+    page
+      .locator('.gathering-areas-status-box')
+      .filter({ hasText: 'No resources were found in this visible area.' })
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Refresh Help Request Map' }).click();
-
-  if (requestCount < 2) {
-    await page.getByRole('button', { name: 'Use Current Location' }).click();
-  }
-
-  await expect.poll(() => requestCount).toBeGreaterThan(1);
   await expect(page.locator('.gathering-areas-status-box.is-error')).toContainText(
     'Help request visibility is temporarily unavailable'
   );
+  await expect.poll(() => requestCount).toBeGreaterThan(1);
 });
 
 test('supports multi-select request type filters and clears selected details when filtered out', async ({ page }) => {
