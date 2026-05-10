@@ -71,6 +71,7 @@ import com.neph.features.safetystatus.data.SafetyStatusState
 import com.neph.navigation.Routes
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
+import com.neph.ui.components.theme.ThemeIconButton
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -531,7 +532,10 @@ fun HomeScreen(
         profileBadgeText = profileBadgeText,
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
         mobileOnboardingStepId = mobileOnboardingStepId,
-        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+        topBarActions = {
+            ThemeIconButton()
+        }
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
