@@ -67,6 +67,7 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
+import com.neph.ui.components.theme.ThemeIconButton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -519,7 +520,10 @@ fun HomeScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        topBarActions = {
+            ThemeIconButton()
+        }
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
