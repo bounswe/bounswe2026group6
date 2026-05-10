@@ -89,6 +89,22 @@ class MobileOnboardingKeysTest {
     }
 
     @Test
+    fun journeyProgressDoesNotCountMenuOpenSteps() {
+        assertEquals(
+            22,
+            MobileOnboardingJourney.progressFor(MobileOnboardingStepId.SETTINGS, isAuthenticated = true).second
+        )
+        assertEquals(
+            MobileOnboardingJourney.progressFor(MobileOnboardingStepId.ASSIGNED_REQUESTS, isAuthenticated = true),
+            MobileOnboardingJourney.progressFor(MobileOnboardingStepId.OPEN_EMERGENCY_NUMBERS_MENU, isAuthenticated = true)
+        )
+        assertEquals(
+            9,
+            MobileOnboardingJourney.progressFor(MobileOnboardingStepId.SELECT_EMERGENCY_NUMBERS, isAuthenticated = true).first
+        )
+    }
+
+    @Test
     fun journeyCanMoveForwardAndBackward() {
         assertEquals(
             MobileOnboardingStepId.REQUEST_HELP_TYPE,

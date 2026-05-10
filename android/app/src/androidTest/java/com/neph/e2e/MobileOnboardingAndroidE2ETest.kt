@@ -65,51 +65,7 @@ class MobileOnboardingAndroidE2ETest {
 
     @Test
     fun pendingAuthenticatedUser_canFollowGuidedCoreConcepts_once() {
-        waitForText("I need help now")
-        waitForTag("mobile_onboarding_dialog")
-        waitForTag("mobile_onboarding_welcome_message")
-        composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals("Home Dashboard")
-        composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
-
-        composeRule.onNodeWithTag("home_request_help_action").performClick()
-        waitForGuideTitle("Request Help")
-        waitForText("Create a help request")
-        waitForTag("mobile_onboarding_target_fire_brigade")
-
-        composeRule.onNodeWithTag("mobile_onboarding_target_fire_brigade").performClick()
-        waitForGuideTitle("Risk Flags")
-        waitForText("You selected Fire Brigade")
-        waitForTag("mobile_onboarding_target_fire_risk")
-
-        composeRule.onNodeWithTag("mobile_onboarding_target_fire_risk").performScrollTo().performClick()
-        waitForGuideTitle("Confirmation")
-        waitForText("You marked fire")
-        waitForTag("mobile_onboarding_confirmation_checkbox")
-
-        composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").performScrollTo().performClick()
-        waitForGuideTitle("Send Help Request")
-        composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").assertIsOn()
-        waitForTag("mobile_onboarding_target_send_help_request")
-
-        composeRule.onNodeWithTag("mobile_onboarding_target_send_help_request").performScrollTo().performClick()
-        waitForGuideTitle("My Help Requests")
-        waitForText("No real help request was saved")
-        waitForText("Guide preview only")
-        waitForText("Fire Brigade")
-
-        composeRule.onNodeWithTag("mobile_onboarding_continue").performClick()
-        waitForGuideTitle("Open the Menu")
-        waitForTag("mobile_onboarding_target_menu")
-
-        composeRule.onNodeWithTag("mobile_onboarding_target_menu").performClick()
-        waitForGuideTitle("Assigned Request")
-        waitForText("Tap Assigned Request")
-        waitForTag("mobile_onboarding_target_assigned_request_menu")
-
-        composeRule.onNodeWithTag("mobile_onboarding_target_assigned_request_menu").performClick()
-        waitForGuideTitle("Assigned Requests")
-        waitForText("There is no assigned request for you right now.")
-        waitForText("No assigned request right now.")
+        reachAssignedRequestsPage()
 
         continueThroughDrawerPage(
             pageTitle = "Emergency Numbers",
@@ -161,6 +117,70 @@ class MobileOnboardingAndroidE2ETest {
         composeRule.activityRule.scenario.recreate()
         waitForText("I need help now")
         waitUntilTagGone("mobile_onboarding_dialog")
+    }
+
+    @Test
+    fun skippingTutorialMidway_returnsUserHome() {
+        reachAssignedRequestsPage()
+        continueThroughDrawerPage(
+            pageTitle = "Emergency Numbers",
+            menuTargetTag = "mobile_onboarding_target_menu_emergency_info",
+            menuInstruction = "Tap Emergency Numbers",
+            pageText = "Emergency Contact List"
+        )
+
+        composeRule.onNodeWithTag("mobile_onboarding_skip").performClick()
+        waitUntilTagGone("mobile_onboarding_dialog")
+        waitForText("I need help now")
+    }
+
+    private fun reachAssignedRequestsPage() {
+        waitForText("I need help now")
+        waitForTag("mobile_onboarding_dialog")
+        waitForTag("mobile_onboarding_welcome_message")
+        composeRule.onNodeWithTag("mobile_onboarding_title").assertTextEquals("Home Dashboard")
+        composeRule.onNodeWithTag("mobile_onboarding_back").assertIsNotEnabled()
+
+        composeRule.onNodeWithTag("home_request_help_action").performClick()
+        waitForGuideTitle("Request Help")
+        waitForText("Create a help request")
+        waitForTag("mobile_onboarding_target_fire_brigade")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_fire_brigade").performClick()
+        waitForGuideTitle("Risk Flags")
+        waitForText("You selected Fire Brigade")
+        waitForTag("mobile_onboarding_target_fire_risk")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_fire_risk").performScrollTo().performClick()
+        waitForGuideTitle("Confirmation")
+        waitForText("You marked fire")
+        waitForTag("mobile_onboarding_confirmation_checkbox")
+
+        composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").performScrollTo().performClick()
+        waitForGuideTitle("Send Help Request")
+        composeRule.onNodeWithTag("mobile_onboarding_confirmation_checkbox").assertIsOn()
+        waitForTag("mobile_onboarding_target_send_help_request")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_send_help_request").performScrollTo().performClick()
+        waitForGuideTitle("My Help Requests")
+        waitForText("No real help request was saved")
+        waitForText("Guide preview only")
+        waitForText("Fire Brigade")
+
+        composeRule.onNodeWithTag("mobile_onboarding_continue").performClick()
+        waitForGuideTitle("Open the Menu")
+        waitForTag("mobile_onboarding_target_menu")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_menu").performClick()
+        waitForGuideTitle("Assigned Request")
+        waitForText("Tap Assigned Request")
+        waitForTag("mobile_onboarding_target_assigned_request_menu")
+
+        composeRule.onNodeWithTag("mobile_onboarding_target_assigned_request_menu").performClick()
+        waitForGuideTitle("Assigned Requests")
+        waitForText("There is no assigned request for you right now.")
+        waitForText("No assigned request right now.")
+
     }
 
 

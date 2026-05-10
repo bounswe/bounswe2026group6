@@ -211,16 +211,24 @@ fun NephApp() {
             navigateForMobileOnboarding(firstStep.route)
         }
 
+        fun closeMobileOnboardingAndReturnHome() {
+            MobileOnboardingStore.markSeenForCurrentUser()
+            showMobileOnboarding = false
+            activeMobileOnboardingStepId = null
+            mobileOnboardingFeedback = null
+            mobileOnboardingPracticeHelpRequest = null
+            navController.navigate(Routes.Home.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+
         fun completeMobileOnboardingStep(message: String?) {
             val currentStepId = activeMobileOnboardingStepId ?: return
             mobileOnboardingFeedback = message
             val nextStep = MobileOnboardingJourney.nextStep(currentStepId, isAuthenticated)
             if (nextStep == null) {
-                MobileOnboardingStore.markSeenForCurrentUser()
-                showMobileOnboarding = false
-                activeMobileOnboardingStepId = null
-                mobileOnboardingFeedback = null
-                mobileOnboardingPracticeHelpRequest = null
+                closeMobileOnboardingAndReturnHome()
             } else {
                 setMobileOnboardingStep(nextStep.id)
             }
@@ -333,24 +341,8 @@ fun NephApp() {
                         mobileOnboardingFeedback = null
                     }
                 },
-                onSkip = {
-                    MobileOnboardingStore.markSeenForCurrentUser()
-                    showMobileOnboarding = false
-                    activeMobileOnboardingStepId = null
-                    mobileOnboardingFeedback = null
-                    mobileOnboardingPracticeHelpRequest = null
-                },
-                onFinish = {
-                    MobileOnboardingStore.markSeenForCurrentUser()
-                    showMobileOnboarding = false
-                    activeMobileOnboardingStepId = null
-                    mobileOnboardingFeedback = null
-                    mobileOnboardingPracticeHelpRequest = null
-                    navController.navigate(Routes.Home.route) {
-                        popUpTo(navController.graph.id) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
+                onSkip = ::closeMobileOnboardingAndReturnHome,
+                onFinish = ::closeMobileOnboardingAndReturnHome
             )
         }
     }

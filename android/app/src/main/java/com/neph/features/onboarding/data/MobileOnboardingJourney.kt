@@ -332,7 +332,15 @@ object MobileOnboardingJourney {
     fun progressFor(currentId: MobileOnboardingStepId, isAuthenticated: Boolean): Pair<Int, Int> {
         val available = availableSteps(isAuthenticated)
         val currentIndex = available.indexOfFirst { it.id == currentId }.takeIf { it >= 0 } ?: 0
-        return currentIndex + 1 to available.size
+        val totalCountedSteps = available.count { !it.opensMenu }.coerceAtLeast(1)
+        val currentStep = available.getOrNull(currentIndex)
+        val countedStepNumber = if (currentStep?.opensMenu == true) {
+            available.take(currentIndex).count { !it.opensMenu }
+        } else {
+            available.take(currentIndex + 1).count { !it.opensMenu }
+        }.coerceIn(1, totalCountedSteps)
+
+        return countedStepNumber to totalCountedSteps
     }
 
     private fun menuOpenStep(
@@ -388,7 +396,7 @@ object MobileOnboardingJourney {
         eyebrow: String,
         description: String,
         actionLabel: String = "Continue",
-        targetHint: String = "Review this page, then continue to the next section.",
+        targetHint: String = "",
         completionMessage: String? = null,
         panelPlacement: MobileOnboardingPanelPlacement = MobileOnboardingPanelPlacement.CENTER
     ): MobileOnboardingStep {

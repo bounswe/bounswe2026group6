@@ -79,7 +79,7 @@ fun MobileOnboardingGuide(
                 .align(step.panelPlacement.panelAlignment())
                 .offset { IntOffset(x = 0, y = dragOffsetPx.roundToInt()) }
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 28.dp, vertical = 12.dp)
                 .navigationBarsPadding()
                 .onGloballyPositioned { coordinates ->
                     panelHeightPx = coordinates.size.height.toFloat()
@@ -98,10 +98,10 @@ fun MobileOnboardingGuide(
             shadowElevation = 8.dp
         ) {
             Column(
-                modifier = Modifier.padding(spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(spacing.md)
+                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = "NEPH Guide",
                         style = MaterialTheme.typography.labelLarge,
@@ -110,12 +110,12 @@ fun MobileOnboardingGuide(
                     Text(
                         text = step.title,
                         modifier = Modifier.testTag("mobile_onboarding_title"),
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = step.eyebrow,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -130,8 +130,8 @@ fun MobileOnboardingGuide(
                     ) {
                         Text(
                             text = message,
-                            modifier = Modifier.padding(spacing.md),
-                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(spacing.sm),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
@@ -139,22 +139,23 @@ fun MobileOnboardingGuide(
 
                 Text(
                     text = step.description,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Text(
-                    text = if (isOnTargetRoute && step.usesExistingTarget) {
-                        step.actionLabel
-                    } else if (!isOnTargetRoute) {
-                        "Go to ${step.title}"
-                    } else {
-                        step.targetHint
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.testTag("mobile_onboarding_instruction")
-                )
+                val instructionText = when {
+                    isOnTargetRoute && step.usesExistingTarget -> step.actionLabel
+                    !isOnTargetRoute -> "Go to ${step.title}"
+                    else -> step.targetHint
+                }
+                if (instructionText.isNotBlank()) {
+                    Text(
+                        text = instructionText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("mobile_onboarding_instruction")
+                    )
+                }
 
                 LinearProgressIndicator(
                     progress = { progress },
