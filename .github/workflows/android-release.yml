@@ -66,6 +66,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           NEPH_RELEASE_API_BASE_URL: ${{ secrets.NEPH_RELEASE_API_BASE_URL }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
         run: ./gradlew clean assembleRelease
 
       - name: Upload signed release APK
