@@ -13,8 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import com.neph.core.network.ApiException
+import com.neph.features.profile.data.CurrentLocationShareWarning
+import com.neph.features.profile.data.DeviceLocationProvider
+import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
@@ -25,6 +29,7 @@ import com.neph.ui.components.selection.AppRadioGroup
 import com.neph.ui.components.selection.AppToggleSwitch
 import com.neph.ui.components.selection.RadioOption
 import com.neph.ui.layout.AppScaffold
+import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
@@ -47,6 +52,7 @@ fun PrivacySecurityScreen(
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
@@ -60,6 +66,7 @@ fun PrivacySecurityScreen(
     var hasSavedCoordinates by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var info by remember { mutableStateOf("") }
+    var pendingSaveAfterPermissionRequest by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
@@ -86,12 +93,27 @@ fun PrivacySecurityScreen(
         }
     }
 
-    fun savePrivacySettings() {
-        if (!initialShareLocation && shareLocation && !hasSavedCoordinates) {
-            error = ProfileRepository.LocationSharingInitializationMessage
-            info = ""
-            return
+    fun applyProfileState(profile: ProfileData) {
+        profileVisibility = profile.profileVisibility ?: ProfileRepository.DefaultProfileVisibility
+        healthInfoVisibility = profile.healthInfoVisibility ?: ProfileRepository.DefaultHealthInfoVisibility
+        locationVisibility = profile.locationVisibility ?: ProfileRepository.defaultLocationVisibilityFromStoredPermission()
+        shareLocation = profile.shareLocation == true
+        initialShareLocation = profile.shareLocation == true
+        hasSavedCoordinates = profile.sharedLatitude != null && profile.sharedLongitude != null
+    }
+
+    fun locationCaptureFailureMessage(warning: CurrentLocationShareWarning?): String {
+        return when (warning) {
+            CurrentLocationShareWarning.PERMISSION_DENIED ->
+                "Privacy settings saved. Share Current Location was not enabled because location permission was denied."
+
+            CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+            null -> "Privacy settings saved. Share Current Location was not enabled because current location is unavailable."
         }
+    }
+
+    fun savePrivacySettingsWithCurrentPermission() {
+        if (saving) return
 
         scope.launch {
             try {
@@ -99,16 +121,38 @@ fun PrivacySecurityScreen(
                 error = ""
                 info = ""
 
+                val needsLocationInitialization = !initialShareLocation && shareLocation && !hasSavedCoordinates
+                var locationSharingEnabled = shareLocation
+
+                if (needsLocationInitialization) {
+                    val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
+                        context = context,
+                        sharingEnabled = true
+                    )
+                    val currentLocation = attempt.location
+
+                    if (currentLocation == null) {
+                        locationSharingEnabled = false
+                        shareLocation = false
+                        error = locationCaptureFailureMessage(attempt.warning)
+                    } else {
+                        val locationProfile = ProfileRepository.syncSharedCurrentLocation(currentLocation)
+                        hasSavedCoordinates = locationProfile.sharedLatitude != null &&
+                            locationProfile.sharedLongitude != null
+                    }
+                }
+
                 val profile = ProfileRepository.syncPrivacySettings(
                     profileVisibility = profileVisibility,
                     healthInfoVisibility = healthInfoVisibility,
                     locationVisibility = locationVisibility,
-                    locationSharingEnabled = shareLocation
+                    locationSharingEnabled = locationSharingEnabled
                 )
 
-                initialShareLocation = profile.shareLocation == true
-                hasSavedCoordinates = profile.sharedLatitude != null && profile.sharedLongitude != null
-                info = "Privacy settings updated successfully."
+                applyProfileState(profile)
+                if (error.isBlank()) {
+                    info = "Privacy settings updated successfully."
+                }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (apiError: ApiException) {
@@ -123,6 +167,28 @@ fun PrivacySecurityScreen(
                 saving = false
             }
         }
+    }
+
+    val locationPermissionRequester = rememberForegroundLocationPermissionRequester {
+        if (!pendingSaveAfterPermissionRequest) {
+            return@rememberForegroundLocationPermissionRequester
+        }
+
+        pendingSaveAfterPermissionRequest = false
+        savePrivacySettingsWithCurrentPermission()
+    }
+
+    fun savePrivacySettings() {
+        if (saving) return
+
+        val needsLocationInitialization = !initialShareLocation && shareLocation && !hasSavedCoordinates
+        if (needsLocationInitialization && !locationPermissionRequester.refreshPermissionState()) {
+            pendingSaveAfterPermissionRequest = true
+            locationPermissionRequester.requestPermission()
+            return
+        }
+
+        savePrivacySettingsWithCurrentPermission()
     }
 
     AppScaffold(
