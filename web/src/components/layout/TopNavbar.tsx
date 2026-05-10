@@ -5,6 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { useTheme } from "@/components/theme/ThemeProvider";
 import { clearAccessToken, getAccessToken } from "@/lib/auth";
 import { useAuthSession } from "@/lib/authSession";
 import { fetchUnreadNotificationCount } from "@/lib/notifications";
@@ -217,13 +218,15 @@ export function TopNavbar() {
             ? `Notifications (${unreadCount} unread)`
             : "Notifications";
 
+    const { isDarkTheme } = useTheme();
+
     return (
         <header className="top-navbar">
             <PageContainer className="top-navbar-inner">
                 <Link href="/home" className="top-navbar-brand">
                     NEPH
                     <Image
-                        src="/neph_logo_only.png"
+                        src={isDarkTheme ? "/dark_neph_logo_only.png" : "/neph_logo_only.png"}
                         alt="NEPH icon"
                         width={48}
                         height={48}
