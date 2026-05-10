@@ -532,11 +532,20 @@ fun CompleteProfileScreen(
                     initialLongitude = mapPickerSelection?.longitude,
                     centerLatitude = mapCenterLatitude,
                     centerLongitude = mapCenterLongitude,
+                    showCenterOnCurrentLocation = true,
                     centerActionLoading = mapCenterLoading,
                     centerActionMessage = mapCenterInfo,
                     loading = mapPickerLoading,
                     onDismiss = { if (!mapPickerLoading) mapPickerOpen = false },
-                    onConfirm = ::handleMapSelection
+                    onConfirm = ::handleMapSelection,
+                    onCenterOnCurrentLocation = {
+                        if (mapLocationPermissionRequester.refreshPermissionState()) {
+                            captureCurrentLocationForProfileMap()
+                        } else {
+                            mapCenterLoading = true
+                            mapLocationPermissionRequester.requestPermission()
+                        }
+                    }
                 )
             }
 

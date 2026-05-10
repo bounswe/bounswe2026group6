@@ -131,13 +131,8 @@ export function SignupForm() {
         setError("");
         setInfo("");
 
-        if (!acceptedTerms) {
-            setError("You must accept the terms to continue.");
-            return;
-        }
-
         try {
-            const result = await googleLogin(idToken, "signup", acceptedTerms);
+            const result = await googleLogin(idToken, "signup");
             setAccessToken(result.accessToken);
             try {
                 const profile = await fetchMyProfile(result.accessToken);
@@ -159,8 +154,8 @@ export function SignupForm() {
         setError(message);
     };
 
-    return (
-        <>
+    const termsConsent = (
+        <div className="rounded-[12px] border border-[color:var(--border-subtle)] bg-[color:var(--background-page)] px-3 py-3">
             <Checkbox
                 id="signup-terms-consent"
                 checked={acceptedTerms}
@@ -175,7 +170,7 @@ export function SignupForm() {
                         >
                             Terms of Service
                         </Link>{" "}
-                        and {" "}
+                        and{" "}
                         <Link
                             href="/privacy-policy?from=signup"
                             onClick={saveSignupDraft}
@@ -187,13 +182,15 @@ export function SignupForm() {
                     </span>
                 }
             />
+        </div>
+    );
 
+    return (
+        <>
             <SocialAuthButtons
                 mode="signup"
                 onGoogleSuccess={handleGoogleSuccess}
                 onGoogleError={handleGoogleError}
-                disabled={!acceptedTerms}
-                disabledMessage="Accept Terms of Service and Privacy Policy to continue with Google sign-up."
             />
 
             <div className="my-5 flex items-center gap-3">
@@ -205,16 +202,18 @@ export function SignupForm() {
             </div>
 
             {!showEmailForm ? (
-                <SecondaryButton
-                    type="button"
-                    onClick={() => {
-                        setInfo("");
-                        setError("");
-                        setShowEmailForm(true);
-                    }}
-                >
-                    Continue with Email
-                </SecondaryButton>
+                <div className="flex flex-col gap-4">
+                    <SecondaryButton
+                        type="button"
+                        onClick={() => {
+                            setInfo("");
+                            setError("");
+                            setShowEmailForm(true);
+                        }}
+                    >
+                        Continue with Email
+                    </SecondaryButton>
+                </div>
             ) : (
                 <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                     <TextInput
@@ -242,6 +241,8 @@ export function SignupForm() {
                         onChange={(e) => setConfirmPassword(e.target.value)}
                     />
 
+                    {termsConsent}
+
                     {error ? (
                         <HelperText className="text-[color:var(--primary-500)]">
                             {error}
@@ -255,6 +256,12 @@ export function SignupForm() {
                     </PrimaryButton>
                 </form>
             )}
+
+            {!showEmailForm && error ? (
+                <div className="mt-4">
+                    <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText>
+                </div>
+            ) : null}
 
             {!showEmailForm && info ? (
                 <div className="mt-4">

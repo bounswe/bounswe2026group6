@@ -22,17 +22,16 @@ async function findUserByGoogleId(googleId) {
   return result.rows[0] || null;
 }
 
-async function upsertGoogleUser({ userId, email, googleId, acceptedTerms }) {
+async function upsertGoogleUser({ userId, email, googleId }) {
   const result = await query(
     `
       INSERT INTO users (
         user_id,
         email,
         google_id,
-        is_email_verified,
-        accepted_terms
+        is_email_verified
       )
-      VALUES ($1, $2, $3, TRUE, $4)
+      VALUES ($1, $2, $3, TRUE)
       ON CONFLICT (google_id) DO UPDATE
         SET email = EXCLUDED.email
       RETURNING
@@ -45,7 +44,7 @@ async function upsertGoogleUser({ userId, email, googleId, acceptedTerms }) {
         accepted_terms,
         created_at
     `,
-    [userId, email, googleId, Boolean(acceptedTerms)]
+    [userId, email, googleId]
   );
 
   return result.rows[0];
@@ -117,6 +116,31 @@ async function createUser({ userId, email, passwordHash, acceptedTerms }) {
   );
 
   return result.rows[0];
+}
+
+async function releaseDeletedUserIdentity(userId) {
+  const result = await query(
+    `
+      UPDATE users
+      SET email = CASE
+            WHEN email LIKE 'deleted+%@deleted.invalid' THEN email
+            ELSE CONCAT('deleted+', md5(user_id || ':' || clock_timestamp()::text), '@deleted.invalid')
+          END,
+          google_id = NULL,
+          password_hash = 'deleted-account-disabled',
+          is_email_verified = FALSE,
+          accepted_terms = FALSE,
+          is_banned = FALSE,
+          ban_reason = NULL,
+          banned_at = NULL
+      WHERE user_id = $1
+        AND is_deleted = TRUE
+      RETURNING user_id, email, google_id, is_deleted
+    `,
+    [userId],
+  );
+
+  return result.rows[0] || null;
 }
 
 async function markEmailVerified(userId) {
@@ -490,6 +514,7 @@ async function softDeleteUserAccount(userId) {
         UPDATE users
         SET is_deleted = TRUE,
             email = CONCAT('deleted+', md5(user_id || ':' || clock_timestamp()::text), '@deleted.invalid'),
+            google_id = NULL,
             password_hash = 'deleted-account-disabled',
             is_email_verified = FALSE,
             accepted_terms = FALSE,
@@ -523,6 +548,7 @@ module.exports = {
   findUserById,
   findUserAuthStateById,
   createUser,
+  releaseDeletedUserIdentity,
   markEmailVerified,
   updateUserPassword,
   findAdminByUserId,

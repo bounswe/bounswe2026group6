@@ -9,14 +9,27 @@ import type { CrisisMapFeature, CrisisRequestType } from "@/components/feature/l
 import { fetchActiveHelpRequests } from "@/lib/crisisMap";
 import { getAccessToken } from "@/lib/auth";
 import { openDirections } from "@/lib/mapDirections";
+import type { MapBounds } from "@/components/feature/location/LeafletMapCanvas";
+import {
+    effectiveViewportKey,
+    isViewportDiscoverable,
+    viewportBoundsToBbox,
+} from "@/lib/viewportDiscovery";
 
 const DEFAULT_CENTER = {
-    latitude: 41.0082,
-    longitude: 28.9784,
+    latitude: 39.0,
+    longitude: 35.0,
 };
+const DEFAULT_ZOOM = 5;
+const CURRENT_LOCATION_ZOOM = 13;
 
 const FETCH_LIMIT = 300;
 type FetchState = "idle" | "loading" | "success" | "empty" | "error";
+const ResourceInitialMessage = "Zoom in or use your device location to see resources in this area.";
+const ResourceZoomedOutMessage = "Zoom in to see resources in this area.";
+const ResourceLoadingMessage = "Loading resources in this area...";
+const ResourceEmptyMessage = "No resources were found in this visible area.";
+const ResourceErrorMessage = "Resources could not be loaded for this area. Please try again.";
 const REQUEST_TYPE_ORDER: CrisisRequestType[] = [
     "FIRST_AID",
     "SHELTER",
@@ -110,26 +123,35 @@ function toFeature(item: Awaited<ReturnType<typeof fetchActiveHelpRequests>>["re
 }
 
 export default function CrisisMapPage() {
-    const [center] = React.useState(DEFAULT_CENTER);
+    const [center, setCenter] = React.useState(DEFAULT_CENTER);
+    const [mapZoom, setMapZoom] = React.useState(DEFAULT_ZOOM);
     const [requests, setRequests] = React.useState<CrisisMapFeature[]>([]);
     const [selectedRequestId, setSelectedRequestId] = React.useState<string | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
     const [fetchState, setFetchState] = React.useState<FetchState>("idle");
     const [error, setError] = React.useState("");
+    const [infoMessage, setInfoMessage] = React.useState(ResourceInitialMessage);
     const [directionsMessage, setDirectionsMessage] = React.useState("");
     const [selectedTypes, setSelectedTypes] = React.useState<Set<CrisisRequestType>>(new Set());
+    const [currentViewport, setCurrentViewport] = React.useState<MapBounds | null>(null);
+    const [pendingViewport, setPendingViewport] = React.useState<MapBounds | null>(null);
+    const [lastFetchedViewportKey, setLastFetchedViewportKey] = React.useState<string | null>(null);
+    const [viewportRefreshNonce, setViewportRefreshNonce] = React.useState(0);
     const requestIdRef = React.useRef(0);
+    const hasRequestedInitialLocationRef = React.useRef(false);
 
-    const loadActiveRequests = React.useCallback(async () => {
+    const loadActiveRequestsForViewport = React.useCallback(async (viewport: MapBounds) => {
         const currentRequestId = ++requestIdRef.current;
         try {
             setFetchState("loading");
             setError("");
+            setInfoMessage(ResourceLoadingMessage);
 
             const token = getAccessToken();
             const response = await fetchActiveHelpRequests({
                 token,
                 status: "PENDING",
+                bbox: viewportBoundsToBbox(viewport),
                 limit: FETCH_LIMIT,
                 offset: 0,
             });
@@ -144,6 +166,9 @@ export default function CrisisMapPage() {
 
             setRequests(mapped);
             setFetchState(mapped.length > 0 ? "success" : "empty");
+            setInfoMessage(mapped.length > 0 ? "Showing resources in this visible area." : ResourceEmptyMessage);
+            setLastFetchedViewportKey(effectiveViewportKey(viewport));
+            setViewportRefreshNonce(0);
             setSelectedRequestId((current) => {
                 if (!mapped.length) {
                     return null;
@@ -163,15 +188,113 @@ export default function CrisisMapPage() {
             setRequests([]);
             setSelectedRequestId(null);
             setFetchState("error");
+            setInfoMessage("");
         }
     }, []);
 
     React.useEffect(() => {
-        void loadActiveRequests();
-    }, [loadActiveRequests]);
+        const viewport = pendingViewport;
+        const viewportKey = effectiveViewportKey(viewport);
+        if (!viewport || !viewportKey) {
+            return;
+        }
+
+        if (viewportKey === lastFetchedViewportKey && viewportRefreshNonce === 0) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            void loadActiveRequestsForViewport(viewport);
+        }, 450);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [pendingViewport, lastFetchedViewportKey, viewportRefreshNonce, loadActiveRequestsForViewport]);
+
+    const queueViewportRefresh = React.useCallback(() => {
+        if (!isViewportDiscoverable(currentViewport)) {
+            setRequests([]);
+            setSelectedRequestId(null);
+            setError("");
+            setFetchState("idle");
+            setInfoMessage(ResourceZoomedOutMessage);
+            return;
+        }
+
+        setError("");
+        setPendingViewport(currentViewport);
+        setViewportRefreshNonce((nonce) => nonce + 1);
+    }, [currentViewport]);
+
+    const handleViewportChange = React.useCallback((bounds: MapBounds) => {
+        setCurrentViewport(bounds);
+
+        if (isViewportDiscoverable(bounds)) {
+            setError("");
+            setPendingViewport(bounds);
+            setInfoMessage((current) =>
+                current === ResourceZoomedOutMessage ? "" : current
+            );
+            return;
+        }
+
+        requestIdRef.current += 1;
+        setRequests([]);
+        setSelectedRequestId(null);
+        setLastFetchedViewportKey(null);
+        setFetchState("idle");
+        setError("");
+        setInfoMessage(ResourceZoomedOutMessage);
+    }, []);
+
+    const handleUseCurrentLocation = React.useCallback(() => {
+        setError("");
+
+        if (!navigator.geolocation) {
+            setInfoMessage("Current location is not supported in this browser.");
+            return;
+        }
+
+        setInfoMessage("Resolving your current location...");
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const nextCenter = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                };
+                setCenter(nextCenter);
+                setMapZoom(CURRENT_LOCATION_ZOOM);
+                setInfoMessage("Showing requests around your current location.");
+            },
+            () => {
+                setInfoMessage(
+                    "Location permission was denied or unavailable. Continue by moving the map manually."
+                );
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+            }
+        );
+    }, []);
+
+    React.useEffect(() => {
+        if (hasRequestedInitialLocationRef.current) {
+            return;
+        }
+
+        hasRequestedInitialLocationRef.current = true;
+        handleUseCurrentLocation();
+    }, [handleUseCurrentLocation]);
 
     const isLoading = fetchState === "loading";
-    const isEmpty = fetchState === "empty";
+    const isDiscoverable = isViewportDiscoverable(currentViewport);
+    const isEmpty =
+        fetchState === "empty" &&
+        isDiscoverable &&
+        Boolean(lastFetchedViewportKey);
     const visibleRequests = React.useMemo(() => {
         if (!selectedTypes.size) {
             return requests;
@@ -179,7 +302,11 @@ export default function CrisisMapPage() {
         return requests.filter((item) => selectedTypes.has(item.type));
     }, [requests, selectedTypes]);
     const hasActiveFilters = selectedTypes.size > 0;
-    const isFilterEmpty = !isLoading && requests.length > 0 && visibleRequests.length === 0;
+    const isFilterEmpty =
+        !isLoading &&
+        isDiscoverable &&
+        requests.length > 0 &&
+        visibleRequests.length === 0;
 
     React.useEffect(() => {
         if (!selectedRequestId) {
@@ -212,8 +339,10 @@ export default function CrisisMapPage() {
                         <div className="crisis-map-canvas-wrap">
                             <CrisisMap
                                 center={center}
-                                features={visibleRequests}
+                                zoom={mapZoom}
+                                features={isViewportDiscoverable(currentViewport) ? visibleRequests : []}
                                 selectedFeatureId={selectedRequestId}
+                                onViewportChange={handleViewportChange}
                                 onSelectFeature={(featureId) => {
                                     setSelectedRequestId(featureId);
                                     setIsDetailsOpen(true);
@@ -223,7 +352,7 @@ export default function CrisisMapPage() {
                             />
 
                             <p className="gathering-areas-map-note">
-                                Showing waiting help requests by type and priority.
+                                {infoMessage || ResourceInitialMessage}
                             </p>
 
                             <button
@@ -232,7 +361,7 @@ export default function CrisisMapPage() {
                                 title="Refresh Help Request Map"
                                 className="gathering-areas-map-retry"
                                 onClick={() => {
-                                    void loadActiveRequests();
+                                    queueViewportRefresh();
                                 }}
                                 disabled={isLoading}
                             >
@@ -246,6 +375,32 @@ export default function CrisisMapPage() {
                                 >
                                     <path
                                         d="M20 11.5A8 8 0 1 0 17.66 17M20 11.5V6M20 11.5H14.5"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
+                            </button>
+
+                            <button
+                                type="button"
+                                aria-label="Use Current Location"
+                                title="Use Current Location"
+                                className="gathering-areas-map-current-location"
+                                onClick={handleUseCurrentLocation}
+                                disabled={isLoading}
+                            >
+                                <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M12 3V6M12 18V21M3 12H6M18 12H21M12 16.5A4.5 4.5 0 1 0 12 7.5A4.5 4.5 0 0 0 12 16.5Z"
                                         stroke="currentColor"
                                         strokeWidth="1.8"
                                         strokeLinecap="round"
@@ -315,7 +470,7 @@ export default function CrisisMapPage() {
                                             ))
                                         ) : (
                                             <p className="gathering-areas-empty-detail">
-                                                No waiting requests in view.
+                                                {isDiscoverable ? "No waiting requests in view." : ResourceZoomedOutMessage}
                                             </p>
                                         )}
                                     </div>
@@ -384,21 +539,30 @@ export default function CrisisMapPage() {
                         ) : null}
                     </div>
 
+                    <div className="gathering-areas-context-note">
+                        <p className="gathering-areas-context-line">
+                            Showing waiting help requests by type and priority.
+                        </p>
+                        <p className="gathering-areas-context-line">
+                            {isDiscoverable ? "Browsing requests in the visible map area." : ResourceZoomedOutMessage}
+                        </p>
+                    </div>
+
                     {isLoading ? (
                         <div className="gathering-areas-status-box">
-                            <p>Loading waiting help requests...</p>
+                            <p>{ResourceLoadingMessage}</p>
                         </div>
                     ) : null}
 
                     {error ? (
                         <div className="gathering-areas-status-box is-error">
-                            <p>{error}</p>
+                            <p>{error || ResourceErrorMessage}</p>
                         </div>
                     ) : null}
 
                     {isEmpty ? (
                         <div className="gathering-areas-status-box">
-                            <p>No waiting help requests are available right now.</p>
+                            <p>{ResourceEmptyMessage}</p>
                         </div>
                     ) : null}
                     {isFilterEmpty ? (

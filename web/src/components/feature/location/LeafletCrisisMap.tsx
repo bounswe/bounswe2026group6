@@ -3,7 +3,7 @@
 import * as React from "react";
 import L from "leaflet";
 import { LeafletMapCanvas } from "@/components/feature/location/LeafletMapCanvas";
-import type { LatLng } from "@/components/feature/location/LeafletMapCanvas";
+import type { LatLng, MapBounds } from "@/components/feature/location/LeafletMapCanvas";
 
 type CrisisRequestType =
     | "SHELTER"
@@ -30,6 +30,7 @@ type LeafletCrisisMapProps = {
     features: CrisisMapFeature[];
     selectedFeatureId: string | null;
     onSelectFeature: (featureId: string) => void;
+    onViewportChange?: (bounds: MapBounds) => void;
     heightClassName?: string;
     zoom?: number;
 };
@@ -93,6 +94,7 @@ export function LeafletCrisisMap({
     features,
     selectedFeatureId,
     onSelectFeature,
+    onViewportChange,
     heightClassName = "h-[380px] md:h-[500px]",
     zoom = 11,
 }: LeafletCrisisMapProps) {
@@ -168,21 +170,6 @@ export function LeafletCrisisMap({
     }, [features, mapReadyVersion]);
 
     React.useEffect(() => {
-        const map = mapRef.current;
-        if (!map) {
-            return;
-        }
-
-        if (!features.length) {
-            map.setView([center.latitude, center.longitude], zoom, { animate: true });
-            return;
-        }
-
-        const bounds = L.latLngBounds(features.map((item) => [item.latitude, item.longitude] as [number, number]));
-        map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
-    }, [features, center.latitude, center.longitude, zoom, mapReadyVersion]);
-
-    React.useEffect(() => {
         for (const [featureId, marker] of markerRefs.current.entries()) {
             const feature = features.find((item) => item.featureKey === featureId);
             if (!feature) {
@@ -200,6 +187,7 @@ export function LeafletCrisisMap({
             zoom={zoom}
             heightClassName={heightClassName}
             ariaLabel="Live crisis help requests map"
+            onViewportChange={onViewportChange}
             onMapReady={(map) => {
                 mapRef.current = map;
                 setMapReadyVersion((version) => version + 1);

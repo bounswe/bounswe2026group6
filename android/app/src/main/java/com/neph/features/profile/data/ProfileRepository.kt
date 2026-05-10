@@ -337,6 +337,31 @@ object ProfileRepository {
         return updated
     }
 
+    suspend fun syncSharedCurrentLocation(currentDeviceLocation: CurrentDeviceLocation): ProfileData {
+        ensureInitialized()
+
+        val token = AuthSessionStore.getAccessToken().orEmpty()
+        check(token.isNotBlank()) { "Access token is required before saving current location." }
+
+        val response = JsonHttpClient.request(
+            path = "/profiles/me/location",
+            method = "PATCH",
+            token = token,
+            body = buildLocationPatchPayload(
+                profile = cachedProfile.copy(shareLocation = true),
+                currentDeviceLocation = currentDeviceLocation
+            )
+        )
+
+        val updated = mapBackendProfile(
+            profileJson = response,
+            email = cachedProfile.email.orEmpty(),
+            cachedProfileSnapshot = cachedProfile
+        )
+        saveProfile(updated)
+        return updated
+    }
+
     suspend fun syncPrivacyDefaultsForLocationPermission(locationPermissionGranted: Boolean): ProfileData? {
         ensureInitialized()
 

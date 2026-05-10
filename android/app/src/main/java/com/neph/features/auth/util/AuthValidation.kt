@@ -1,7 +1,13 @@
 package com.neph.features.auth.util
 
-import android.util.Patterns
-
 fun isValidEmail(email: String): Boolean {
-    return Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+    val normalized = email.trim()
+    if (normalized.isEmpty()) {
+        return false
+    }
+
+    // Keep validation permissive in UI and avoid domain-extension bias (.com-only behavior).
+    return UiEmailRegex.matches(normalized)
 }
+
+private val UiEmailRegex = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
