@@ -159,7 +159,7 @@ object SafetyStatusRepository {
 
     internal fun buildRequestHelpSafetyStatusPayload(): JSONObject {
         return JSONObject()
-            .put("status", "not_safe")
+            .put("status", "unknown")
             .put("shareLocationConsent", false)
             .put("location", JSONObject.NULL)
     }
