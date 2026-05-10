@@ -773,7 +773,12 @@ async function getAssignmentByVolunteerId(volunteerId, executor = null) {
   const sql = `
     SELECT a.*, hr.need_type, hr.description, hr.status as request_status,
            hr.help_types, hr.other_help_text, hr.affected_people_count,
-           hr.risk_flags, hr.vulnerable_groups, hr.blood_type,
+           hr.risk_flags, hr.vulnerable_groups,
+           hr.share_profile_health_info_with_volunteer,
+           CASE WHEN hr.share_profile_health_info_with_volunteer THEN hi.blood_type ELSE NULL END AS blood_type,
+           CASE WHEN hr.share_profile_health_info_with_volunteer THEN COALESCE(hi.medical_conditions, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END AS medical_conditions,
+           CASE WHEN hr.share_profile_health_info_with_volunteer THEN COALESCE(hi.chronic_diseases, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END AS chronic_diseases,
+           CASE WHEN hr.share_profile_health_info_with_volunteer THEN COALESCE(hi.allergies, ARRAY[]::TEXT[]) ELSE ARRAY[]::TEXT[] END AS allergies,
            hr.urgency_level, hr.priority_level, hr.created_at AS opened_at,
            hr.contact_full_name, hr.contact_phone, hr.contact_alternative_phone,
            rl.latitude, rl.longitude,
@@ -787,6 +792,7 @@ async function getAssignmentByVolunteerId(volunteerId, executor = null) {
     LEFT JOIN request_locations rl ON hr.request_id = rl.request_id
     LEFT JOIN users u ON hr.user_id = u.user_id
     LEFT JOIN user_profiles up ON u.user_id = up.user_id
+    LEFT JOIN health_info hi ON hi.profile_id = up.profile_id
     WHERE a.volunteer_id = $1 AND a.is_cancelled = FALSE AND hr.status != 'RESOLVED' AND hr.status != 'CANCELLED'
     LIMIT 1;
   `;
