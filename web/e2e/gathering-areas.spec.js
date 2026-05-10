@@ -336,6 +336,9 @@ test('supports multi-select category filters and clear filters reset', async ({ 
   const hospitalFilterChip = filterPanel.locator('.crisis-filter-chip', { hasText: 'Hospital' });
   const assemblyFilterChip = filterPanel.locator('.crisis-filter-chip', { hasText: 'Assembly Point' });
 
+  // Normalize chip state to avoid relying on implicit initial selection behavior.
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+
   await expect(hospitalFilterChip).toHaveClass(/is-active/);
   await hospitalFilterChip.click();
   await expect(hospitalFilterChip).not.toHaveClass(/is-active/);
