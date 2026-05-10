@@ -4,7 +4,6 @@ import * as React from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
-import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { CrisisMap } from "@/components/feature/location/CrisisMap";
 import type { CrisisMapFeature, CrisisRequestType } from "@/components/feature/location/LeafletCrisisMap";
 import { fetchActiveHelpRequests } from "@/lib/crisisMap";
@@ -139,6 +138,7 @@ export default function CrisisMapPage() {
     const [lastFetchedViewportKey, setLastFetchedViewportKey] = React.useState<string | null>(null);
     const [viewportRefreshNonce, setViewportRefreshNonce] = React.useState(0);
     const requestIdRef = React.useRef(0);
+    const hasRequestedInitialLocationRef = React.useRef(false);
 
     const loadActiveRequestsForViewport = React.useCallback(async (viewport: MapBounds) => {
         const currentRequestId = ++requestIdRef.current;
@@ -280,6 +280,15 @@ export default function CrisisMapPage() {
         );
     }, []);
 
+    React.useEffect(() => {
+        if (hasRequestedInitialLocationRef.current) {
+            return;
+        }
+
+        hasRequestedInitialLocationRef.current = true;
+        handleUseCurrentLocation();
+    }, [handleUseCurrentLocation]);
+
     const isLoading = fetchState === "loading";
     const isDiscoverable = isViewportDiscoverable(currentViewport);
     const isEmpty =
@@ -366,6 +375,32 @@ export default function CrisisMapPage() {
                                 >
                                     <path
                                         d="M20 11.5A8 8 0 1 0 17.66 17M20 11.5V6M20 11.5H14.5"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
+                            </button>
+
+                            <button
+                                type="button"
+                                aria-label="Use Current Location"
+                                title="Use Current Location"
+                                className="gathering-areas-map-current-location"
+                                onClick={handleUseCurrentLocation}
+                                disabled={isLoading}
+                            >
+                                <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M12 3V6M12 18V21M3 12H6M18 12H21M12 16.5A4.5 4.5 0 1 0 12 7.5A4.5 4.5 0 0 0 12 16.5Z"
                                         stroke="currentColor"
                                         strokeWidth="1.8"
                                         strokeLinecap="round"
@@ -511,23 +546,6 @@ export default function CrisisMapPage() {
                         <p className="gathering-areas-context-line">
                             {isDiscoverable ? "Browsing requests in the visible map area." : ResourceZoomedOutMessage}
                         </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                        <SecondaryButton
-                            type="button"
-                            onClick={handleUseCurrentLocation}
-                            disabled={isLoading}
-                        >
-                            Use Current Location
-                        </SecondaryButton>
-                        <SecondaryButton
-                            type="button"
-                            onClick={queueViewportRefresh}
-                            disabled={isLoading}
-                        >
-                            Refresh for Current View
-                        </SecondaryButton>
                     </div>
 
                     {isLoading ? (
