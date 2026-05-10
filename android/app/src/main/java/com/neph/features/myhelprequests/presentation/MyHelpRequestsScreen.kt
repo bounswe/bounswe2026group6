@@ -50,6 +50,8 @@ import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.myhelprequests.data.buildMyHelpRequestsOverview
 import com.neph.features.myhelprequests.data.MyHelpRequestUiModel
 import com.neph.features.myhelprequests.data.MyHelpRequestsRepository
+import com.neph.features.onboarding.data.MobileOnboardingPracticeHelpRequest
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
@@ -73,7 +75,10 @@ fun MyHelpRequestsScreen(
     onOpenSettings: (() -> Unit)?,
     onProfileClick: () -> Unit,
     profileBadgeText: String,
-    isAuthenticated: Boolean
+    isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    mobileOnboardingPracticeHelpRequest: MobileOnboardingPracticeHelpRequest? = null
 ) {
     val spacing = LocalNephSpacing.current
     val token = AuthSessionStore.getAccessToken().orEmpty()
@@ -89,6 +94,12 @@ fun MyHelpRequestsScreen(
     var reconnectRefreshInProgress by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<PendingRequestAction?>(null) }
     val pullToRefreshState = rememberPullToRefreshState()
+    val practiceRequest = mobileOnboardingPracticeHelpRequest?.toPracticeUiModel()
+    val displayedRequests = if (practiceRequest != null) {
+        listOf(practiceRequest) + requests.filterNot { it.isGuideOnly }
+    } else {
+        requests
+    }
 
     fun refreshRequests(showFullPageLoading: Boolean) {
         if (!showFullPageLoading && (initialRefreshInProgress || reconnectRefreshInProgress)) return
@@ -195,7 +206,9 @@ fun MyHelpRequestsScreen(
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
         profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
-        contentFillMaxSize = true
+        contentFillMaxSize = true,
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         LaunchedEffect(isAuthenticated, token) {
             refreshRequests(showFullPageLoading = true)
@@ -207,7 +220,7 @@ fun MyHelpRequestsScreen(
             state = pullToRefreshState,
             modifier = Modifier.fillMaxSize()
         ) {
-            val overview = buildMyHelpRequestsOverview(requests)
+            val overview = buildMyHelpRequestsOverview(displayedRequests)
             val currentActiveRequest = overview.activeRequests.firstOrNull()
             val requestHistory = overview.historyRequests
 
@@ -224,7 +237,7 @@ fun MyHelpRequestsScreen(
                 }
 
                 when {
-                    initialRefreshInProgress && requests.isEmpty() -> {
+                    initialRefreshInProgress && displayedRequests.isEmpty() -> {
                         item {
                             LoadingStateView(
                                 modifier = Modifier
@@ -234,7 +247,7 @@ fun MyHelpRequestsScreen(
                         }
                     }
 
-                    requests.isEmpty() -> {
+                    displayedRequests.isEmpty() -> {
                         item {
                             EmptyStateView(
                                 onRequestHelp = { onNavigateToRoute(Routes.RequestHelp.route) },
@@ -285,13 +298,17 @@ fun MyHelpRequestsScreen(
                                     subtitleOverride = currentActiveRequest.createdAt?.let { "Opened: $it" }
                                         ?: "Opened time unavailable",
                                     actionMessage = actionMessage,
-                                    onEdit = { pendingAction = PendingRequestAction.Edit(currentActiveRequest) },
-                                    onCancel = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                    onEdit = if (currentActiveRequest.isGuideOnly) {
+                                        null
+                                    } else {
+                                        { pendingAction = PendingRequestAction.Edit(currentActiveRequest) }
+                                    },
+                                    onCancel = if (!currentActiveRequest.isGuideOnly && (isAuthenticated || currentActiveRequest.localId.isNotBlank())) {
                                         { pendingAction = PendingRequestAction.Cancel(currentActiveRequest) }
                                     } else {
                                         null
                                     },
-                                    onResolve = if (isAuthenticated || currentActiveRequest.localId.isNotBlank()) {
+                                    onResolve = if (!currentActiveRequest.isGuideOnly && (isAuthenticated || currentActiveRequest.localId.isNotBlank())) {
                                         { pendingAction = PendingRequestAction.Resolve(currentActiveRequest) }
                                     } else {
                                         null
@@ -637,6 +654,10 @@ private fun MyHelpRequestCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            if (request.isGuideOnly) {
+                HelperText(text = "Guide preview only — this help request was not saved.")
+            }
+
             Text(
                 text = "Location: ${request.locationLabel}",
                 style = MaterialTheme.typography.labelMedium,
@@ -798,6 +819,38 @@ private fun MyHelpRequestCard(
             }
         }
     }
+}
+
+private fun MobileOnboardingPracticeHelpRequest.toPracticeUiModel(): MyHelpRequestUiModel {
+    return MyHelpRequestUiModel(
+        id = "mobile-onboarding-practice-help-request",
+        localId = "",
+        helpTypes = helpTypes,
+        helpTypeSummary = helpTypes.joinToString(", ").ifBlank { "Practice Help Request" },
+        description = description,
+        shortDescription = description,
+        locationLabel = locationLabel,
+        status = "OPEN",
+        statusLabel = "Guide preview",
+        isActive = true,
+        contactName = contactName,
+        contactPhone = contactPhone,
+        alternativePhone = null,
+        responders = emptyList(),
+        helperFirstName = null,
+        helperLastName = null,
+        helperPhone = null,
+        helperProfession = null,
+        helperExpertise = null,
+        helperFullName = null,
+        createdAt = createdAtLabel,
+        urgencyLabel = null,
+        priorityLabel = null,
+        closedAtLabel = null,
+        closedStateLabel = null,
+        openDurationLabel = null,
+        isGuideOnly = true
+    )
 }
 
 private fun MyHelpRequestUiModel.pendingSyncMessage(): String {

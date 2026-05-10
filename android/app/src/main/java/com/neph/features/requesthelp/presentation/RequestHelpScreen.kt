@@ -60,6 +60,7 @@ import com.neph.features.profile.data.normalizeBloodType
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingPracticeHelpRequest
 import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.features.onboarding.presentation.mobileOnboardingPulse
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
@@ -209,6 +210,25 @@ private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
         fullName = profile.fullName.orEmpty(),
         countryCode = phoneParts.countryCode,
         phoneNumber = phoneParts.phone
+    )
+}
+
+private fun RequestHelpFormState.toMobileOnboardingPracticeHelpRequest(): MobileOnboardingPracticeHelpRequest {
+    val locationParts = listOf(country, city, district, neighborhood, shortAddress)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    val phone = "$countryCode $phoneNumber".trim().takeIf { it.isNotBlank() }
+
+    return MobileOnboardingPracticeHelpRequest(
+        helpTypes = helpTypes.ifEmpty { listOf("Help Request") },
+        riskFlags = riskFlags,
+        description = situationDescription
+            .trim()
+            .ifBlank { "Practice request created during the app guide." },
+        locationLabel = locationParts.joinToString(" / ").ifBlank { "Practice location" },
+        contactName = fullName.trim().takeIf { it.isNotBlank() },
+        contactPhone = phone,
+        createdAtLabel = "Just now"
     )
 }
 
@@ -533,7 +553,8 @@ fun RequestHelpScreen(
     onNavigateToLogin: () -> Unit,
     onNavigateToMyHelpRequests: () -> Unit,
     mobileOnboardingStepId: MobileOnboardingStepId? = null,
-    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    onMobileOnboardingPracticeHelpRequestChanged: (MobileOnboardingPracticeHelpRequest?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -908,6 +929,7 @@ fun RequestHelpScreen(
             errorMessage = ""
             infoMessage = "Practice complete. No real help request was saved."
             mapActionMessage = ""
+            onMobileOnboardingPracticeHelpRequestChanged(formState.toMobileOnboardingPracticeHelpRequest())
             completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_SEND)
             return
         }

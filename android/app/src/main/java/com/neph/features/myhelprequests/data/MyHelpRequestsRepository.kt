@@ -51,7 +51,8 @@ data class MyHelpRequestUiModel(
     val openDurationLabel: String?,
     val syncStatus: String = SyncStatus.SYNCED,
     val pendingError: String? = null,
-    val lastSyncedAt: String? = null
+    val lastSyncedAt: String? = null,
+    val isGuideOnly: Boolean = false
 ) {
     val isPendingSync: Boolean
         get() = syncStatus == SyncStatus.PENDING_CREATE || syncStatus == SyncStatus.PENDING_UPDATE

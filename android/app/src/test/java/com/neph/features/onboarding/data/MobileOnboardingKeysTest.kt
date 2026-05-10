@@ -54,6 +54,7 @@ class MobileOnboardingKeysTest {
                 MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
                 MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
                 MobileOnboardingStepId.REQUEST_HELP_SEND,
+                MobileOnboardingStepId.MY_HELP_REQUESTS,
                 MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU,
                 MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST,
                 MobileOnboardingStepId.ASSIGNED_REQUESTS
@@ -61,6 +62,7 @@ class MobileOnboardingKeysTest {
             authenticatedSteps.map { it.id }
         )
         assertEquals(Routes.RequestHelp.route, authenticatedSteps[1].route)
+        assertEquals(Routes.MyHelpRequests.route, authenticatedSteps[5].route)
         assertEquals(Routes.AssignedRequest.route, authenticatedSteps.last().route)
     }
 

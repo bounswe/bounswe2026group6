@@ -40,6 +40,7 @@ import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingPracticeHelpRequest
 import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.features.onboarding.data.MobileOnboardingStore
 import com.neph.features.onboarding.presentation.MobileOnboardingGuide
@@ -173,6 +174,9 @@ fun NephApp() {
         var showMobileOnboarding by remember { mutableStateOf(false) }
         var activeMobileOnboardingStepId by remember { mutableStateOf<MobileOnboardingStepId?>(null) }
         var mobileOnboardingFeedback by remember { mutableStateOf<String?>(null) }
+        var mobileOnboardingPracticeHelpRequest by remember {
+            mutableStateOf<MobileOnboardingPracticeHelpRequest?>(null)
+        }
         var showExitDialog by remember { mutableStateOf(false) }
         val canPopBackStack = navController.previousBackStackEntry != null
         val shouldConfirmExit = !canPopBackStack && (
@@ -202,6 +206,7 @@ fun NephApp() {
             val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
             activeMobileOnboardingStepId = firstStep.id
             mobileOnboardingFeedback = null
+            mobileOnboardingPracticeHelpRequest = null
             showMobileOnboarding = true
             navigateForMobileOnboarding(firstStep.route)
         }
@@ -215,6 +220,7 @@ fun NephApp() {
                 showMobileOnboarding = false
                 activeMobileOnboardingStepId = null
                 mobileOnboardingFeedback = null
+                mobileOnboardingPracticeHelpRequest = null
             } else {
                 setMobileOnboardingStep(nextStep.id)
             }
@@ -223,6 +229,12 @@ fun NephApp() {
         fun updateMobileOnboardingFeedback(message: String?) {
             if (showMobileOnboarding) {
                 mobileOnboardingFeedback = message
+            }
+        }
+
+        fun updateMobileOnboardingPracticeHelpRequest(request: MobileOnboardingPracticeHelpRequest?) {
+            if (showMobileOnboarding) {
+                mobileOnboardingPracticeHelpRequest = request
             }
         }
 
@@ -288,7 +300,9 @@ fun NephApp() {
             onRestartMobileOnboarding = ::restartMobileOnboarding,
             mobileOnboardingStepId = activeMobileOnboardingStepId.takeIf { showMobileOnboarding },
             onMobileOnboardingStepCompleted = ::completeMobileOnboardingStep,
-            onMobileOnboardingFeedbackChanged = ::updateMobileOnboardingFeedback
+            onMobileOnboardingFeedbackChanged = ::updateMobileOnboardingFeedback,
+            mobileOnboardingPracticeHelpRequest = mobileOnboardingPracticeHelpRequest,
+            onMobileOnboardingPracticeHelpRequestChanged = ::updateMobileOnboardingPracticeHelpRequest
         )
 
         val activeStepId = activeMobileOnboardingStepId
@@ -310,6 +324,9 @@ fun NephApp() {
                 onNavigateToStep = {
                     navigateForMobileOnboarding(activeStep.route)
                 },
+                onContinue = {
+                    completeMobileOnboardingStep(activeStep.completionMessage)
+                },
                 onBack = {
                     MobileOnboardingJourney.previousStep(activeStepId, isAuthenticated)?.let { previousStep ->
                         setMobileOnboardingStep(previousStep.id)
@@ -321,12 +338,18 @@ fun NephApp() {
                     showMobileOnboarding = false
                     activeMobileOnboardingStepId = null
                     mobileOnboardingFeedback = null
+                    mobileOnboardingPracticeHelpRequest = null
                 },
                 onFinish = {
                     MobileOnboardingStore.markSeenForCurrentUser()
                     showMobileOnboarding = false
                     activeMobileOnboardingStepId = null
                     mobileOnboardingFeedback = null
+                    mobileOnboardingPracticeHelpRequest = null
+                    navController.navigate(Routes.Home.route) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }

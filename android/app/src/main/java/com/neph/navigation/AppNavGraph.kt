@@ -38,6 +38,7 @@ import com.neph.features.profile.presentation.ProfileScreen
 import com.neph.features.requesthelp.presentation.RequestHelpScreen
 import com.neph.features.safetycircles.presentation.SafetyCirclesScreen
 import com.neph.features.settings.presentation.SettingsScreen
+import com.neph.features.onboarding.data.MobileOnboardingPracticeHelpRequest
 import com.neph.features.onboarding.data.MobileOnboardingStepId
 
 @Composable
@@ -47,7 +48,9 @@ fun AppNavGraph(
     onRestartMobileOnboarding: () -> Unit = {},
     mobileOnboardingStepId: MobileOnboardingStepId? = null,
     onMobileOnboardingStepCompleted: (String?) -> Unit = {},
-    onMobileOnboardingFeedbackChanged: (String?) -> Unit = {}
+    onMobileOnboardingFeedbackChanged: (String?) -> Unit = {},
+    mobileOnboardingPracticeHelpRequest: MobileOnboardingPracticeHelpRequest? = null,
+    onMobileOnboardingPracticeHelpRequestChanged: (MobileOnboardingPracticeHelpRequest?) -> Unit = {}
 ) {
     val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
     val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
@@ -198,7 +201,10 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                mobileOnboardingPracticeHelpRequest = mobileOnboardingPracticeHelpRequest
             )
         }
 
@@ -485,7 +491,8 @@ fun AppNavGraph(
                     navigateToDrawerRoute(Routes.MyHelpRequests.route)
                 },
                 mobileOnboardingStepId = mobileOnboardingStepId,
-                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                onMobileOnboardingPracticeHelpRequestChanged = onMobileOnboardingPracticeHelpRequestChanged
             )
         }
 

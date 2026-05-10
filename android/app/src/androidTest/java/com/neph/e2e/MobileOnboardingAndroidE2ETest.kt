@@ -92,8 +92,13 @@ class MobileOnboardingAndroidE2ETest {
         waitForTag("mobile_onboarding_target_send_help_request")
 
         composeRule.onNodeWithTag("mobile_onboarding_target_send_help_request").performScrollTo().performClick()
-        waitForGuideTitle("Open the Menu")
+        waitForGuideTitle("My Help Requests")
         waitForText("No real help request was saved")
+        waitForText("Guide preview only")
+        waitForText("Fire Brigade")
+
+        composeRule.onNodeWithTag("mobile_onboarding_continue").performClick()
+        waitForGuideTitle("Open the Menu")
         waitForTag("mobile_onboarding_target_menu")
 
         composeRule.onNodeWithTag("mobile_onboarding_target_menu").performClick()
@@ -108,9 +113,10 @@ class MobileOnboardingAndroidE2ETest {
 
         composeRule.onNodeWithTag("mobile_onboarding_finish").performClick()
         waitUntilTagGone("mobile_onboarding_dialog")
+        waitForText("I need help now")
 
         composeRule.activityRule.scenario.recreate()
-        waitForText("Assigned Request")
+        waitForText("I need help now")
         waitUntilTagGone("mobile_onboarding_dialog")
     }
 

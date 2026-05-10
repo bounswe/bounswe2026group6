@@ -8,9 +8,9 @@ enum class MobileOnboardingStepId {
     REQUEST_HELP_RISK_FIRE,
     REQUEST_HELP_CONFIRM,
     REQUEST_HELP_SEND,
+    MY_HELP_REQUESTS,
     OPEN_ASSIGNED_REQUESTS_MENU,
     SELECT_ASSIGNED_REQUEST,
-    MY_HELP_REQUESTS,
     HELP_REQUEST_MAP,
     GATHERING_AREAS,
     EMERGENCY_NUMBERS,
@@ -103,8 +103,19 @@ object MobileOnboardingJourney {
             panelPlacement = MobileOnboardingPanelPlacement.TOP
         ),
         MobileOnboardingStep(
+            id = MobileOnboardingStepId.MY_HELP_REQUESTS,
+            route = Routes.MyHelpRequests.route,
+            title = "My Help Requests",
+            eyebrow = "Track your request",
+            description = "After a real help request is sent, NEPH brings you here to track it. During the guide, your practice request is shown only as a temporary preview.",
+            actionLabel = "Continue",
+            targetHint = "Review the temporary practice request, then continue to Assigned Request.",
+            completionMessage = "You saw where your own help requests appear after sending.",
+            panelPlacement = MobileOnboardingPanelPlacement.TOP
+        ),
+        MobileOnboardingStep(
             id = MobileOnboardingStepId.OPEN_ASSIGNED_REQUESTS_MENU,
-            route = Routes.Home.route,
+            route = Routes.MyHelpRequests.route,
             title = "Open the Menu",
             eyebrow = "Find more app areas",
             description = "The bottom Menu opens the rest of the app sections you can use during coordination.",
@@ -117,7 +128,7 @@ object MobileOnboardingJourney {
         ),
         MobileOnboardingStep(
             id = MobileOnboardingStepId.SELECT_ASSIGNED_REQUEST,
-            route = Routes.Home.route,
+            route = Routes.MyHelpRequests.route,
             title = "Assigned Request",
             eyebrow = "Check assigned work",
             description = "Assigned Request shows the emergency support request currently assigned to you, if there is one.",

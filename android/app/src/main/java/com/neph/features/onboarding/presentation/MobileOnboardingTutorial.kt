@@ -32,12 +32,14 @@ fun MobileOnboardingGuide(
     isOnTargetRoute: Boolean,
     feedbackMessage: String?,
     onNavigateToStep: () -> Unit,
+    onContinue: () -> Unit,
     onBack: () -> Unit,
     onSkip: () -> Unit,
     onFinish: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
     val isFirstStep = stepNumber <= 1
+    val isLastStep = stepNumber >= totalSteps
     val progress = stepNumber.toFloat() / totalSteps.toFloat()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -145,16 +147,28 @@ fun MobileOnboardingGuide(
                     Spacer(modifier = Modifier.weight(1f))
                     if (!isOnTargetRoute || !step.usesExistingTarget) {
                         Button(
-                            onClick = if (!isOnTargetRoute) onNavigateToStep else onFinish,
+                            onClick = when {
+                                !isOnTargetRoute -> onNavigateToStep
+                                isLastStep -> onFinish
+                                else -> onContinue
+                            },
                             modifier = Modifier.testTag(
                                 if (!isOnTargetRoute) {
                                     "mobile_onboarding_take_me_there"
-                                } else {
+                                } else if (isLastStep) {
                                     "mobile_onboarding_finish"
+                                } else {
+                                    "mobile_onboarding_continue"
                                 }
                             )
                         ) {
-                            Text(if (!isOnTargetRoute) "Go there" else "Finish")
+                            Text(
+                                when {
+                                    !isOnTargetRoute -> "Go there"
+                                    isLastStep -> "Finish"
+                                    else -> "Continue"
+                                }
+                            )
                         }
                     }
                 }
