@@ -268,7 +268,7 @@ async function deleteMe(req, res) {
 
 async function googleLogin(req, res) {
   try {
-    const { idToken, mode, acceptedTerms } = req.body;
+    const { idToken, mode } = req.body;
     if (!idToken || typeof idToken !== 'string') {
       return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'idToken is required' });
     }
@@ -276,7 +276,6 @@ async function googleLogin(req, res) {
     const result = await loginWithGoogle({
       idToken,
       mode: normalizedMode,
-      acceptedTerms: acceptedTerms === true,
     });
     return res.status(200).json(result);
   } catch (error) {
@@ -303,9 +302,6 @@ async function googleLogin(req, res) {
     }
     if (error.code === 'GOOGLE_ACCOUNT_NOT_FOUND') {
       return res.status(404).json({ code: error.code, message: error.message });
-    }
-    if (error.code === 'TERMS_NOT_ACCEPTED') {
-      return res.status(400).json({ code: error.code, message: error.message });
     }
     console.error('Google login error:', error);
     return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Something went wrong' });

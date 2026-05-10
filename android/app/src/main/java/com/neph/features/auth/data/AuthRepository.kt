@@ -139,16 +139,11 @@ object AuthRepository {
 
     suspend fun loginWithGoogle(
         idToken: String,
-        mode: String = "login",
-        acceptedTerms: Boolean? = null
+        mode: String = "login"
     ): LoginDestination {
         val requestBody = JSONObject()
             .put("idToken", idToken)
             .put("mode", mode)
-
-        if (acceptedTerms != null) {
-            requestBody.put("acceptedTerms", acceptedTerms)
-        }
 
         val response = JsonHttpClient.request(
             path = "/auth/google",

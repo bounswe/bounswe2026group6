@@ -2,7 +2,9 @@ package com.neph.features.helprequestmap.presentation
 
 import com.neph.features.helprequestmap.data.ActiveHelpRequestMapItem
 import com.neph.features.helprequestmap.data.CrisisRequestType
+import com.neph.ui.map.LeafletMapViewport
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -163,6 +165,63 @@ class HelpRequestMapScreenFilterLogicTest {
         assertEquals("?", requestMarkerStyle(CrisisRequestType.OTHER).glyph)
     }
 
+    @Test
+    fun helpRequestCurrentLocationZoom_usesDiscoverableLocalZoom() {
+        assertEquals(15, HelpRequestMapCurrentLocationZoom)
+    }
+
+    @Test
+    fun helpRequestMapEmptyMessage_zoomedOutDoesNotUseFilterEmptyCopy() {
+        val message = helpRequestMapEmptyMessage(
+            blockingLoading = false,
+            errorMessage = "",
+            currentViewport = viewport(widthKm = 60.0, heightKm = 20.0),
+            isFilterEmpty = true,
+            hasFetchedViewport = true
+        )
+
+        assertEquals("Zoom in to see resources in this area.", message)
+        assertFalse(message.contains("selected request type filters"))
+    }
+
+    @Test
+    fun helpRequestMapEmptyMessage_filterEmptyIsSeparateFromZoomedOut() {
+        val message = helpRequestMapEmptyMessage(
+            blockingLoading = false,
+            errorMessage = "",
+            currentViewport = viewport(widthKm = 20.0, heightKm = 20.0),
+            isFilterEmpty = true,
+            hasFetchedViewport = true
+        )
+
+        assertEquals("No request markers to display with these filters.", message)
+    }
+
+    @Test
+    fun shouldShowPreviousHelpRequestsDuringViewportFetch_keepsMarkersForNormalPanOnly() {
+        assertEquals(
+            true,
+            shouldShowPreviousHelpRequestsDuringViewportFetch(
+                requests = listOf(firstAid),
+                manualRefresh = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowPreviousHelpRequestsDuringViewportFetch(
+                requests = listOf(firstAid),
+                manualRefresh = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowPreviousHelpRequestsDuringViewportFetch(
+                requests = emptyList(),
+                manualRefresh = false
+            )
+        )
+    }
+
     private fun request(
         requestId: String,
         type: CrisisRequestType,
@@ -179,6 +238,21 @@ class HelpRequestMapScreenFilterLogicTest {
             longitude = 29.0,
             city = "istanbul",
             district = "sisli"
+        )
+    }
+
+    private fun viewport(widthKm: Double, heightKm: Double): LeafletMapViewport {
+        return LeafletMapViewport(
+            centerLatitude = 41.0,
+            centerLongitude = 29.0,
+            north = 41.1,
+            south = 40.9,
+            east = 29.1,
+            west = 29.0,
+            zoom = 12,
+            widthKm = widthKm,
+            heightKm = heightKm,
+            widestVisibleDimensionKm = maxOf(widthKm, heightKm)
         )
     }
 }

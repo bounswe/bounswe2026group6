@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.MotionEvent
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -195,6 +196,14 @@ fun effectiveLeafletViewportKey(viewport: LeafletMapViewport?): String? {
     )
 }
 
+fun shouldFetchLeafletViewport(
+    viewportKey: String,
+    lastFetchedViewportKey: String?,
+    manualRefresh: Boolean
+): Boolean {
+    return manualRefresh || viewportKey != lastFetchedViewportKey
+}
+
 fun leafletViewportBboxString(viewport: LeafletMapViewport): String {
     return String.format(
         Locale.US,
@@ -206,7 +215,7 @@ fun leafletViewportBboxString(viewport: LeafletMapViewport): String {
     )
 }
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
 internal fun LeafletMapWebView(
     mapInstanceId: String,
@@ -233,6 +242,22 @@ internal fun LeafletMapWebView(
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     webViewClient = LeafletMapWebViewClient()
                     webChromeClient = LeafletMapWebChromeClient()
+                    setOnTouchListener { view, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN,
+                            MotionEvent.ACTION_MOVE,
+                            MotionEvent.ACTION_POINTER_DOWN,
+                            MotionEvent.ACTION_POINTER_UP -> {
+                                view.parent?.requestDisallowInterceptTouchEvent(true)
+                            }
+
+                            MotionEvent.ACTION_UP,
+                            MotionEvent.ACTION_CANCEL -> {
+                                view.parent?.requestDisallowInterceptTouchEvent(false)
+                            }
+                        }
+                        false
+                    }
                     addJavascriptInterface(bridge, bridgeName)
                     loadDataWithBaseURL(LeafletMapBaseUrl, html, "text/html", "utf-8", null)
                 }
@@ -368,6 +393,10 @@ internal fun buildLeafletDocumentHead(mapHeightCssPx: Int = LeafletMapFallbackHe
                 margin: 0;
                 padding: 0;
                 overflow: hidden;
+                overscroll-behavior: contain;
+                touch-action: none;
+                -webkit-user-select: none;
+                user-select: none;
             }
             #map {
                 width: 100%;
@@ -375,6 +404,10 @@ internal fun buildLeafletDocumentHead(mapHeightCssPx: Int = LeafletMapFallbackHe
                 min-height: ${coercedMapHeightCssPx}px;
                 margin: 0;
                 padding: 0;
+                overscroll-behavior: contain;
+                touch-action: none;
+                -webkit-user-select: none;
+                user-select: none;
             }
         </style>
     """.trimIndent()

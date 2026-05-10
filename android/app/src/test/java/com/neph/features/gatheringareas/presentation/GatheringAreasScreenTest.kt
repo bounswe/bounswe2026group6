@@ -3,7 +3,10 @@ package com.neph.features.gatheringareas.presentation
 import com.neph.core.network.ApiException
 import com.neph.features.gatheringareas.data.GatheringAreaItem
 import com.neph.features.gatheringareas.data.NearbyGatheringAreasResult
+import com.neph.ui.map.LeafletMapViewport
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GatheringAreasScreenTest {
@@ -80,6 +83,78 @@ class GatheringAreasScreenTest {
     }
 
     @Test
+    fun gatheringAreasCurrentLocationZoom_usesDiscoverableLocalZoom() {
+        assertEquals(15, GatheringAreasCurrentLocationZoom)
+    }
+
+    @Test
+    fun gatheringAreasMapEmptyMessage_zoomedOutDoesNotUseTrueEmptyOrFilterEmptyCopy() {
+        val message = gatheringAreasMapEmptyMessage(
+            blockingLoading = false,
+            errorMessage = "",
+            currentViewport = viewport(widthKm = 60.0, heightKm = 20.0),
+            isFilterEmpty = true,
+            currentResult = emptyNearbyResult(source = "overpass")
+        )
+
+        assertEquals("Zoom in to see resources in this area.", message)
+        assertFalse(message.contains("No Gathering Areas Found"))
+        assertFalse(message.contains("selected categories"))
+    }
+
+    @Test
+    fun gatheringAreasProviderFallbackEmpty_isNotTrueEmptyResult() {
+        val fallback = emptyNearbyResult(
+            source = "fallback",
+            providerErrorCode = "OVERPASS_UNAVAILABLE"
+        )
+
+        assertTrue(isGatheringAreasProviderUnavailable(fallback))
+        assertEquals(
+            "Provider did not return markers for this area.",
+            gatheringAreasMapEmptyMessage(
+                blockingLoading = false,
+                errorMessage = "",
+                currentViewport = viewport(widthKm = 20.0, heightKm = 20.0),
+                isFilterEmpty = false,
+                currentResult = fallback
+            )
+        )
+    }
+
+    @Test
+    fun gatheringAreasResultHelperMessage_distinguishesStaleCache() {
+        val stale = sampleNearbyResult().copy(source = "stale_cache", stale = true)
+
+        assertEquals(
+            "Showing cached gathering areas; provider data may be temporarily unavailable.",
+            gatheringAreasResultHelperMessage(stale)
+        )
+    }
+
+    @Test
+    fun shouldShowPreviousGatheringAreasDuringViewportFetch_keepsMarkersForNormalPanOnly() {
+        assertTrue(
+            shouldShowPreviousGatheringAreasDuringViewportFetch(
+                currentResult = sampleNearbyResult(),
+                manualRefresh = false
+            )
+        )
+        assertFalse(
+            shouldShowPreviousGatheringAreasDuringViewportFetch(
+                currentResult = sampleNearbyResult(),
+                manualRefresh = true
+            )
+        )
+        assertFalse(
+            shouldShowPreviousGatheringAreasDuringViewportFetch(
+                currentResult = null,
+                manualRefresh = false
+            )
+        )
+    }
+
+    @Test
     fun reconcileGatheringAreaCategoryFilters_whenPreviouslyShowingAll_selectsAllNewCategories() {
         val reconciled = reconcileGatheringAreaCategoryFilters(
             previousOptionKeys = setOf("assembly_point", "shelter"),
@@ -135,8 +210,46 @@ class GatheringAreasScreenTest {
             requestedLimit = 50,
             returnedCount = areas.size,
             skippedCount = 0,
+            providerErrorCode = null,
+            stale = false,
+            fallbackReason = null,
             categories = emptyList(),
             areas = areas
+        )
+    }
+
+    private fun emptyNearbyResult(
+        source: String,
+        providerErrorCode: String? = null
+    ): NearbyGatheringAreasResult {
+        return NearbyGatheringAreasResult(
+            centerLatitude = 41.0,
+            centerLongitude = 29.0,
+            radiusMeters = 10_000,
+            source = source,
+            requestedLimit = 50,
+            returnedCount = 0,
+            skippedCount = 0,
+            providerErrorCode = providerErrorCode,
+            stale = false,
+            fallbackReason = null,
+            categories = emptyList(),
+            areas = emptyList()
+        )
+    }
+
+    private fun viewport(widthKm: Double, heightKm: Double): LeafletMapViewport {
+        return LeafletMapViewport(
+            centerLatitude = 41.0,
+            centerLongitude = 29.0,
+            north = 41.1,
+            south = 40.9,
+            east = 29.1,
+            west = 29.0,
+            zoom = 12,
+            widthKm = widthKm,
+            heightKm = heightKm,
+            widestVisibleDimensionKm = maxOf(widthKm, heightKm)
         )
     }
 }

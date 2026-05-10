@@ -1,5 +1,7 @@
 package com.neph.features.gatheringareas.data
 
+import android.util.Log
+import com.neph.BuildConfig
 import com.neph.core.network.ApiException
 import com.neph.core.network.JsonHttpClient
 import kotlinx.coroutines.withTimeoutOrNull
@@ -39,6 +41,9 @@ data class NearbyGatheringAreasResult(
     val requestedLimit: Int,
     val returnedCount: Int,
     val skippedCount: Int,
+    val providerErrorCode: String?,
+    val stale: Boolean,
+    val fallbackReason: String?,
     val categories: List<GatheringAreaCategoryMeta>,
     val areas: List<GatheringAreaItem>
 )
@@ -49,6 +54,7 @@ object GatheringAreasRepository {
     private const val MaxRadiusMeters = 10000
     private const val MaxLimit = 50
     private const val NearbyRequestTimeoutMillis = 8000L
+    private const val DebugLogTag = "GatheringAreasRepo"
 
     suspend fun fetchNearbyGatheringAreas(
         latitude: Double,
@@ -107,13 +113,15 @@ object GatheringAreasRepository {
             code = "OVERPASS_TIMEOUT"
         )
 
-        return parseNearbyGatheringAreasResponse(
+        val parsed = parseNearbyGatheringAreasResponse(
             response = response,
             fallbackLatitude = centerLatitude,
             fallbackLongitude = centerLongitude,
             fallbackRadius = normalizedRadiusMeters,
             fallbackLimit = normalizedLimit
         )
+        logViewportFetchResult(bbox = bbox, result = parsed)
+        return parsed
     }
 
     internal fun parseNearbyGatheringAreasResponse(
@@ -132,6 +140,9 @@ object GatheringAreasRepository {
 
         val metaJson = response.optJSONObject("meta") ?: JSONObject()
         val requestedLimit = metaJson.optPositiveInt("requestedLimit") ?: fallbackLimit
+        val providerErrorCode = metaJson.optNullableString("providerErrorCode")
+        val stale = metaJson.optBoolean("stale", false) || source == "stale_cache"
+        val fallbackReason = metaJson.optNullableString("fallbackReason")
         val categories = parseCategoryMetadata(metaJson.optJSONArray("categories"))
 
         val features = response
@@ -173,8 +184,20 @@ object GatheringAreasRepository {
             requestedLimit = requestedLimit,
             returnedCount = sortedAreas.size,
             skippedCount = skippedCount,
+            providerErrorCode = providerErrorCode,
+            stale = stale,
+            fallbackReason = fallbackReason,
             categories = categories,
             areas = sortedAreas
+        )
+    }
+
+    private fun logViewportFetchResult(bbox: String, result: NearbyGatheringAreasResult) {
+        if (!BuildConfig.DEBUG) return
+        val providerCode = result.providerErrorCode?.let { " providerErrorCode=$it" }.orEmpty()
+        Log.d(
+            DebugLogTag,
+            "viewport bbox=$bbox source=${result.source} returned=${result.returnedCount}$providerCode"
         )
     }
 
@@ -317,4 +340,9 @@ private fun JSONObject.optNonNegativeInt(key: String): Int? {
     if (!has(key)) return null
     val value = optInt(key)
     return value.takeIf { it >= 0 }
+}
+
+private fun JSONObject.optNullableString(key: String): String? {
+    if (!has(key) || isNull(key)) return null
+    return optString(key).trim().ifBlank { null }
 }

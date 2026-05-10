@@ -113,8 +113,8 @@ class AuthenticatedSessionAndroidE2ETest {
         composeRule.onNodeWithText("Delete account?").assertIsDisplayed()
         composeRule.onAllNodes(hasText("Delete Account") and hasClickAction())[1].performClick()
 
-        waitForText("Continue as Guest")
-        composeRule.onNodeWithText("Continue as Guest").assertIsDisplayed()
+        waitForText("Welcome back")
+        composeRule.onNodeWithText("Welcome back").assertIsDisplayed()
     }
 
     private fun clickableNode(text: String) = composeRule.onNode(hasText(text) and hasClickAction())
