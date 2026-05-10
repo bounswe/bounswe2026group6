@@ -8,6 +8,11 @@ type NearbyGatheringAreasQuery = {
     limit?: number;
 };
 
+type ViewportGatheringAreasQuery = {
+    bbox: string;
+    limit?: number;
+};
+
 function buildQuery(params: Record<string, string | number | undefined>) {
     const searchParams = new URLSearchParams();
 
@@ -35,5 +40,18 @@ export async function fetchNearbyGatheringAreas(
 
     return apiRequest<NearbyGatheringAreasResponse>(
         `/gathering-areas/nearby${query}`
+    );
+}
+
+export async function fetchViewportGatheringAreas(
+    params: ViewportGatheringAreasQuery
+) {
+    const query = buildQuery({
+        bbox: params.bbox,
+        limit: params.limit,
+    });
+
+    return apiRequest<NearbyGatheringAreasResponse>(
+        `/gathering-areas/viewport${query}`
     );
 }

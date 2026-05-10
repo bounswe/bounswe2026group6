@@ -3,7 +3,7 @@
 import * as React from "react";
 import L from "leaflet";
 import { LeafletMapCanvas } from "@/components/feature/location/LeafletMapCanvas";
-import type { LatLng } from "@/components/feature/location/LeafletMapCanvas";
+import type { LatLng, MapBounds } from "@/components/feature/location/LeafletMapCanvas";
 
 type GatheringAreaMapFeature = {
     featureKey: string;
@@ -20,9 +20,11 @@ type GatheringAreaMapFeature = {
 
 type LeafletGatheringAreasMapProps = {
     center: LatLng;
+    showLiveLocation?: boolean;
     features: GatheringAreaMapFeature[];
     selectedFeatureId: string | null;
     onSelectFeature: (featureId: string) => void;
+    onViewportChange?: (bounds: MapBounds) => void;
     heightClassName?: string;
     zoom?: number;
 };
@@ -118,9 +120,11 @@ function createPopupContent(feature: GatheringAreaMapFeature) {
 
 export function LeafletGatheringAreasMap({
     center,
+    showLiveLocation = false,
     features,
     selectedFeatureId,
     onSelectFeature,
+    onViewportChange,
     heightClassName = "h-[380px] md:h-[500px]",
     zoom = 14,
 }: LeafletGatheringAreasMapProps) {
@@ -165,6 +169,14 @@ export function LeafletGatheringAreasMap({
             animate: true,
         });
 
+        if (!showLiveLocation) {
+            if (centerMarkerRef.current) {
+                map.removeLayer(centerMarkerRef.current);
+                centerMarkerRef.current = null;
+            }
+            return;
+        }
+
         if (!centerMarkerRef.current) {
             centerMarkerRef.current = L.marker([center.latitude, center.longitude], {
                 icon: createLiveLocationIcon(),
@@ -174,7 +186,7 @@ export function LeafletGatheringAreasMap({
         } else {
             centerMarkerRef.current.setLatLng([center.latitude, center.longitude]);
         }
-    }, [center.latitude, center.longitude]);
+    }, [center.latitude, center.longitude, showLiveLocation]);
 
     React.useEffect(() => {
         const markerLayer = markerLayerRef.current;
@@ -220,6 +232,7 @@ export function LeafletGatheringAreasMap({
             zoom={zoom}
             heightClassName={heightClassName}
             ariaLabel="Nearby gathering areas map"
+            onViewportChange={onViewportChange}
             onMapReady={(map) => {
                 mapRef.current = map;
                 setMapReadyVersion((version) => version + 1);

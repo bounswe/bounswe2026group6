@@ -462,6 +462,21 @@ describe('DELETE /api/auth/me', () => {
     expect(deletedUser.rows[0].email).not.toBe(validUser.email);
     expect(deletedUser.rows[0].email).toMatch(/^deleted\+[a-f0-9]{32}@deleted\.invalid$/);
 
+    const signupAfterDeletion = await request(app).post('/api/auth/signup').send(validUser);
+    expect(signupAfterDeletion.status).toBe(201);
+    expect(signupAfterDeletion.body.user.email).toBe(validUser.email);
+    expect(signupAfterDeletion.body.user.userId).not.toBe(userId);
+
+    const freshUser = await query(
+      `SELECT user_id, is_deleted FROM users WHERE email = $1`,
+      [validUser.email],
+    );
+    expect(freshUser.rows).toHaveLength(1);
+    expect(freshUser.rows[0]).toEqual(expect.objectContaining({
+      user_id: signupAfterDeletion.body.user.userId,
+      is_deleted: false,
+    }));
+
     const deletedProfile = await query(
       `SELECT first_name, last_name, phone_number FROM user_profiles WHERE user_id = $1`,
       [userId],
@@ -963,15 +978,15 @@ describe('POST /api/auth/google', () => {
     expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS');
   });
 
-  test('400 - signup requires terms acceptance', async () => {
+  test('200 - signup does not require terms acceptance for Google', async () => {
     const app = createTestApp();
 
     const res = await request(app)
       .post('/api/auth/google')
       .send({ idToken: 'valid-google-id-token', mode: 'signup' });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('TERMS_NOT_ACCEPTED');
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
   });
 
   test('400 - missing idToken', async () => {
@@ -999,7 +1014,7 @@ describe('POST /api/auth/google', () => {
     expect(res.body.code).toBe('USER_BANNED');
   });
 
-  test('403 - deleted account cannot sign in with Google', async () => {
+  test('404 - deleted Google identity is not reused for login', async () => {
     const app = createTestApp();
 
     await request(app)
@@ -1011,8 +1026,51 @@ describe('POST /api/auth/google', () => {
       .post('/api/auth/google')
       .send({ idToken: 'valid-google-id-token', mode: 'login' });
 
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe('ACCOUNT_DELETED');
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('GOOGLE_ACCOUNT_NOT_FOUND');
+
+    const deletedRow = await query('SELECT email, google_id, is_deleted FROM users WHERE is_deleted = TRUE');
+    expect(deletedRow.rows[0]).toEqual(expect.objectContaining({
+      google_id: null,
+      is_deleted: true,
+    }));
+    expect(deletedRow.rows[0].email).toMatch(/^deleted\+[a-f0-9]{32}@deleted\.invalid$/);
+  });
+
+  test('200 - signup after deleted Google account creates a fresh user row', async () => {
+    const app = createTestApp();
+
+    await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
+
+    const oldUser = await query('SELECT user_id FROM users WHERE email = $1', [GOOGLE_EMAIL]);
+    const oldUserId = oldUser.rows[0].user_id;
+    await query('UPDATE users SET is_deleted = TRUE WHERE user_id = $1', [oldUserId]);
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .send({ idToken: 'valid-google-id-token', mode: 'signup', acceptedTerms: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.user.email).toBe(GOOGLE_EMAIL);
+    expect(res.body.user.userId).not.toBe(oldUserId);
+
+    const activeRows = await query('SELECT user_id, google_id, is_deleted FROM users WHERE email = $1', [GOOGLE_EMAIL]);
+    expect(activeRows.rows).toHaveLength(1);
+    expect(activeRows.rows[0]).toEqual(expect.objectContaining({
+      user_id: res.body.user.userId,
+      google_id: FAKE_GOOGLE_ID,
+      is_deleted: false,
+    }));
+
+    const deletedRows = await query('SELECT email, google_id, is_deleted FROM users WHERE user_id = $1', [oldUserId]);
+    expect(deletedRows.rows[0]).toEqual(expect.objectContaining({
+      google_id: null,
+      is_deleted: true,
+    }));
+    expect(deletedRows.rows[0].email).toMatch(/^deleted\+[a-f0-9]{32}@deleted\.invalid$/);
   });
 
   test('401 - Google-only account cannot login with password endpoint', async () => {

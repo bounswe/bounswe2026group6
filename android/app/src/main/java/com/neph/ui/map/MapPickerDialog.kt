@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -152,6 +154,8 @@ fun MapPickerDialog(
                     currentMapInstanceId = { currentMapInstanceIdState.value },
                     initialLatitude = effectiveInitialLatitude,
                     initialLongitude = effectiveInitialLongitude,
+                    onShowCurrentLocation = onCenterOnCurrentLocation.takeIf { showCenterOnCurrentLocation },
+                    showCurrentLocationEnabled = !loading && !centerActionLoading,
                     onLocationSelected = { lat, lon ->
                         selection = MapPickerSelection(lat, lon)
                     },
@@ -185,14 +189,6 @@ fun MapPickerDialog(
 
                 if (loading) {
                     HelperText(text = "Resolving selected location...")
-                }
-
-                if (showCenterOnCurrentLocation && onCenterOnCurrentLocation != null) {
-                    SecondaryButton(
-                        text = "Center on my location",
-                        onClick = onCenterOnCurrentLocation,
-                        enabled = !loading && !centerActionLoading
-                    )
                 }
 
                 if (centerActionLoading) {
@@ -231,6 +227,8 @@ private fun MapPickerMap(
     currentMapInstanceId: () -> String,
     initialLatitude: Double?,
     initialLongitude: Double?,
+    onShowCurrentLocation: (() -> Unit)?,
+    showCurrentLocationEnabled: Boolean,
     onLocationSelected: (Double, Double) -> Unit,
     onMapReady: (String, String) -> Unit,
     onMapError: (String, String) -> Unit
@@ -256,15 +254,26 @@ private fun MapPickerMap(
         )
     }
 
-    LeafletMapWebView(
-        mapInstanceId = mapInstanceId,
-        html = html,
-        bridgeName = MapPickerBridgeName,
-        bridge = bridge,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(MapPickerMapHeightCssPx.dp)
-    )
+    Box {
+        LeafletMapWebView(
+            mapInstanceId = mapInstanceId,
+            html = html,
+            bridgeName = MapPickerBridgeName,
+            bridge = bridge,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(MapPickerMapHeightCssPx.dp)
+        )
+        onShowCurrentLocation?.let { showCurrentLocation ->
+            MapLocationControl(
+                onClick = showCurrentLocation,
+                enabled = showCurrentLocationEnabled,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(LocalNephSpacing.current.sm)
+            )
+        }
+    }
 }
 
 private class MapPickerBridge(
