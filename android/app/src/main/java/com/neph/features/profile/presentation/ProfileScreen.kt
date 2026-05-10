@@ -155,10 +155,6 @@ fun ProfileScreen(
                     ProfileFieldRow(label = "District", value = profile.district)
                     ProfileFieldRow(label = "Neighborhood", value = profile.neighborhood)
                     ProfileFieldRow(label = "Extra address", value = profile.extraAddress)
-                    ProfileFieldRow(
-                        label = "Share current location",
-                        value = profile.shareLocation?.let { if (it) "Enabled" else "Disabled" }
-                    )
                 }
             }
         }
