@@ -1282,6 +1282,35 @@ textarea::placeholder {
     cursor: not-allowed;
 }
 
+.gathering-areas-map-current-location {
+    position: absolute;
+    left: 12px;
+    bottom: 56px;
+    z-index: 40;
+    pointer-events: auto;
+    width: 38px;
+    height: 38px;
+    border: 1px solid #f0bec2;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-card);
+    color: #d43b45;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gathering-areas-map-current-location:hover {
+    border-color: #e27a82;
+    background: #fff4f5;
+}
+
+.gathering-areas-map-current-location:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .gathering-areas-overlay-toggle {
     position: absolute;
     top: 12px;
@@ -1820,7 +1849,12 @@ textarea::placeholder {
     }
 
     .gathering-areas-overlay-toggle {
+        top: 12px;
         right: 10px;
+    }
+
+    .gathering-areas-map-current-location {
+        left: 10px;
     }
 
     .gathering-areas-map-overlay {

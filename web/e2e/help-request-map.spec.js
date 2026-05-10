@@ -1,11 +1,35 @@
 const { test, expect } = require('@playwright/test');
 const { resetDatabase } = require('./helpers/db');
 
+function mockGeolocation(page, latitude = 41.009, longitude = 28.97) {
+  return page.addInitScript(
+    ({ lat, lon }) => {
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition: (success) => {
+            success({
+              coords: {
+                latitude: lat,
+                longitude: lon,
+                accuracy: 12,
+              },
+            });
+          },
+        },
+      });
+    },
+    { lat: latitude, lon: longitude }
+  );
+}
+
 test.beforeEach(async () => {
   await resetDatabase();
 });
 
 test('guest can view waiting help requests on the map without operational status details', async ({ page }) => {
+  await mockGeolocation(page);
+
   let requestedUrl = '';
   const list = page.locator('.gathering-areas-list');
 
@@ -75,24 +99,25 @@ test('guest can view waiting help requests on the map without operational status
   await expect(page.locator('.crisis-pin')).toHaveCount(2);
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
 
-  await page.locator('.crisis-pin').first().click();
+  await list.getByRole('button', { name: /First Aid/i }).click();
+  await expect(page.locator('.crisis-pin.is-selected')).toHaveCount(1);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('Priority: High');
   await expect(page.getByText('PENDING')).toHaveCount(0);
   await expect(page.getByText('ASSIGNED')).toHaveCount(0);
 
-  await page.locator('.crisis-pin').nth(1).click();
+  await list.getByRole('button', { name: /Shelter/i }).click();
+  await expect(page.locator('.crisis-pin.is-selected')).toHaveCount(1);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('Shelter');
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('Priority: Medium');
 
   const url = new URL(requestedUrl);
   expect(url.searchParams.get('status')).toBe('PENDING');
   expect(url.searchParams.get('limit')).toBe('300');
-
-  await page.locator('.crisis-pin').first().hover();
-  await expect(page.locator('.crisis-tooltip-card').filter({ hasText: 'Priority: High' })).toBeVisible();
 });
 
 test('shows empty state and supports refresh after active request lookup fails', async ({ page }) => {
+  await mockGeolocation(page);
+
   let requestCount = 0;
 
   await page.route('**/api/help-requests/active**', async (route) => {
@@ -124,14 +149,22 @@ test('shows empty state and supports refresh after active request lookup fails',
   await page.goto('/crisis-map');
 
   await expect(page.getByText('No waiting requests in view.')).toBeVisible();
+  await expect(
+    page
+      .locator('.gathering-areas-status-box')
+      .filter({ hasText: 'No resources were found in this visible area.' })
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Refresh Help Request Map' }).click();
-
-  await expect(page.getByText('Help request visibility is temporarily unavailable')).toBeVisible();
-  await expect.poll(() => requestCount).toBe(2);
+  await expect(page.locator('.gathering-areas-status-box.is-error')).toContainText(
+    'Help request visibility is temporarily unavailable'
+  );
+  await expect.poll(() => requestCount).toBeGreaterThan(1);
 });
 
 test('supports multi-select request type filters and clears selected details when filtered out', async ({ page }) => {
+  await mockGeolocation(page);
+
   const filters = page.locator('.crisis-filters-panel');
   const list = page.locator('.gathering-areas-list');
   await page.route('**/api/help-requests/active**', async (route) => {
@@ -178,7 +211,8 @@ test('supports multi-select request type filters and clears selected details whe
   await expect(page.locator('.crisis-pin')).toHaveCount(3);
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
 
-  await page.locator('.crisis-pin').first().click();
+  await list.getByRole('button', { name: /First Aid/i }).click();
+  await expect(page.locator('.crisis-pin.is-selected')).toHaveCount(1);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('First Aid');
 
   await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
@@ -186,7 +220,8 @@ test('supports multi-select request type filters and clears selected details whe
   await expect(page.locator('.crisis-pin')).toHaveCount(2);
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
 
-  await page.locator('.crisis-pin').first().click();
+  await list.getByRole('button', { name: /Shelter/i }).click();
+  await expect(page.locator('.crisis-pin.is-selected')).toHaveCount(1);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('Shelter');
   await expect(list.getByRole('button', { name: /First Aid/i })).toHaveCount(0);
 

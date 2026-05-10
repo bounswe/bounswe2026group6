@@ -4,7 +4,14 @@ import * as React from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-type LatLng = {
+export type MapBounds = {
+    minLat: number;
+    maxLat: number;
+    minLon: number;
+    maxLon: number;
+};
+
+export type LatLng = {
     latitude: number;
     longitude: number;
 };
@@ -16,6 +23,7 @@ type LeafletMapCanvasProps = {
     ariaLabel?: string;
     onMapReady?: (map: L.Map) => void;
     onMapClick?: (position: LatLng) => void;
+    onViewportChange?: (bounds: MapBounds) => void;
 };
 
 export function LeafletMapCanvas({
@@ -25,11 +33,13 @@ export function LeafletMapCanvas({
     ariaLabel = "Map",
     onMapReady,
     onMapClick,
+    onViewportChange,
 }: LeafletMapCanvasProps) {
     const containerRef = React.useRef<HTMLDivElement | null>(null);
     const mapRef = React.useRef<L.Map | null>(null);
     const onMapReadyRef = React.useRef(onMapReady);
     const onMapClickRef = React.useRef(onMapClick);
+    const onViewportChangeRef = React.useRef(onViewportChange);
 
     React.useEffect(() => {
         onMapReadyRef.current = onMapReady;
@@ -38,6 +48,10 @@ export function LeafletMapCanvas({
     React.useEffect(() => {
         onMapClickRef.current = onMapClick;
     }, [onMapClick]);
+
+    React.useEffect(() => {
+        onViewportChangeRef.current = onViewportChange;
+    }, [onViewportChange]);
 
     React.useEffect(() => {
         if (!containerRef.current || mapRef.current) {
@@ -62,8 +76,22 @@ export function LeafletMapCanvas({
             });
         });
 
+        function emitViewport() {
+            const bounds = map.getBounds();
+            onViewportChangeRef.current?.({
+                minLat: bounds.getSouth(),
+                maxLat: bounds.getNorth(),
+                minLon: bounds.getWest(),
+                maxLon: bounds.getEast(),
+            });
+        }
+
+        map.on("moveend", emitViewport);
+        map.on("zoomend", emitViewport);
+
         mapRef.current = map;
         onMapReadyRef.current?.(map);
+        emitViewport();
 
         return () => {
             map.remove();
@@ -103,5 +131,3 @@ export function LeafletMapCanvas({
         </div>
     );
 }
-
-export type { LatLng };
