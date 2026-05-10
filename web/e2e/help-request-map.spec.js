@@ -1,11 +1,35 @@
 const { test, expect } = require('@playwright/test');
 const { resetDatabase } = require('./helpers/db');
 
+function mockGeolocation(page, latitude = 41.009, longitude = 28.97) {
+  return page.addInitScript(
+    ({ lat, lon }) => {
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition: (success) => {
+            success({
+              coords: {
+                latitude: lat,
+                longitude: lon,
+                accuracy: 12,
+              },
+            });
+          },
+        },
+      });
+    },
+    { lat: latitude, lon: longitude }
+  );
+}
+
 test.beforeEach(async () => {
   await resetDatabase();
 });
 
 test('guest can view waiting help requests on the map without operational status details', async ({ page }) => {
+  await mockGeolocation(page);
+
   let requestedUrl = '';
   const list = page.locator('.gathering-areas-list');
 
@@ -93,6 +117,8 @@ test('guest can view waiting help requests on the map without operational status
 });
 
 test('shows empty state and supports refresh after active request lookup fails', async ({ page }) => {
+  await mockGeolocation(page);
+
   let requestCount = 0;
 
   await page.route('**/api/help-requests/active**', async (route) => {
@@ -132,6 +158,8 @@ test('shows empty state and supports refresh after active request lookup fails',
 });
 
 test('supports multi-select request type filters and clears selected details when filtered out', async ({ page }) => {
+  await mockGeolocation(page);
+
   const filters = page.locator('.crisis-filters-panel');
   const list = page.locator('.gathering-areas-list');
   await page.route('**/api/help-requests/active**', async (route) => {

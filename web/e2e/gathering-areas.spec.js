@@ -55,7 +55,7 @@ test.beforeEach(async () => {
 test('keeps map/list selection stable when features share same id but different osmType', async ({ page }) => {
   await mockGeolocation(page);
 
-  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -115,11 +115,11 @@ test('keeps map/list selection stable when features share same id but different 
   await expect(page.locator('.gathering-areas-selected-meta').first()).toContainText('Shelter');
 });
 
-test('shows empty and fallback states for gathering areas retrieval', async ({ page }) => {
+test('shows empty state and then error state for gathering areas retrieval', async ({ page }) => {
   await mockGeolocation(page);
 
   let requestCount = 0;
-  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
     requestCount += 1;
 
     if (requestCount === 1) {
@@ -152,23 +152,20 @@ test('shows empty and fallback states for gathering areas retrieval', async ({ p
 
   await page.goto('/gathering-areas');
 
-  await expect(page.getByText('No gathering areas were found for this location and radius.')).toBeVisible();
-  await expect(page.getByText('No nearby areas in the current result.')).toBeVisible();
+  await expect(page.getByText('No resources were found in this visible area.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Retry Results' }).click();
 
-  await expect(page.getByText(/Live gathering areas could not be refreshed/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /Demo central assembly area/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Retry gathering areas' })).toBeVisible();
-  await expect(page.getByText('Could not load nearby results.')).toHaveCount(0);
-  await expect(page.getByText('No nearby areas in the current result.')).toHaveCount(0);
+  await expect(page.getByText('Gathering areas provider is unavailable')).toBeVisible();
+  await expect(page.getByText('Could not load nearby results.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Demo central assembly area/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
 
-test('shows backend fallback warning while rendering non-empty fallback gathering areas', async ({ page }) => {
+test('renders non-empty fallback-source response without warning banner', async ({ page }) => {
   await mockGeolocation(page);
 
-  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -209,11 +206,8 @@ test('shows backend fallback warning while rendering non-empty fallback gatherin
 
   await page.goto('/gathering-areas');
 
-  await expect(page.getByText('Using backend fallback gathering areas')).toBeVisible();
-  await expect(page.getByText(/Overpass provider timed out/)).toBeVisible();
-  await expect(page.getByText(/Retry to refresh live results/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Backend fallback assembly point/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Retry gathering areas' })).toBeVisible();
+  await expect(page.getByText('Using backend fallback gathering areas')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
 
@@ -221,7 +215,7 @@ test('does not show false empty state while geolocation is still pending', async
   await mockGeolocationPending(page);
 
   let requestCount = 0;
-  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
     requestCount += 1;
     await route.fulfill({
       status: 200,
@@ -242,8 +236,7 @@ test('does not show false empty state while geolocation is still pending', async
   await page.goto('/gathering-areas');
 
   await expect(page.getByText('Resolving your current location...')).toBeVisible();
-  await expect(page.getByText('No gathering areas were found for this location and radius.')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Retry Results' })).toBeDisabled();
+  await expect(page.getByText('No resources were found in this visible area.')).toHaveCount(0);
   await expect.poll(() => requestCount).toBe(0);
 });
 
@@ -251,7 +244,7 @@ test('uses fallback location flow when geolocation is denied', async ({ page }) 
   await mockGeolocationDenied(page);
 
   let requestCount = 0;
-  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
     requestCount += 1;
     await route.fulfill({
       status: 200,
@@ -271,15 +264,15 @@ test('uses fallback location flow when geolocation is denied', async ({ page }) 
 
   await page.goto('/gathering-areas');
 
-  await expect(page.getByText('Location permission was denied or unavailable. Showing nearby areas around Istanbul.')).toBeVisible();
-  await expect(page.getByText('No gathering areas were found for this location and radius.')).toBeVisible();
-  await expect.poll(() => requestCount).toBe(1);
+  await expect(page.getByText('Location permission was denied or unavailable. Continue by moving the map manually.')).toBeVisible();
+  await expect(page.getByText('No resources were found in this visible area.')).toHaveCount(0);
+  await expect.poll(() => requestCount).toBe(0);
 });
 
 test('supports multi-select category filters and clear filters reset', async ({ page }) => {
   await mockGeolocation(page);
 
-  await page.route('**/api/gathering-areas/nearby**', async (route) => {
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
