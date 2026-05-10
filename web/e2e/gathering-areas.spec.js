@@ -166,7 +166,7 @@ test('shows empty state and then error state for gathering areas retrieval', asy
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
 
-test('renders non-empty fallback-source response without warning banner', async ({ page }) => {
+test('does not render non-empty fallback-source response and shows unavailable state', async ({ page }) => {
   await mockGeolocation(page);
 
   await page.route('**/api/gathering-areas/viewport**', async (route) => {
@@ -210,8 +210,64 @@ test('renders non-empty fallback-source response without warning banner', async 
 
   await page.goto('/gathering-areas');
 
-  await expect(page.getByRole('button', { name: /Backend fallback assembly point/i })).toBeVisible();
-  await expect(page.getByText('Using backend fallback gathering areas')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Backend fallback assembly point/i })).toHaveCount(0);
+  await expect(page.locator('.gathering-areas-status-box.is-error')).toContainText('Overpass provider timed out.');
+  await expect(page.getByText('Could not load nearby results.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Demo central assembly area/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
+});
+
+test('does not render non-empty stale-cache response and shows unavailable state', async ({ page }) => {
+  await mockGeolocation(page);
+
+  await page.route('**/api/gathering-areas/viewport**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        center: { lat: 41.009, lon: 28.97 },
+        radius: 2000,
+        source: 'stale_cache',
+        meta: {
+          requestedLimit: 20,
+          returnedCount: 1,
+          stale: true,
+          providerErrorCode: 'OVERPASS_UNAVAILABLE',
+          fallbackReason: 'Provider unavailable. Showing stale cache.',
+        },
+        collection: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [28.976, 41.011],
+              },
+              properties: {
+                id: 'backend-stale-assembly',
+                osmType: 'way',
+                name: 'Backend stale assembly point',
+                category: 'assembly_point',
+                distanceMeters: 180,
+                rawTags: {
+                  address: 'Backend stale address',
+                },
+              },
+            },
+          ],
+        },
+      }),
+    });
+  });
+
+  await page.goto('/gathering-areas');
+
+  await expect(page.getByRole('button', { name: /Backend stale assembly point/i })).toHaveCount(0);
+  await expect(page.locator('.gathering-areas-status-box.is-error')).toContainText(
+    'Provider unavailable. Showing stale cache.'
+  );
+  await expect(page.getByText('Could not load nearby results.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry Results' })).toBeVisible();
 });
 

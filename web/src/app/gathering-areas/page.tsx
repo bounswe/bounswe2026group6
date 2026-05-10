@@ -31,6 +31,7 @@ const ResourceZoomedOutMessage = "Zoom in to see resources in this area.";
 const ResourceLoadingMessage = "Loading resources in this area...";
 const ResourceEmptyMessage = "No resources were found in this visible area.";
 const ResourceErrorMessage = "Resources could not be loaded for this area. Please try again.";
+const ResourceProviderUnavailableMessage = "Gathering areas provider is temporarily unavailable. Please retry.";
 
 type CategoryOption = {
     key: string;
@@ -329,6 +330,24 @@ export default function GatheringAreasPage() {
                 });
 
                 if (currentRequestId !== requestIdRef.current) {
+                    return;
+                }
+
+                const responseRequiresUnavailableState =
+                    response.source !== "overpass" ||
+                    response.meta.stale === true ||
+                    Boolean(response.meta.providerErrorCode);
+
+                if (responseRequiresUnavailableState) {
+                    setAreas([]);
+                    setCategoryOptions([]);
+                    setSelectedCategoryKeys([]);
+                    setSelectedAreaId(null);
+                    setError(response.meta.fallbackReason || ResourceProviderUnavailableMessage);
+                    setFetchState("error");
+                    setInfoMessage("");
+                    setLastFetchedViewportKey(effectiveViewportKey(viewport));
+                    setViewportRefreshNonce(0);
                     return;
                 }
 
