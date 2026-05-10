@@ -234,6 +234,7 @@ export default function GatheringAreasPage() {
     const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
     const hasRequestedInitialLocationRef = React.useRef(false);
     const hasInitializedCategoryFiltersRef = React.useRef(false);
+    const geolocationDeniedRef = React.useRef(false);
 
     const filteredAreas = React.useMemo(() => {
         if (!selectedCategoryKeys.length) {
@@ -442,6 +443,7 @@ export default function GatheringAreasPage() {
                     longitude: position.coords.longitude,
                 };
 
+                geolocationDeniedRef.current = false;
                 setCenter(nextCenter);
                 setMapZoom(CURRENT_LOCATION_ZOOM);
                 setHasUserLocation(true);
@@ -449,6 +451,7 @@ export default function GatheringAreasPage() {
                 setInfoMessage("Showing resources around your current location.");
             },
             () => {
+                geolocationDeniedRef.current = true;
                 setHasUserLocation(false);
                 setInfoMessage(
                     "Location permission was denied or unavailable. Continue by moving the map manually."
@@ -478,7 +481,9 @@ export default function GatheringAreasPage() {
             setLastFetchedViewportKey(null);
             setError("");
             setFetchState("idle");
-            setInfoMessage(ResourceZoomedOutMessage);
+            setInfoMessage((current) =>
+                geolocationDeniedRef.current ? current : ResourceZoomedOutMessage
+            );
             return;
         }
 
@@ -505,7 +510,9 @@ export default function GatheringAreasPage() {
         setLastFetchedViewportKey(null);
         setError("");
         setFetchState("idle");
-        setInfoMessage(ResourceZoomedOutMessage);
+        setInfoMessage((current) =>
+            geolocationDeniedRef.current ? current : ResourceZoomedOutMessage
+        );
     }, []);
 
     React.useEffect(() => {
