@@ -70,7 +70,7 @@ test('guest can view waiting help requests on the map without operational status
           },
           {
             requestId: 'map_req_assigned',
-            type: 'search_and_rescue',
+            type: 'search_rescue',
             status: 'PENDING',
             urgencyLevel: 'HIGH',
             createdAt: '2026-05-01T09:55:00.000Z',
@@ -192,29 +192,46 @@ test('supports multi-select request type filters and clears selected details whe
             location: { latitude: 41.066, longitude: 28.993, city: 'istanbul', district: 'sisli' },
           },
           {
-            requestId: 'map_req_food',
-            type: 'food_water',
+            requestId: 'map_req_search_rescue',
+            type: 'search_rescue',
             status: 'PENDING',
-            urgencyLevel: 'LOW',
+            urgencyLevel: 'HIGH',
             createdAt: '2026-05-01T11:00:00.000Z',
             assignmentState: 'UNASSIGNED',
             location: { latitude: 41.05, longitude: 29.01, city: 'istanbul', district: 'kadikoy' },
           },
+          {
+            requestId: 'map_req_food',
+            type: 'food_water',
+            status: 'PENDING',
+            urgencyLevel: 'LOW',
+            createdAt: '2026-05-01T11:05:00.000Z',
+            assignmentState: 'UNASSIGNED',
+            location: { latitude: 41.052, longitude: 29.012, city: 'istanbul', district: 'kadikoy' },
+          },
         ],
-        total: 3,
+        total: 4,
         pagination: { limit: 300, offset: 0 },
       }),
     });
   });
 
   await page.goto('/crisis-map');
-  await expect(page.locator('.crisis-pin')).toHaveCount(3);
+  await expect(page.locator('.crisis-pin')).toHaveCount(4);
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
+  await expect(list.getByRole('button', { name: /Search and Rescue/i })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Other \/ Unknown/i })).toHaveCount(0);
 
   await list.getByRole('button', { name: /First Aid/i }).click();
   await expect(page.locator('.crisis-pin.is-selected')).toHaveCount(1);
   await expect(page.locator('.gathering-areas-selected-card')).toContainText('First Aid');
 
+  await filters.getByRole('button', { name: 'Search and Rescue', exact: true }).click();
+  await expect(page.locator('.crisis-pin')).toHaveCount(1);
+  await expect(list.getByRole('button', { name: /Search and Rescue/i })).toBeVisible();
+  await expect(list.getByRole('button', { name: /First Aid/i })).toHaveCount(0);
+
+  await filters.getByRole('button', { name: 'Search and Rescue', exact: true }).click();
   await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
   await filters.getByRole('button', { name: 'Food / Water Supplies', exact: true }).click();
   await expect(page.locator('.crisis-pin')).toHaveCount(2);
@@ -227,7 +244,7 @@ test('supports multi-select request type filters and clears selected details whe
 
   await filters.getByRole('button', { name: 'Shelter', exact: true }).click();
   await filters.getByRole('button', { name: 'Food / Water Supplies', exact: true }).click();
-  await expect(page.locator('.crisis-pin')).toHaveCount(3);
+  await expect(page.locator('.crisis-pin')).toHaveCount(4);
   await expect(list.getByRole('button', { name: /First Aid/i })).toBeVisible();
 
   await filters.getByRole('button', { name: 'Other / Unknown', exact: true }).click();
@@ -235,5 +252,5 @@ test('supports multi-select request type filters and clears selected details whe
   await expect(page.getByText('Select a request marker to view details.')).toBeVisible();
 
   await filters.getByRole('button', { name: 'Clear', exact: true }).click();
-  await expect(page.locator('.crisis-pin')).toHaveCount(3);
+  await expect(page.locator('.crisis-pin')).toHaveCount(4);
 });
