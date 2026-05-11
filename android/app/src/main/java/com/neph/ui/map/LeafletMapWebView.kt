@@ -663,6 +663,7 @@ internal fun buildLeafletMarkerMapHtml(
                     });
                     areaMarkersById = {};
                     bounds = [center];
+                    var markerBounds = [];
 
                     markerData.forEach(function(marker) {
                         var selected = marker.id === selectedMarkerId;
@@ -685,6 +686,7 @@ internal fun buildLeafletMarkerMapHtml(
                             data: marker
                         };
                         bounds.push([marker.latitude, marker.longitude]);
+                        markerBounds.push([marker.latitude, marker.longitude]);
                     });
 
                     var normalizedFitBoundsRequestToken =
@@ -695,8 +697,10 @@ internal fun buildLeafletMarkerMapHtml(
                         normalizedFitBoundsRequestToken !== null &&
                         normalizedFitBoundsRequestToken !== lastAppliedFitBoundsRequestToken
                     ) {
-                        if (bounds.length > 1) {
-                            map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
+                        if (markerBounds.length > 1) {
+                            map.fitBounds(markerBounds, { padding: [24, 24], maxZoom: 15 });
+                        } else if (markerBounds.length === 1) {
+                            map.setView(markerBounds[0], 15);
                         }
                         lastAppliedFitBoundsRequestToken = normalizedFitBoundsRequestToken;
                     }
