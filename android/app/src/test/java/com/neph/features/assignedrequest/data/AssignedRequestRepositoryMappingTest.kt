@@ -27,8 +27,8 @@ class AssignedRequestRepositoryMappingTest {
         val assignment = JSONObject().apply {
             put("assignment_id", "asg_1")
             put("request_id", "req_1")
-            put("need_type", "food_water")
-            put("help_types", JSONArray(listOf("food_water")))
+            put("need_type", "search_rescue")
+            put("help_types", JSONArray(listOf("search_rescue")))
             put("description", "Need bottled water")
             put("request_status", "ASSIGNED")
             put("urgency_level", "HIGH")
@@ -49,6 +49,9 @@ class AssignedRequestRepositoryMappingTest {
         assertEquals("High", model.priorityLabel)
         assertEquals("2026-04-26 10:00:00", model.openedAtLabel)
         assertEquals("Assigned to you", model.statusLabel)
+        assertEquals("Search and Rescue", model.helpType)
+        assertEquals(listOf("Search and Rescue"), model.helpTypes)
+        assertEquals("Search and Rescue", model.helpTypeSummary)
         assertEquals(41.043, model.latitude ?: 0.0, 0.0)
         assertEquals(29.009, model.longitude ?: 0.0, 0.0)
     }

@@ -305,7 +305,24 @@ object AssignedRequestRepository {
     }
 
     private fun formatValue(value: String): String {
-        return value
+        val normalizedValue = value.trim().lowercase()
+        val explicitLabel = when (normalizedValue) {
+            "search_rescue",
+            "search_and_rescue",
+            "sar",
+            "fire_brigade",
+            "rescue" -> "Search and Rescue"
+            "food_water",
+            "food/water" -> "Food / Water"
+            "first_aid",
+            "medical" -> "First Aid"
+            else -> null
+        }
+        if (explicitLabel != null) {
+            return explicitLabel
+        }
+
+        return normalizedValue
             .trim()
             .split('_')
             .filter { it.isNotBlank() }
