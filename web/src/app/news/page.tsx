@@ -14,17 +14,10 @@ import {
     readCachedAnnouncements,
     type NewsItem,
 } from "@/lib/news";
+import { formatTimestampDateTime } from "@/lib/formatters";
 
 function formatLastUpdated(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return value;
-    }
-
-    return date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-    });
+    return formatTimestampDateTime(value);
 }
 
 function buildFailureMessage(err: unknown, sourceLabel: string) {

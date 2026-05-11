@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.neph.core.format.formatInstantWithRelativeDay
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
@@ -48,8 +49,8 @@ import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -388,5 +389,16 @@ private fun formatSafetyStatus(status: String): String {
 }
 
 private fun formatEpoch(epochMillis: Long): String {
-    return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(epochMillis))
+    return formatInstantWithRelativeDay(
+        instant = Instant.ofEpochMilli(epochMillis),
+        fallbackFormatter = EpochDisplayFormatter,
+        timeFormatter = EpochTimeFormatter,
+        relativeSeparator = " "
+    )
 }
+
+private val EpochDisplayFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
+
+private val EpochTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm", Locale.US)

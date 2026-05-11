@@ -16,6 +16,7 @@ import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { TextArea } from "@/components/ui/inputs/TextArea";
+import { formatTimestampDateTime } from "@/lib/formatters";
 
 type VerifiedFilter = "ALL" | "VERIFIED" | "UNVERIFIED";
 type BannedFilter = "ALL" | "BANNED" | "ACTIVE";
@@ -62,7 +63,7 @@ function formatDateTime(value: string | null) {
     if (Number.isNaN(date.getTime())) {
         return value;
     }
-    return date.toLocaleString();
+    return formatTimestampDateTime(value);
 }
 
 function StatusBadge({
