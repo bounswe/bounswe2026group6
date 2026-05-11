@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import com.neph.core.format.formatTimestampWithRelativeDay
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.notifications.data.NotificationUiModel
 import com.neph.features.notifications.data.NotificationsBadge
@@ -40,9 +41,8 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.TimeZone
 
 @Composable
 fun NotificationsScreen(
@@ -291,40 +291,18 @@ fun NotificationsScreen(
 }
 
 private fun formatNotificationTimestamp(raw: String): String {
-    val isoWithMillis = requireNotNull(NotificationIsoWithMillis.get())
-    val isoNoMillis = requireNotNull(NotificationIsoNoMillis.get())
-    val displayFormatter = requireNotNull(NotificationDisplayFormat.get())
-
-    val parsed = runCatching {
-        isoWithMillis.parse(raw)
-    }.recoverCatching {
-        isoNoMillis.parse(raw)
-    }.getOrNull() ?: return raw
-
-    return displayFormatter.format(parsed)
+    return formatTimestampWithRelativeDay(
+        raw = raw,
+        fallbackFormatter = NotificationDisplayFormatter,
+        timeFormatter = NotificationTimeFormatter
+    ) ?: raw
 }
 
-private val NotificationIsoWithMillis = object : ThreadLocal<SimpleDateFormat>() {
-    override fun initialValue(): SimpleDateFormat {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
-    }
-}
+private val NotificationDisplayFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d, yyyy, HH:mm", Locale.US)
 
-private val NotificationIsoNoMillis = object : ThreadLocal<SimpleDateFormat>() {
-    override fun initialValue(): SimpleDateFormat {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
-    }
-}
-
-private val NotificationDisplayFormat = object : ThreadLocal<SimpleDateFormat>() {
-    override fun initialValue(): SimpleDateFormat {
-        return SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.US)
-    }
-}
+private val NotificationTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable

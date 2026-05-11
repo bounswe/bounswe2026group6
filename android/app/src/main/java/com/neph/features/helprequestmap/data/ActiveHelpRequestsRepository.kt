@@ -1,14 +1,15 @@
 package com.neph.features.helprequestmap.data
 
+import com.neph.core.format.formatTimestampWithRelativeDay
 import com.neph.core.network.JsonHttpClient
 import com.neph.features.auth.data.AuthSessionStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.TimeZone
 
 enum class CrisisRequestType {
     SHELTER,
@@ -161,33 +162,27 @@ object ActiveHelpRequestsRepository {
         return priority.trim().lowercase(Locale.ROOT).replaceFirstChar { it.uppercase() }
     }
 
-    fun formatOpenedAt(createdAt: String): String {
-        val parsed = runCatching {
-            IsoDateFormat.get().parse(createdAt)
-        }.getOrNull() ?: return createdAt
-
-        return DisplayDateFormat.get().format(parsed)
+    fun formatOpenedAt(
+        createdAt: String,
+        nowInstant: Instant = Instant.now()
+    ): String {
+        return formatTimestampWithRelativeDay(
+            raw = createdAt,
+            fallbackFormatter = DisplayDateFormatter,
+            timeFormatter = DisplayTimeFormatter,
+            nowInstant = nowInstant
+        ) ?: createdAt
     }
 
     private fun urlEncode(value: String): String {
         return URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
     }
 
-    private val IsoDateFormat = object : ThreadLocal<SimpleDateFormat>() {
-        override fun initialValue(): SimpleDateFormat {
-            return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("UTC")
-            }
-        }
-    }
+    private val DisplayDateFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("MMM d, yyyy, HH:mm", Locale.US)
 
-    private val DisplayDateFormat = object : ThreadLocal<SimpleDateFormat>() {
-        override fun initialValue(): SimpleDateFormat {
-            return SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.US).apply {
-                timeZone = TimeZone.getDefault()
-            }
-        }
-    }
+    private val DisplayTimeFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 }
 
 private fun JSONObject.optFiniteDouble(key: String): Double? {

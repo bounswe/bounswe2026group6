@@ -4,6 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.Instant
+import java.util.TimeZone
 
 class ActiveHelpRequestsRepositoryTest {
     @Test
@@ -199,5 +201,35 @@ class ActiveHelpRequestsRepositoryTest {
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_rescue"))
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_and_rescue"))
         assertEquals(CrisisRequestType.OTHER, ActiveHelpRequestsRepository.normalizeRequestType("unknown"))
+    }
+
+    @Test
+    fun formatOpenedAtUsesRelativeDayLabels() {
+        withDefaultTimeZone("Europe/Istanbul") {
+            assertEquals(
+                "Today, 13:15",
+                ActiveHelpRequestsRepository.formatOpenedAt(
+                    createdAt = "2026-05-11T10:15:00.000Z",
+                    nowInstant = Instant.parse("2026-05-11T18:00:00.000Z")
+                )
+            )
+            assertEquals(
+                "Yesterday, 23:30",
+                ActiveHelpRequestsRepository.formatOpenedAt(
+                    createdAt = "2026-05-10T20:30:00.000Z",
+                    nowInstant = Instant.parse("2026-05-11T10:00:00.000Z")
+                )
+            )
+        }
+    }
+
+    private fun withDefaultTimeZone(id: String, block: () -> Unit) {
+        val previous = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone(id))
+            block()
+        } finally {
+            TimeZone.setDefault(previous)
+        }
     }
 }

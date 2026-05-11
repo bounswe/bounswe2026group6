@@ -16,6 +16,7 @@ import {
     isViewportDiscoverable,
     viewportBoundsToBbox,
 } from "@/lib/viewportDiscovery";
+import { formatTimestampDateTime } from "@/lib/formatters";
 
 const DEFAULT_CENTER = {
     latitude: 39.0,
@@ -80,14 +81,7 @@ function typeLabel(type: CrisisRequestType) {
 }
 
 function formatRelative(createdAt: string) {
-    const date = new Date(createdAt);
-    if (Number.isNaN(date.getTime())) {
-        return createdAt;
-    }
-    return new Intl.DateTimeFormat("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-    }).format(date);
+    return formatTimestampDateTime(createdAt);
 }
 
 function formatPriority(priority: CrisisMapFeature["priorityLevel"]) {

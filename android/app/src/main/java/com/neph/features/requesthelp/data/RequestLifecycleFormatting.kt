@@ -1,10 +1,8 @@
 package com.neph.features.requesthelp.data
 
+import com.neph.core.format.formatTimestampWithRelativeDay
+import com.neph.core.format.parseTimestampToInstant
 import java.time.Instant
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -19,34 +17,32 @@ internal fun formatOperationalLevel(value: String?): String? {
         }
 }
 
-internal fun formatLifecycleTimestamp(raw: String?): String? {
+internal fun formatLifecycleTimestamp(
+    raw: String?,
+    nowInstant: Instant = Instant.now()
+): String? {
     val value = raw
         ?.trim()
         ?.takeIf { it.isNotBlank() }
         ?: return null
 
-    val instant = parseTimestampToInstant(value)
-        ?: return value
+    return formatTimestampWithRelativeDay(
+        raw = value,
+        fallbackFormatter = LifecycleDisplayFormatter,
+        timeFormatter = LifecycleTimeFormatter,
+        nowInstant = nowInstant,
+        relativeSeparator = " "
+    ) ?: value
             .replace('T', ' ')
             .substringBefore('.')
             .substringBefore('Z')
-
-    return LifecycleDisplayFormatter
-        .withZone(ZoneId.systemDefault())
-        .format(instant)
 }
 
 private val LifecycleDisplayFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 
-private fun parseTimestampToInstant(raw: String): Instant? {
-    val value = raw.trim().takeIf { it.isNotBlank() } ?: return null
-
-    return runCatching { Instant.parse(value) }
-        .recoverCatching { OffsetDateTime.parse(value).toInstant() }
-        .recoverCatching { LocalDateTime.parse(value.replace(' ', 'T')).toInstant(ZoneOffset.UTC) }
-        .getOrNull()
-}
+private val LifecycleTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm:ss", Locale.US)
 
 internal fun buildDurationLabel(
     openedAtRaw: String?,
