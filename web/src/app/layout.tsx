@@ -2,7 +2,7 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { GuestThemeToggle } from "@/components/theme/GuestThemeToggle";
 import { getThemeInitScript } from "@/lib/theme";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 
@@ -44,7 +44,7 @@ export default function RootLayout({
             <body className="root-layout-body">
                 <ConditionalGoogleProvider clientId={GOOGLE_CLIENT_ID}>
                     <ThemeProvider>
-                        <ThemeToggle />
+                        <GuestThemeToggle />
                         <main className="root-layout-content">{children}</main>
                         <SiteFooter />
                     </ThemeProvider>

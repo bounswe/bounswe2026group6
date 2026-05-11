@@ -33,6 +33,7 @@ type LeafletCrisisMapProps = {
     onViewportChange?: (bounds: MapBounds) => void;
     heightClassName?: string;
     zoom?: number;
+    viewResetToken?: number;
 };
 
 const TYPE_STYLES: Record<CrisisRequestType, { fill: string; stroke: string; glyph: string }> = {
@@ -97,6 +98,7 @@ export function LeafletCrisisMap({
     onViewportChange,
     heightClassName = "h-[380px] md:h-[500px]",
     zoom = 11,
+    viewResetToken = 0,
 }: LeafletCrisisMapProps) {
     const mapRef = React.useRef<L.Map | null>(null);
     const markerLayerRef = React.useRef<L.LayerGroup | null>(null);
@@ -185,6 +187,7 @@ export function LeafletCrisisMap({
         <LeafletMapCanvas
             center={center}
             zoom={zoom}
+            viewResetToken={viewResetToken}
             heightClassName={heightClassName}
             ariaLabel="Live crisis help requests map"
             onViewportChange={onViewportChange}

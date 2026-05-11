@@ -1,6 +1,7 @@
 package com.neph.features.requesthelp.presentation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -30,6 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.neph.core.network.ApiException
@@ -50,11 +54,13 @@ import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.PhoneParts
-import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.locationData
-import com.neph.features.profile.data.normalizeBloodType
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.operationallocation.data.OperationalLocationRepository
+import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingPracticeHelpRequest
+import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.onboarding.presentation.mobileOnboardingPulse
 import com.neph.features.requesthelp.data.RequestHelpContactSubmission
 import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
 import com.neph.features.profile.presentation.components.LocationSelector
@@ -62,6 +68,7 @@ import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.requesthelp.data.RequestHelpSubmission
 import com.neph.features.requesthelp.data.jsonArrayToStringList
+import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
@@ -83,6 +90,7 @@ import com.neph.ui.map.resolveMapPickerLocationUpdate
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -91,13 +99,9 @@ import java.util.TimeZone
 
 private val helpTypeOptions = listOf(
     "First Aid",
-    "Search & Rescue",
-    "Fire Brigade",
-    "Evacuation / Transport",
     "Food & Water",
     "Shelter",
-    "Security Support",
-    "Other"
+    "Search & Rescue"
 )
 
 private val riskFlagOptions = listOf(
@@ -122,12 +126,11 @@ private const val RequestHelpMapCoordinateSource = "map_selection"
 
 private data class RequestHelpFormState(
     val helpTypes: List<String> = emptyList(),
-    val otherHelpType: String = "",
     val affectedPeopleCount: String = "",
     val riskFlags: List<String> = emptyList(),
     val vulnerableGroups: List<String> = emptyList(),
     val situationDescription: String = "",
-    val bloodType: String = "",
+    val shareProfileHealthInfoWithVolunteer: Boolean = false,
     val country: String = "",
     val city: String = "",
     val district: String = "",
@@ -164,12 +167,8 @@ private data class RequestHelpFieldErrors(
 private val helpTypeApiValues = mapOf(
     "First Aid" to "first_aid",
     "Search & Rescue" to "search_rescue",
-    "Fire Brigade" to "fire_brigade",
-    "Evacuation / Transport" to "evacuation_transport",
     "Food & Water" to "food_water",
-    "Shelter" to "shelter",
-    "Security Support" to "security_support",
-    "Other" to "other"
+    "Shelter" to "shelter"
 )
 
 private val helpTypeLabelsByApiValue = helpTypeApiValues.entries.associate { (label, value) -> value to label }
@@ -189,10 +188,8 @@ private fun parseBackendPhoneNumber(countryCode: String, phone: String): Long? {
 
 private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
     val phoneParts: PhoneParts = normalizePhoneParts(profile.phone)
-    val normalizedBloodType = normalizeBloodType(profile.bloodType).orEmpty()
 
     return RequestHelpFormState(
-        bloodType = normalizedBloodType,
         country = profile.country.orEmpty(),
         city = profile.city.orEmpty(),
         district = profile.district.orEmpty(),
@@ -204,16 +201,34 @@ private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
     )
 }
 
+private fun RequestHelpFormState.toMobileOnboardingPracticeHelpRequest(): MobileOnboardingPracticeHelpRequest {
+    val locationParts = listOf(country, city, district, neighborhood, shortAddress)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    val phone = "$countryCode $phoneNumber".trim().takeIf { it.isNotBlank() }
+
+    return MobileOnboardingPracticeHelpRequest(
+        helpTypes = helpTypes.ifEmpty { listOf("Help Request") },
+        riskFlags = riskFlags,
+        description = situationDescription
+            .trim()
+            .ifBlank { "Practice request created during the app guide." },
+        locationLabel = locationParts.joinToString(" / ").ifBlank { "Practice location" },
+        contactName = fullName.trim().takeIf { it.isNotBlank() },
+        contactPhone = phone,
+        createdAtLabel = "Just now"
+    )
+}
+
 private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
     val phoneParts = normalizePhoneParts(contactPhone)
     return RequestHelpFormState(
         helpTypes = helpTypesJson.jsonArrayToStringList().mapNotNull { helpTypeLabelsByApiValue[it] },
-        otherHelpType = otherHelpText,
         affectedPeopleCount = affectedPeopleCount.toString(),
         riskFlags = riskFlagsJson.jsonArrayToStringList(),
         vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList(),
         situationDescription = description,
-        bloodType = bloodType,
+        shareProfileHealthInfoWithVolunteer = shareProfileHealthInfoWithVolunteer,
         country = country,
         city = city,
         district = district,
@@ -356,12 +371,12 @@ private fun buildSubmission(
 
     return RequestHelpSubmission(
         helpTypes = state.helpTypes.mapNotNull { helpTypeApiValues[it] },
-        otherHelpText = state.otherHelpType.trim(),
+        otherHelpText = "",
         affectedPeopleCount = state.affectedPeopleCount.toIntOrNull() ?: 1,
         description = state.situationDescription.trim(),
         riskFlags = state.riskFlags.map { it.trim() },
         vulnerableGroups = state.vulnerableGroups.map { it.trim() },
-        bloodType = state.bloodType.trim(),
+        shareProfileHealthInfoWithVolunteer = state.shareProfileHealthInfoWithVolunteer,
         location = RequestHelpLocationSubmission(
             country = findCountryLabel(state.country, locations).ifBlank { state.country.trim() },
             city = findCityLabel(state.country, state.city, locations).ifBlank { state.city.trim() },
@@ -499,11 +514,34 @@ private fun resolveEventLocationAutofillSelection(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun rememberMobileOnboardingTargetModifier(
+    active: Boolean,
+    testTag: String
+): Modifier {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(active) {
+        if (active) {
+            delay(250)
+            bringIntoViewRequester.bringIntoView()
+        }
+    }
+
+    return Modifier
+        .bringIntoViewRequester(bringIntoViewRequester)
+        .mobileOnboardingPulse(active)
+        .then(if (active) Modifier.testTag(testTag) else Modifier)
+}
+
+@Composable
 fun RequestHelpScreen(
     draftLocalId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToMyHelpRequests: () -> Unit
+    onNavigateToMyHelpRequests: () -> Unit,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    onMobileOnboardingPracticeHelpRequestChanged: (MobileOnboardingPracticeHelpRequest?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -533,6 +571,22 @@ fun RequestHelpScreen(
     var mapPickerSelection by remember { mutableStateOf<MapPickerSelection?>(null) }
     var checkingActiveRequest by remember { mutableStateOf(isLoggedIn) }
     var currentLocationLoading by remember { mutableStateOf(false) }
+    val requestHelpOnboardingSteps = setOf(
+        MobileOnboardingStepId.REQUEST_HELP_TYPE,
+        MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE,
+        MobileOnboardingStepId.REQUEST_HELP_CONFIRM,
+        MobileOnboardingStepId.REQUEST_HELP_SEND
+    )
+    val isMobileOnboardingActive = mobileOnboardingStepId in requestHelpOnboardingSteps
+    val isHelpTypeOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_TYPE
+    val isFireRiskOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE
+    val isConfirmationOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_CONFIRM
+    val isSendOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.REQUEST_HELP_SEND
+
+    fun completeRequestHelpOnboardingStep(stepId: MobileOnboardingStepId) {
+        val message = MobileOnboardingJourney.stepFor(stepId, isAuthenticated = isLoggedIn)?.completionMessage
+        onMobileOnboardingStepCompleted(message)
+    }
 
     fun applyPendingCoordinateSnapshot(
         baseState: RequestHelpFormState,
@@ -814,10 +868,12 @@ fun RequestHelpScreen(
         }
 
         try {
-            val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
-            if (hasActiveRequest) {
-                onNavigateToMyHelpRequests()
-                return@LaunchedEffect
+            if (!isMobileOnboardingActive) {
+                val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                if (hasActiveRequest) {
+                    onNavigateToMyHelpRequests()
+                    return@LaunchedEffect
+                }
             }
 
             val profile = ProfileRepository.fetchAndCacheRemoteProfile()
@@ -855,6 +911,16 @@ fun RequestHelpScreen(
     }
 
     fun handleSubmit() {
+        if (isSendOnboardingTarget) {
+            fieldErrors = RequestHelpFieldErrors()
+            errorMessage = ""
+            infoMessage = "Practice complete. No real help request was saved."
+            mapActionMessage = ""
+            onMobileOnboardingPracticeHelpRequestChanged(formState.toMobileOnboardingPracticeHelpRequest())
+            completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_SEND)
+            return
+        }
+
         val nextFieldErrors = validateForm(formState)
         fieldErrors = nextFieldErrors
         errorMessage = ""
@@ -874,6 +940,11 @@ fun RequestHelpScreen(
                         errorMessage = "You can only have one active help request at a time."
                         return@launch
                     }
+                    runCatching {
+                        SafetyStatusRepository.clearSafeStatusForRequestHelp(sessionToken)
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
+                    }
                 }
 
                 val submission = buildSubmission(formState, availableLocationData)
@@ -892,6 +963,9 @@ fun RequestHelpScreen(
                 }
                 activeDraftLocalId = result.requestId
                 infoMessage = "Help request saved on this device and queued for sync."
+                if (isSendOnboardingTarget) {
+                    completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_SEND)
+                }
                 onNavigateToMyHelpRequests()
             } catch (error: ApiException) {
                 if (error.status == 401) {
@@ -944,21 +1018,24 @@ fun RequestHelpScreen(
                         selectedOptions = formState.helpTypes,
                         onOptionToggle = {
                             formState = formState.copy(
-                                helpTypes = toggleSelection(formState.helpTypes, it),
-                                otherHelpType = if (it == "Other" && "Other" in formState.helpTypes) "" else formState.otherHelpType
+                                helpTypes = toggleSelection(formState.helpTypes, it)
                             )
+                            if (isHelpTypeOnboardingTarget && it == "Search & Rescue") {
+                                completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_TYPE)
+                            }
+                        },
+                        optionModifier = { option ->
+                            rememberMobileOnboardingTargetModifier(
+                                active = isHelpTypeOnboardingTarget && option == "Search & Rescue",
+                                testTag = "mobile_onboarding_target_search_rescue"
+                            )
+                        },
+                        optionEnabled = { option ->
+                            !isMobileOnboardingActive ||
+                                (isHelpTypeOnboardingTarget && option == "Search & Rescue")
                         },
                         error = fieldErrors.helpTypes
                     )
-
-                    if ("Other" in formState.helpTypes) {
-                        AppTextField(
-                            value = formState.otherHelpType,
-                            onValueChange = { formState = formState.copy(otherHelpType = it) },
-                            label = "Other Help Type Details",
-                            placeholder = "Add a short detail if needed"
-                        )
-                    }
                 }
             }
 
@@ -982,18 +1059,31 @@ fun RequestHelpScreen(
                     )
 
                     AppMultiSelectChipGroup(
-                        label = "Risk Flags",
+                        label = "Risk Flags (optional)",
                         options = riskFlagOptions,
                         selectedOptions = formState.riskFlags,
                         onOptionToggle = {
                             formState = formState.copy(
                                 riskFlags = toggleSelection(formState.riskFlags, it)
                             )
+                            if (isFireRiskOnboardingTarget && it == "Fire") {
+                                completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_RISK_FIRE)
+                            }
+                        },
+                        optionModifier = { option ->
+                            rememberMobileOnboardingTargetModifier(
+                                active = isFireRiskOnboardingTarget && option == "Fire",
+                                testTag = "mobile_onboarding_target_fire_risk"
+                            )
+                        },
+                        optionEnabled = { option ->
+                            !isMobileOnboardingActive ||
+                                (isFireRiskOnboardingTarget && option == "Fire")
                         }
                     )
 
                     AppMultiSelectChipGroup(
-                        label = "Vulnerable Groups",
+                        label = "Vulnerable Groups (optional)",
                         options = vulnerableGroupOptions,
                         selectedOptions = formState.vulnerableGroups,
                         onOptionToggle = {
@@ -1011,13 +1101,12 @@ fun RequestHelpScreen(
                         error = fieldErrors.situationDescription
                     )
 
-                    AppDropdown(
-                        value = formState.bloodType,
-                        onValueChange = { formState = formState.copy(bloodType = it) },
-                        label = "Blood Type",
-                        options = bloodTypeOptions,
-                        placeholder = "Select blood type",
-                        selectedTextMapper = { it.label }
+                    AppCheckbox(
+                        checked = formState.shareProfileHealthInfoWithVolunteer,
+                        onCheckedChange = {
+                            formState = formState.copy(shareProfileHealthInfoWithVolunteer = it)
+                        },
+                        label = "I agree to share my profile health information with the volunteer assigned to this request."
                     )
                 }
             }
@@ -1193,8 +1282,17 @@ fun RequestHelpScreen(
                         checked = formState.confirmationAccepted,
                         onCheckedChange = {
                             formState = formState.copy(confirmationAccepted = it)
+                            if (isConfirmationOnboardingTarget && it) {
+                                completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_CONFIRM)
+                            }
                         },
+                        modifier = rememberMobileOnboardingTargetModifier(
+                            active = isConfirmationOnboardingTarget,
+                            testTag = "mobile_onboarding_target_confirmation"
+                        ),
                         label = "I confirm this information can be shared for emergency coordination.",
+                        enabled = !isMobileOnboardingActive || isConfirmationOnboardingTarget,
+                        testTag = "mobile_onboarding_confirmation_checkbox",
                         error = fieldErrors.confirmationAccepted
                     )
                 }
@@ -1215,13 +1313,21 @@ fun RequestHelpScreen(
             PrimaryButton(
                 text = "Send Help Request",
                 onClick = ::handleSubmit,
+                modifier = Modifier
+                    .then(
+                        rememberMobileOnboardingTargetModifier(
+                            active = isSendOnboardingTarget,
+                            testTag = "mobile_onboarding_target_send_help_request"
+                        )
+                    ),
+                enabled = !isMobileOnboardingActive || isSendOnboardingTarget,
                 loading = loading
             )
 
             SecondaryButton(
                 text = "Cancel",
                 onClick = onNavigateBack,
-                enabled = !loading
+                enabled = !loading && !isMobileOnboardingActive
             )
         }
     }
@@ -1245,7 +1351,10 @@ private fun RequestHelpStickyTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TextActionButton(text = "Back", onClick = onNavigateBack)
+                TextActionButton(
+                    text = "Back",
+                    onClick = onNavigateBack
+                )
                 Text(
                     text = "Request Help",
                     style = MaterialTheme.typography.titleMedium,

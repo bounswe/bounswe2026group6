@@ -31,7 +31,6 @@ export default function PrivacySecurityView() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [profileVisibility, setProfileVisibility] = React.useState("PRIVATE");
-    const [healthInfoVisibility, setHealthInfoVisibility] = React.useState("PRIVATE");
     const [locationVisibility, setLocationVisibility] = React.useState("PRIVATE");
     const [shareLocation, setShareLocation] = React.useState(false);
     const [initialShareLocation, setInitialShareLocation] = React.useState(false);
@@ -60,7 +59,6 @@ export default function PrivacySecurityView() {
             try {
                 const profile = await fetchMyProfile(token);
                 setProfileVisibility(profile.privacySettings.profileVisibility || "PRIVATE");
-                setHealthInfoVisibility(profile.privacySettings.healthInfoVisibility || "PRIVATE");
                 setLocationVisibility(profile.privacySettings.locationVisibility || "PRIVATE");
                 setShareLocation(profile.privacySettings.locationSharingEnabled);
                 setInitialShareLocation(profile.privacySettings.locationSharingEnabled);
@@ -108,16 +106,15 @@ export default function PrivacySecurityView() {
             setError("");
             setInfo("");
 
-            if (!initialShareLocation && shareLocation) {
+            if (!initialShareLocation && shareLocation && !locationPreview) {
                 setError(
-                    "To enable Share Current Location, go to Profile, click Use Current Location, and save there first."
+                    "To enable Share Current Location, save your profile location first."
                 );
                 return;
             }
 
             await patchMyPrivacy(token, {
                 profileVisibility,
-                healthInfoVisibility,
                 locationVisibility,
                 locationSharingEnabled: shareLocation,
             });
@@ -154,7 +151,7 @@ export default function PrivacySecurityView() {
             <SectionCard>
                 <SectionHeader
                     title="Privacy"
-                    subtitle="Choose who can see profile, health, and location details."
+                    subtitle="Choose who can see profile and location details."
                 />
 
                 <div className="mt-4 grid gap-5">
@@ -164,15 +161,6 @@ export default function PrivacySecurityView() {
                         value={profileVisibility}
                         options={visibilityOptions}
                         onValueChange={setProfileVisibility}
-                        direction="column"
-                    />
-
-                    <RadioGroup
-                        label="Health information visibility"
-                        name="healthInfoVisibility"
-                        value={healthInfoVisibility}
-                        options={visibilityOptions}
-                        onValueChange={setHealthInfoVisibility}
                         direction="column"
                     />
 
@@ -192,8 +180,10 @@ export default function PrivacySecurityView() {
                             Share Current Location
                         </p>
                         <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                            Allow your profile to expose live location-sharing status for
-                            emergency coordination.
+                            Used to make your current or saved location available for
+                            emergency coordination features, such as nearby visibility and
+                            location-aware support. This is a sharing preference, not the
+                            place where you edit your saved address.
                         </p>
                     </div>
 

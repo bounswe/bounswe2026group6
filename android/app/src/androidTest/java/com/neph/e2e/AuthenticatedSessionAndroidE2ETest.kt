@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.neph.MainActivity
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.ProfileData
@@ -61,7 +62,7 @@ class AuthenticatedSessionAndroidE2ETest {
         waitForText("I need help now")
         composeRule.onNodeWithText("I need help now").assertIsDisplayed()
 
-        composeRule.onNodeWithContentDescription("Open menu").performClick()
+        composeRule.onNodeWithContentDescription("Open menu", useUnmergedTree = true).performClick()
         waitForClickable("Profile")
         clickableNode("Profile").performClick()
 
@@ -75,7 +76,7 @@ class AuthenticatedSessionAndroidE2ETest {
         waitForText("I need help now")
         composeRule.onNodeWithText("I need help now").assertIsDisplayed()
 
-        composeRule.onNodeWithContentDescription("Open menu").performClick()
+        composeRule.onNodeWithContentDescription("Open menu", useUnmergedTree = true).performClick()
         waitForClickable("Settings")
         clickableNode("Settings").performClick()
 
@@ -84,7 +85,7 @@ class AuthenticatedSessionAndroidE2ETest {
 
         waitForText("Profile visibility")
         composeRule.onNodeWithText("Profile visibility").assertIsDisplayed()
-        composeRule.onNodeWithText("Save Privacy Settings").assertIsDisplayed()
+        composeRule.onNodeWithText("Save Privacy Settings").performScrollTo().assertIsDisplayed()
 
         composeRule.activity.runOnUiThread {
             composeRule.activity.onBackPressedDispatcher.onBackPressed()
@@ -101,7 +102,7 @@ class AuthenticatedSessionAndroidE2ETest {
         waitForText("I need help now")
         composeRule.onNodeWithText("I need help now").assertIsDisplayed()
 
-        composeRule.onNodeWithContentDescription("Open menu").performClick()
+        composeRule.onNodeWithContentDescription("Open menu", useUnmergedTree = true).performClick()
         waitForClickable("Settings")
         clickableNode("Settings").performClick()
 

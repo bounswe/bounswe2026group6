@@ -4,6 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.Instant
+import java.util.TimeZone
 
 class ActiveHelpRequestsRepositoryTest {
     @Test
@@ -32,7 +34,7 @@ class ActiveHelpRequestsRepositoryTest {
                     .put(
                         JSONObject()
                             .put("requestId", "req-assigned")
-                            .put("type", "search_and_rescue")
+                            .put("type", "search_rescue")
                             .put("status", "PENDING")
                             .put("urgencyLevel", "HIGH")
                             .put("createdAt", "2026-05-01T10:05:00.000Z")
@@ -196,8 +198,41 @@ class ActiveHelpRequestsRepositoryTest {
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("food"))
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("water"))
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("food_water"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_rescue"))
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("fire_brigade"))
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_and_rescue"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("sar"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("rescue"))
         assertEquals(CrisisRequestType.OTHER, ActiveHelpRequestsRepository.normalizeRequestType("unknown"))
+    }
+
+    @Test
+    fun formatOpenedAtUsesRelativeDayLabels() {
+        withDefaultTimeZone("Europe/Istanbul") {
+            assertEquals(
+                "Today, 13:15",
+                ActiveHelpRequestsRepository.formatOpenedAt(
+                    createdAt = "2026-05-11T10:15:00.000Z",
+                    nowInstant = Instant.parse("2026-05-11T18:00:00.000Z")
+                )
+            )
+            assertEquals(
+                "Yesterday, 23:30",
+                ActiveHelpRequestsRepository.formatOpenedAt(
+                    createdAt = "2026-05-10T20:30:00.000Z",
+                    nowInstant = Instant.parse("2026-05-11T10:00:00.000Z")
+                )
+            )
+        }
+    }
+
+    private fun withDefaultTimeZone(id: String, block: () -> Unit) {
+        val previous = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone(id))
+            block()
+        } finally {
+            TimeZone.setDefault(previous)
+        }
     }
 }

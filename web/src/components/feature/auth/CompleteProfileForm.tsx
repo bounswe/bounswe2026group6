@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { TextInput } from "@/components/ui/inputs/TextInput";
 import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { TextArea } from "@/components/ui/inputs/TextArea";
-import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { ProfileInfoRow } from "../../ui/display/ProfileInfoRow";
 import { SaveActionBar } from "../../ui/display/SaveActionBar";
@@ -35,7 +34,6 @@ import {
     patchMyHealth,
     patchMyLocation,
     patchMyPhysical,
-    patchMyPrivacy,
     patchMyProfile,
     putMyExpertiseAreas,
     validateExpertiseAreas,
@@ -60,7 +58,6 @@ type ProfileForm = {
     district: string;
     neighborhood: string;
     extraAddress: string;
-    shareLocation: boolean;
 };
 
 const initialForm: ProfileForm = {
@@ -82,27 +79,7 @@ const initialForm: ProfileForm = {
     district: "",
     neighborhood: "",
     extraAddress: "",
-    shareLocation: false,
 };
-
-const FRESH_DEVICE_CAPTURE_MAX_AGE_MS = 5 * 60 * 1000;
-
-function isFreshCurrentDeviceSelection(value: LocationPickerValue | null) {
-    if (!value || value.source !== "current_device") {
-        return false;
-    }
-
-    if (!value.capturedAt) {
-        return false;
-    }
-
-    const capturedAtMs = Date.parse(value.capturedAt);
-    if (Number.isNaN(capturedAtMs)) {
-        return false;
-    }
-
-    return Date.now() - capturedAtMs <= FRESH_DEVICE_CAPTURE_MAX_AGE_MS;
-}
 
 function toPickerValueFromSearchItem(item: {
     placeId: string;
@@ -448,13 +425,6 @@ export default function CompleteProfileForm() {
             return;
         }
 
-        if (form.shareLocation && !isFreshCurrentDeviceSelection(locationPickerValue)) {
-            setError(
-                "To enable Share Current Location, click Use Current Location first so we can save a fresh device location."
-            );
-            return;
-        }
-
         const token = getAccessToken();
 
         if (!token) {
@@ -522,10 +492,6 @@ export default function CompleteProfileForm() {
                             new Date().toISOString(),
                     }
                     : undefined,
-            });
-
-            await patchMyPrivacy(token, {
-                locationSharingEnabled: form.shareLocation,
             });
 
             await putMyExpertiseAreas(token, {
@@ -730,7 +696,7 @@ export default function CompleteProfileForm() {
                 <LocationPicker
                     value={locationPickerValue}
                     onChange={handleLocationPickerChange}
-                    label="Select location from map or search"
+                    label="Select location from map"
                 />
 
                 <SelectInput
@@ -820,18 +786,6 @@ export default function CompleteProfileForm() {
                     <HelperText className="text-[color:var(--primary-500)]">{locationTreeError}</HelperText>
                 ) : null}
             </ProfileInfoRow>
-
-            <div className="flex items-center justify-between">
-                <span className="text-sm">Share Current Location</span>
-
-                <ToggleSwitch
-                    aria-label="Share Current Location"
-                    checked={form.shareLocation}
-                    onCheckedChange={(value) =>
-                        setForm({ ...form, shareLocation: value })
-                    }
-                />
-            </div>
 
             {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}
 

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 import { getAccessToken, clearAccessToken } from "@/lib/auth";
 import { fetchAdminEmergencyOverview, type EmergencyOverview } from "@/lib/admin";
-import { formatOperationalLabel } from "@/lib/formatters";
+import { formatOperationalLabel, formatTimestampDateTime } from "@/lib/formatters";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
@@ -38,7 +38,7 @@ function formatDateTime(value: string | null) {
         return value;
     }
 
-    return date.toLocaleString();
+    return formatTimestampDateTime(value);
 }
 
 export default function AdminEmergencyOverviewView() {

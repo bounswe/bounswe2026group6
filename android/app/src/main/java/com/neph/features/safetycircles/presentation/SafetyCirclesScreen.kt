@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.neph.core.format.formatTimestampWithRelativeDay
 import com.neph.core.network.ApiException
 import com.neph.features.auth.data.AuthRepository
 import com.neph.features.auth.data.AuthSessionStore
@@ -35,6 +36,7 @@ import com.neph.features.safetycircles.data.SafetyCircleInvite
 import com.neph.features.safetycircles.data.SafetyCircleMember
 import com.neph.features.safetycircles.data.SafetyCircleSummary
 import com.neph.features.safetycircles.data.SafetyCirclesRepository
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
@@ -44,6 +46,9 @@ import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.theme.LocalNephSpacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun SafetyCirclesScreen(
@@ -52,7 +57,9 @@ fun SafetyCirclesScreen(
     onProfileClick: () -> Unit,
     onNavigateToLogin: () -> Unit,
     profileBadgeText: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val scope = rememberCoroutineScope()
@@ -282,7 +289,9 @@ fun SafetyCirclesScreen(
         profileBadgeText = profileBadgeText,
         profileLabel = "Profile",
         contentMaxWidth = 560.dp,
-        contentAlignment = Alignment.TopCenter
+        contentAlignment = Alignment.TopCenter,
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -553,7 +562,7 @@ private fun MemberRow(
             text = listOf(
                 formatSafetyStatus(member.status),
                 member.emergencyContactPhone?.let { "Contact: $it" },
-                member.lastCheckedInAt?.let { "Last checked in: $it" },
+                formatLastCheckedInLabel(member.lastCheckedInAt),
                 if (member.hasSharedLocation) "Location shared" else null
             ).filterNotNull().joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
@@ -583,4 +592,19 @@ private fun formatSafetyStatus(status: String): String {
         "not_safe" -> "Needs help"
         else -> "No response"
     }
+}
+
+internal fun formatLastCheckedInLabel(
+    rawTimestamp: String?,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    nowInstant: Instant = Instant.now()
+): String? {
+    val formatted = formatTimestampWithRelativeDay(
+        raw = rawTimestamp,
+        fallbackFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy, HH:mm"),
+        timeFormatter = DateTimeFormatter.ofPattern("HH:mm"),
+        zoneId = zoneId,
+        nowInstant = nowInstant
+    ) ?: return null
+    return "Last checked in: $formatted"
 }

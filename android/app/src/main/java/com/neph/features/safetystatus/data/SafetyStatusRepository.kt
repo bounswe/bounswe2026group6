@@ -102,6 +102,30 @@ object SafetyStatusRepository {
         return getSafetyStatusState()
     }
 
+    suspend fun clearSafeStatusForRequestHelp(token: String?): SafetyStatusState {
+        if (token.isNullOrBlank()) return getSafetyStatusState()
+
+        val current = database.safetyStatusDao().get()
+        if (current?.status?.lowercase() != "safe") {
+            return current?.toState() ?: SafetyStatusState()
+        }
+
+        val body = buildRequestHelpSafetyStatusPayload()
+        val now = System.currentTimeMillis()
+        val entity = buildPendingSafetyStatusEntity(
+            payload = body,
+            checkedAtEpochMillis = now,
+            existing = current
+        )
+
+        database.safetyStatusDao().upsert(entity)
+        upsertSafetyStatusOperation(payload = body, now = now)
+        OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "request-help-clears-safe-status")
+
+        syncPendingSafetyStatusNow(token)
+        return getSafetyStatusState()
+    }
+
     internal fun buildMarkSafePayload(
         note: String? = null,
         location: CurrentDeviceLocation? = null,
@@ -131,6 +155,13 @@ object SafetyStatusRepository {
         }
 
         return body
+    }
+
+    internal fun buildRequestHelpSafetyStatusPayload(): JSONObject {
+        return JSONObject()
+            .put("status", "unknown")
+            .put("shareLocationConsent", false)
+            .put("location", JSONObject.NULL)
     }
 
     suspend fun syncPendingSafetyStatusNow(token: String?) {

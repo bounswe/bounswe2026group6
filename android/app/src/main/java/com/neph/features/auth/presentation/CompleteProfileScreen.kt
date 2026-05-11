@@ -26,6 +26,7 @@ import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.LocationData
 import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.onboarding.data.MobileOnboardingStore
 import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.calculateAgeFromDateOfBirth
 import com.neph.features.profile.data.combinePhoneNumber
@@ -326,6 +327,7 @@ fun CompleteProfileScreen(
 
                 info = completionMessage
                 Toast.makeText(context, completionMessage, Toast.LENGTH_LONG).show()
+                MobileOnboardingStore.markPendingForCurrentUser()
 
                 onComplete()
             } catch (cancellationException: CancellationException) {

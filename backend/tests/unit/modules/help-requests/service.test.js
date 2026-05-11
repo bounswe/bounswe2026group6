@@ -42,7 +42,7 @@ describe('help-requests service', () => {
 	describe('createMyHelpRequest', () => {
 		test('delegates to repository with userId merged into input', async () => {
 			const input = {
-				helpTypes: ['first_aid', 'fire_brigade'],
+				helpTypes: ['first_aid', 'food_water'],
 				otherHelpText: '',
 				affectedPeopleCount: 3,
 				riskFlags: ['fire'],
@@ -63,7 +63,7 @@ describe('help-requests service', () => {
 				},
 				consentGiven: true,
 			};
-			const expected = { id: 'req_1', userId: 'u1', helpTypes: ['first_aid', 'fire_brigade'] };
+			const expected = { id: 'req_1', userId: 'u1', helpTypes: ['first_aid', 'food_water'] };
 			repository.createHelpRequest.mockResolvedValueOnce(expected);
 			repository.findHelpRequestById.mockResolvedValueOnce(expected);
 			availabilityService.tryToAssignRequest.mockResolvedValueOnce(false);
@@ -71,7 +71,7 @@ describe('help-requests service', () => {
 			const result = await createMyHelpRequest('u1', input);
 
 			expect(repository.createHelpRequest).toHaveBeenCalledWith({
-				helpTypes: ['first_aid', 'fire_brigade'],
+				helpTypes: ['first_aid', 'food_water'],
 				otherHelpText: '',
 				affectedPeopleCount: 3,
 				riskFlags: ['fire'],

@@ -22,7 +22,7 @@ const DEFAULT_CENTER = {
     longitude: 35.0,
 };
 const DEFAULT_ZOOM = 5;
-const CURRENT_LOCATION_ZOOM = 13;
+const CURRENT_LOCATION_ZOOM = 15;
 const DEFAULT_LIMIT = 20;
 const ADDRESS_UNAVAILABLE = "Address unavailable";
 type FetchState = "idle" | "loading" | "success" | "empty" | "error";
@@ -32,6 +32,7 @@ const ResourceLoadingMessage = "Loading resources in this area...";
 const ResourceEmptyMessage = "No resources were found in this visible area.";
 const ResourceErrorMessage = "Resources could not be loaded for this area. Please try again.";
 const ResourceProviderUnavailableMessage = "Gathering areas provider is temporarily unavailable. Please retry.";
+const CurrentLocationResolvingMessage = "Resolving your current location...";
 
 type CategoryOption = {
     key: string;
@@ -213,6 +214,7 @@ function mapFeatures(features: GatheringAreaFeature[]) {
 export default function GatheringAreasPage() {
     const [center, setCenter] = React.useState(DEFAULT_CENTER);
     const [mapZoom, setMapZoom] = React.useState(DEFAULT_ZOOM);
+    const [mapViewResetToken, setMapViewResetToken] = React.useState(0);
     const [hasUserLocation, setHasUserLocation] = React.useState(false);
     const [areas, setAreas] = React.useState<GatheringAreaMapFeature[]>([]);
     const [categoryOptions, setCategoryOptions] = React.useState<CategoryOption[]>([]);
@@ -234,6 +236,7 @@ export default function GatheringAreasPage() {
     const reverseAddressCacheRef = React.useRef<Map<string, string>>(new Map());
     const hasRequestedInitialLocationRef = React.useRef(false);
     const hasInitializedCategoryFiltersRef = React.useRef(false);
+    const geolocationDeniedRef = React.useRef(false);
 
     const filteredAreas = React.useMemo(() => {
         if (!selectedCategoryKeys.length) {
@@ -433,7 +436,7 @@ export default function GatheringAreasPage() {
             return;
         }
 
-        setInfoMessage("Resolving your current location...");
+        setInfoMessage(CurrentLocationResolvingMessage);
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -442,13 +445,16 @@ export default function GatheringAreasPage() {
                     longitude: position.coords.longitude,
                 };
 
+                geolocationDeniedRef.current = false;
                 setCenter(nextCenter);
                 setMapZoom(CURRENT_LOCATION_ZOOM);
+                setMapViewResetToken((token) => token + 1);
                 setHasUserLocation(true);
                 setLocationNote("Showing gathering areas around your current location.");
                 setInfoMessage("Showing resources around your current location.");
             },
             () => {
+                geolocationDeniedRef.current = true;
                 setHasUserLocation(false);
                 setInfoMessage(
                     "Location permission was denied or unavailable. Continue by moving the map manually."
@@ -478,7 +484,9 @@ export default function GatheringAreasPage() {
             setLastFetchedViewportKey(null);
             setError("");
             setFetchState("idle");
-            setInfoMessage(ResourceZoomedOutMessage);
+            setInfoMessage((current) =>
+                geolocationDeniedRef.current ? current : ResourceZoomedOutMessage
+            );
             return;
         }
 
@@ -505,7 +513,11 @@ export default function GatheringAreasPage() {
         setLastFetchedViewportKey(null);
         setError("");
         setFetchState("idle");
-        setInfoMessage(ResourceZoomedOutMessage);
+        setInfoMessage((current) =>
+            current === CurrentLocationResolvingMessage || geolocationDeniedRef.current
+                ? current
+                : ResourceZoomedOutMessage
+        );
     }, []);
 
     React.useEffect(() => {
@@ -526,7 +538,12 @@ export default function GatheringAreasPage() {
     const isError = fetchState === "error";
     const isEmpty = fetchState === "empty" && isDiscoverable && Boolean(lastFetchedViewportKey);
     const isFilterEmpty = !isLoading && !isError && isDiscoverable && areas.length > 0 && filteredAreas.length === 0;
-    const searchContextLine = isDiscoverable
+    const searchContextLine = !isInitialState && !isDiscoverable && (
+        infoMessage === CurrentLocationResolvingMessage ||
+        infoMessage === "Location permission was denied or unavailable. Continue by moving the map manually."
+    )
+        ? infoMessage
+        : isDiscoverable
         ? "Showing resources in the visible map area."
         : ResourceZoomedOutMessage;
 
@@ -567,6 +584,7 @@ export default function GatheringAreasPage() {
                         <GatheringAreasMap
                             center={center}
                             zoom={mapZoom}
+                            viewResetToken={mapViewResetToken}
                             showLiveLocation={hasUserLocation}
                             features={isDiscoverable ? filteredAreas : []}
                             selectedFeatureId={selectedAreaId}
@@ -708,7 +726,7 @@ export default function GatheringAreasPage() {
                                         </p>
                                     ) : (
                                         <p className="gathering-areas-empty-detail">
-                                            {infoMessage || ResourceInitialMessage}
+                                            {ResourceInitialMessage}
                                         </p>
                                     )}
                                 </div>
@@ -794,7 +812,7 @@ export default function GatheringAreasPage() {
 
                     {isInitialState ? (
                         <div className="gathering-areas-status-box">
-                            <p>{ResourceInitialMessage}</p>
+                            <p>{infoMessage || ResourceInitialMessage}</p>
                         </div>
                     ) : null}
                 </SectionCard>

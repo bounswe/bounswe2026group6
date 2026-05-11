@@ -38,11 +38,19 @@ import com.neph.features.profile.presentation.ProfileScreen
 import com.neph.features.requesthelp.presentation.RequestHelpScreen
 import com.neph.features.safetycircles.presentation.SafetyCirclesScreen
 import com.neph.features.settings.presentation.SettingsScreen
+import com.neph.features.onboarding.data.MobileOnboardingPracticeHelpRequest
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
-    startDestination: String = Routes.Welcome.route
+    startDestination: String = Routes.Welcome.route,
+    onRestartMobileOnboarding: () -> Unit = {},
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    onMobileOnboardingFeedbackChanged: (String?) -> Unit = {},
+    mobileOnboardingPracticeHelpRequest: MobileOnboardingPracticeHelpRequest? = null,
+    onMobileOnboardingPracticeHelpRequestChanged: (MobileOnboardingPracticeHelpRequest?) -> Unit = {}
 ) {
     val verifyEmailRouteWithToken = "${Routes.VerifyEmail.route}?token={token}"
     val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
@@ -140,7 +148,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -191,7 +201,10 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                mobileOnboardingPracticeHelpRequest = mobileOnboardingPracticeHelpRequest
             )
         }
 
@@ -216,7 +229,10 @@ fun AppNavGraph(
                 profileBadgeText = profileBadgeText,
                 onNavigateToLogin = {
                     navigateToLogin()
-                }
+                },
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                onMobileOnboardingFeedbackChanged = onMobileOnboardingFeedbackChanged
             )
         }
 
@@ -276,7 +292,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -299,7 +317,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -322,7 +342,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -347,7 +369,9 @@ fun AppNavGraph(
                 onNavigateToLogin = {
                     navigateToLogin()
                 },
-                profileBadgeText = profileBadgeText
+                profileBadgeText = profileBadgeText,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -370,7 +394,9 @@ fun AppNavGraph(
                     }
                 },
                 profileBadgeText = profileBadgeText,
-                isAuthenticated = authenticated
+                isAuthenticated = authenticated,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -395,7 +421,9 @@ fun AppNavGraph(
                 onNavigateToLogin = {
                     navigateToLogin()
                 },
-                profileBadgeText = profileBadgeText
+                profileBadgeText = profileBadgeText,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -430,7 +458,10 @@ fun AppNavGraph(
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
-                }
+                },
+                onRestartMobileOnboarding = onRestartMobileOnboarding,
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
             )
         }
 
@@ -471,8 +502,14 @@ fun AppNavGraph(
                     navigateToLogin()
                 },
                 onNavigateToMyHelpRequests = {
-                    navigateToDrawerRoute(Routes.MyHelpRequests.route)
-                }
+                    val popped = navController.popBackStack(Routes.MyHelpRequests.route, inclusive = false)
+                    if (!popped) {
+                        navigateToDrawerRoute(Routes.MyHelpRequests.route)
+                    }
+                },
+                mobileOnboardingStepId = mobileOnboardingStepId,
+                onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+                onMobileOnboardingPracticeHelpRequestChanged = onMobileOnboardingPracticeHelpRequestChanged
             )
         }
 

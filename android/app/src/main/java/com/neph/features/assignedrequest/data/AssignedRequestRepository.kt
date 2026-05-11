@@ -32,6 +32,10 @@ data class AssignedRequestUiModel(
     val riskFlags: List<String>,
     val vulnerableGroups: List<String>,
     val bloodType: String?,
+    val shareProfileHealthInfoWithVolunteer: Boolean,
+    val medicalConditions: List<String>,
+    val chronicDiseases: List<String>,
+    val allergies: List<String>,
     val latitude: Double?,
     val longitude: Double?,
     val locationLabel: String,
@@ -216,6 +220,10 @@ object AssignedRequestRepository {
             riskFlagsJson = JSONArray(assignment.optJSONArray("risk_flags").toStringList()).toString(),
             vulnerableGroupsJson = JSONArray(assignment.optJSONArray("vulnerable_groups").toStringList()).toString(),
             bloodType = assignment.optString("blood_type").trim().takeIf { it.isNotBlank() },
+            shareProfileHealthInfoWithVolunteer = assignment.optBoolean("share_profile_health_info_with_volunteer", false),
+            medicalConditionsJson = JSONArray(assignment.optJSONArray("medical_conditions").toStringList()).toString(),
+            chronicDiseasesJson = JSONArray(assignment.optJSONArray("chronic_diseases").toStringList()).toString(),
+            allergiesJson = JSONArray(assignment.optJSONArray("allergies").toStringList()).toString(),
             latitude = readAssignmentCoordinate(assignment, "latitude"),
             longitude = readAssignmentCoordinate(assignment, "longitude"),
             locationLabel = buildLocationLabel(assignment),
@@ -260,6 +268,10 @@ object AssignedRequestRepository {
             riskFlags = riskFlagsJson.jsonArrayToStringList().map(::formatValue),
             vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList().map(::formatValue),
             bloodType = bloodType,
+            shareProfileHealthInfoWithVolunteer = shareProfileHealthInfoWithVolunteer,
+            medicalConditions = medicalConditionsJson.jsonArrayToStringList(),
+            chronicDiseases = chronicDiseasesJson.jsonArrayToStringList(),
+            allergies = allergiesJson.jsonArrayToStringList(),
             latitude = latitude,
             longitude = longitude,
             locationLabel = locationLabel,
@@ -293,7 +305,24 @@ object AssignedRequestRepository {
     }
 
     private fun formatValue(value: String): String {
-        return value
+        val normalizedValue = value.trim().lowercase()
+        val explicitLabel = when (normalizedValue) {
+            "search_rescue",
+            "search_and_rescue",
+            "sar",
+            "fire_brigade",
+            "rescue" -> "Search and Rescue"
+            "food_water",
+            "food/water" -> "Food / Water"
+            "first_aid",
+            "medical" -> "First Aid"
+            else -> null
+        }
+        if (explicitLabel != null) {
+            return explicitLabel
+        }
+
+        return normalizedValue
             .trim()
             .split('_')
             .filter { it.isNotBlank() }

@@ -27,6 +27,7 @@ import com.neph.features.assignedrequest.data.AssignedRequestRepository
 import com.neph.features.assignedrequest.data.AssignmentRouteUiModel
 import com.neph.features.assignedrequest.data.AssignedRequestUiModel
 import com.neph.features.auth.data.AuthSessionStore
+import com.neph.features.onboarding.data.MobileOnboardingStepId
 import com.neph.navigation.Routes
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.display.HelperText
@@ -43,7 +44,10 @@ fun AssignedRequestScreen(
     onOpenSettings: () -> Unit,
     onProfileClick: () -> Unit,
     profileBadgeText: String,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
+    onMobileOnboardingFeedbackChanged: (String?) -> Unit = {}
 ) {
     val spacing = LocalNephSpacing.current
     val context = LocalContext.current
@@ -166,6 +170,18 @@ fun AssignedRequestScreen(
         loadRouteInfo(assignmentId)
     }
 
+    LaunchedEffect(mobileOnboardingStepId, loading, currentRequest?.assignmentId) {
+        if (mobileOnboardingStepId == MobileOnboardingStepId.ASSIGNED_REQUESTS && !loading) {
+            onMobileOnboardingFeedbackChanged(
+                if (currentRequest == null) {
+                    "There is no assigned request for you right now."
+                } else {
+                    "You currently have an assigned request here."
+                }
+            )
+        }
+    }
+
     AppDrawerScaffold(
         title = "Assigned Request",
         currentRoute = Routes.AssignedRequest.route,
@@ -174,7 +190,9 @@ fun AssignedRequestScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = "Profile"
+        profileLabel = "Profile",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted
     ) {
         when {
             loading -> {
@@ -340,8 +358,28 @@ fun AssignedRequestScreen(
                                 )
                             }
 
-                            request.bloodType?.let {
-                                DetailLine(label = "Blood type", value = it)
+                            if (request.shareProfileHealthInfoWithVolunteer) {
+                                request.bloodType?.let {
+                                    DetailLine(label = "Blood type", value = it)
+                                }
+
+                                if (request.medicalConditions.isNotEmpty()) {
+                                    DetailLine(
+                                        label = "Medical conditions",
+                                        value = request.medicalConditions.joinToString(", ")
+                                    )
+                                }
+
+                                if (request.chronicDiseases.isNotEmpty()) {
+                                    DetailLine(
+                                        label = "Chronic diseases",
+                                        value = request.chronicDiseases.joinToString(", ")
+                                    )
+                                }
+
+                                if (request.allergies.isNotEmpty()) {
+                                    DetailLine(label = "Allergies", value = request.allergies.joinToString(", "))
+                                }
                             }
                         }
                     }

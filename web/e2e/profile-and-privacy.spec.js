@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { createCompletedUser, fetchMyProfile } = require('./helpers/api');
+const { createCompletedUser, createVerifiedUser, fetchMyProfile } = require('./helpers/api');
 const { resetDatabase } = require('./helpers/db');
 const { getStoredAccessToken, loginThroughUi } = require('./helpers/ui');
 
@@ -68,24 +68,51 @@ async function mockGeolocationError(page, { code, message, permissionState = 'pr
   }, { code, message, permissionState });
 }
 
+async function expectNoWrittenCurrentLocationButton(page) {
+  await expect(page.locator('button', { hasText: 'Use Current Location' })).toHaveCount(0);
+}
+
 test.beforeEach(async () => {
   await resetDatabase();
 });
 
-test('privacy page blocks first-time share enable until profile captures current location', async ({ page }) => {
-  const email = `privacy-block-${Date.now()}@example.com`;
+test('privacy page owns location sharing and hides health visibility', async ({ page }) => {
+  const email = `privacy-location-${Date.now()}@example.com`;
   const password = 'Passw0rd!';
 
   await createCompletedUser({ email, password });
   await loginToProtectedRoute(page, '/privacy-security', { email, password });
+
+  await expect(page.getByText('Health information visibility')).toHaveCount(0);
+  await expect(page.getByText(/Used to make your current or saved location available/i)).toBeVisible();
 
   const locationToggle = page.getByRole('button', { name: 'Share Current Location' });
   await expect(locationToggle).toHaveAttribute('aria-pressed', 'false');
 
   await locationToggle.click();
   await page.getByRole('button', { name: 'Save Privacy Settings' }).click();
+  await expect(locationToggle).toHaveAttribute('aria-pressed', 'true');
 
-  await expect(page.getByText('To enable Share Current Location, go to Profile, click Use Current Location, and save there first.')).toBeVisible();
+  const accessToken = await getStoredAccessToken(page);
+  await expect.poll(async () => {
+    const profile = await fetchMyProfile(accessToken);
+    return profile.privacySettings.locationSharingEnabled;
+  }).toBe(true);
+});
+
+test('profile edit no longer exposes Share Current Location control', async ({ page }) => {
+  const email = `profile-no-share-toggle-${Date.now()}@example.com`;
+  const password = 'Passw0rd!';
+
+  await createCompletedUser({ email, password });
+  await loginToProtectedRoute(page, '/profile', { email, password });
+
+  await expect(page.getByRole('button', { name: 'Share Current Location' })).toHaveCount(0);
+  await expectNoWrittenCurrentLocationButton(page);
+
+  await page.locator('#height').fill('180');
+  await page.locator('#extraAddress').fill('Updated Address 42');
+  await page.getByRole('button', { name: 'Save Changes' }).click();
 
   const accessToken = await getStoredAccessToken(page);
   await expect.poll(async () => {
@@ -94,28 +121,25 @@ test('privacy page blocks first-time share enable until profile captures current
   }).toBe(false);
 });
 
-test('profile save blocks first-time share enable until Use Current Location is used', async ({ page }) => {
-  const email = `profile-block-${Date.now()}@example.com`;
+test('complete profile location picker initializes from current location without written button', async ({ page }) => {
+  const email = `complete-profile-map-${Date.now()}@example.com`;
   const password = 'Passw0rd!';
 
-  await createCompletedUser({ email, password });
-  await loginToProtectedRoute(page, '/profile', { email, password });
+  await createVerifiedUser({ email, password });
+  await mockGeolocationSuccess(page, {
+    latitude: 41.0136,
+    longitude: 28.955,
+    accuracy: 7,
+  });
 
-  const locationToggle = page.getByRole('button', { name: 'Share Current Location' });
-  await locationToggle.click();
-  await expect.poll(async () => locationToggle.getAttribute('aria-pressed')).toBe('true');
+  await loginToProtectedRoute(page, '/complete-profile', { email, password });
 
-  await page.locator('#height').fill('180');
-  await page.locator('#extraAddress').fill('Updated Address 42');
-
-  await page.getByRole('button', { name: 'Save Changes' }).click();
-
-  await expect(
-    page.getByText(/To enable Share Current Location, click Use Current Location first/i)
-  ).toBeVisible();
+  await expectNoWrittenCurrentLocationButton(page);
+  await expect(page.getByRole('button', { name: 'Use Current Location' })).toBeVisible();
+  await expect(page.getByText('Selected:')).toBeVisible();
 });
 
-test('persists real current-device metadata when sharing is enabled after fresh capture', async ({ page }) => {
+test('privacy page enables sharing after profile saves real current-device metadata', async ({ page }) => {
   const email = `profile-${Date.now()}@example.com`;
   const password = 'Passw0rd!';
   const captureTimestamp = Date.now();
@@ -130,11 +154,9 @@ test('persists real current-device metadata when sharing is enabled after fresh 
 
   await loginToProtectedRoute(page, '/profile', { email, password });
 
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
   await expect(page.getByText('Selected:')).toBeVisible();
-
-  const locationToggle = page.getByRole('button', { name: 'Share Current Location' });
-  await locationToggle.click();
 
   const heightInput = page.locator('#height');
   await heightInput.fill('');
@@ -144,8 +166,6 @@ test('persists real current-device metadata when sharing is enabled after fresh 
 
   const accessToken = await getStoredAccessToken(page);
 
-  // Success banner text can be flaky in CI timing; assert the persisted backend
-  // state instead, which is the real contract this scenario verifies.
   await expect
     .poll(async () => {
       const profile = await fetchMyProfile(accessToken);
@@ -159,12 +179,23 @@ test('persists real current-device metadata when sharing is enabled after fresh 
     }, { timeout: 20_000 })
     .toMatchObject({
       height: 180,
-      locationSharingEnabled: true,
+      locationSharingEnabled: false,
       source: 'current_device',
       accuracyMeters: 7,
     });
 
+  await page.goto('/privacy-security');
+  await expect(page.getByText(/Used to make your current or saved location available/i)).toBeVisible();
+
+  const locationToggle = page.getByRole('button', { name: 'Share Current Location' });
+  await locationToggle.click();
+  await page.getByRole('button', { name: 'Save Privacy Settings' }).click();
   await expect(locationToggle).toHaveAttribute('aria-pressed', 'true');
+
+  await expect.poll(async () => {
+    const profile = await fetchMyProfile(accessToken);
+    return profile.privacySettings.locationSharingEnabled;
+  }).toBe(true);
 
   const profile = await fetchMyProfile(accessToken);
   expect((profile.locationProfile.address || '').trim().length).toBeGreaterThan(0);
@@ -193,6 +224,7 @@ test('shows denied geolocation error on current location action', async ({ page 
   });
 
   await loginToProtectedRoute(page, '/profile', { email, password });
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
 
   await expect(page.getByText('Location permission is denied. Enable location access in your browser settings.')).toBeVisible();
@@ -210,6 +242,7 @@ test('shows position unavailable geolocation error on current location action', 
   });
 
   await loginToProtectedRoute(page, '/profile', { email, password });
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
 
   await expect(page.getByText('Current location is unavailable right now. Please try again or select from map.')).toBeVisible();
@@ -227,6 +260,7 @@ test('shows timeout geolocation error on current location action', async ({ page
   });
 
   await loginToProtectedRoute(page, '/profile', { email, password });
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
 
   await expect(page.getByText('Location request timed out. Please try again.')).toBeVisible();

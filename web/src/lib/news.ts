@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { formatTimestampDate } from "@/lib/formatters";
 
 export type Announcement = {
     id: string;
@@ -71,16 +72,7 @@ function buildAnnouncementsPath(options: { limit?: number } = {}) {
 }
 
 export function formatAnnouncementDate(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return value;
-    }
-
-    return date.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-    });
+    return formatTimestampDate(value);
 }
 
 export function summarizeAnnouncementContent(content: string, maxLength = 180) {

@@ -8,7 +8,6 @@ import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { TextInput } from "@/components/ui/inputs/TextInput";
 import { SelectInput } from "@/components/ui/inputs/SelectInput";
 import { TextArea } from "@/components/ui/inputs/TextArea";
-import { ToggleSwitch } from "@/components/ui/selection/ToggleSwitch";
 import { Checkbox } from "@/components/ui/selection/Checkbox";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
@@ -50,31 +49,11 @@ import {
     patchMyHealth,
     patchMyLocation,
     patchMyPhysical,
-    patchMyPrivacy,
     validateExpertiseAreas,
     putMyExpertiseAreas,
 } from "@/lib/profile";
 type EmptyStateAction = "login" | "complete-profile" | null;
 type ProfileData = EditableProfileData;
-
-const FRESH_DEVICE_CAPTURE_MAX_AGE_MS = 5 * 60 * 1000;
-
-function isFreshCurrentDeviceSelection(value: LocationPickerValue | null) {
-    if (!value || value.source !== "current_device") {
-        return false;
-    }
-
-    if (!value.capturedAt) {
-        return false;
-    }
-
-    const capturedAtMs = Date.parse(value.capturedAt);
-    if (Number.isNaN(capturedAtMs)) {
-        return false;
-    }
-
-    return Date.now() - capturedAtMs <= FRESH_DEVICE_CAPTURE_MAX_AGE_MS;
-}
 
 function toPickerValueFromSearchItem(item: {
     placeId: string;
@@ -136,8 +115,6 @@ export default function ProfileView() {
     const [deletingAccount, setDeletingAccount] = React.useState(false);
     const [error, setError] = React.useState("");
     const [info, setInfo] = React.useState("");
-    const [initialShareLocation, setInitialShareLocation] =
-        React.useState(false);
     const [emptyStateAction, setEmptyStateAction] =
         React.useState<EmptyStateAction>(null);
     const dropdownSyncRequestIdRef = React.useRef(0);
@@ -148,10 +125,6 @@ export default function ProfileView() {
                 fetchCurrentUser(token),
                 fetchMyProfile(token),
             ]);
-
-            setInitialShareLocation(
-                backendProfile.privacySettings.locationSharingEnabled
-            );
 
             setProfile((currentProfile) => {
                 const refreshedProfile = toProfileData(
@@ -234,9 +207,6 @@ export default function ProfileView() {
                 );
 
                 setProfile(mappedProfile);
-                setInitialShareLocation(
-                    backendProfile.privacySettings.locationSharingEnabled
-                );
                 if (
                     backendProfile.locationProfile.latitude !== null &&
                     backendProfile.locationProfile.longitude !== null
@@ -508,17 +478,6 @@ export default function ProfileView() {
             }
         }
 
-        if (
-            !initialShareLocation &&
-            profile.shareLocation &&
-            !isFreshCurrentDeviceSelection(locationPickerValue)
-        ) {
-            setError(
-                "To enable Share Current Location, click Use Current Location first so we can save a fresh device location."
-            );
-            return;
-        }
-
         const token = getAccessToken();
 
         if (!token) {
@@ -638,10 +597,6 @@ export default function ProfileView() {
                             new Date().toISOString(),
                     }
                     : undefined,
-            });
-
-            await patchMyPrivacy(token, {
-                locationSharingEnabled: profile.shareLocation,
             });
 
             await putMyExpertiseAreas(token, {
@@ -1079,7 +1034,7 @@ export default function ProfileView() {
                         <LocationPicker
                             value={locationPickerValue}
                             onChange={handleLocationPickerChange}
-                            label="Select location from map or search"
+                            label="Select location from map"
                         />
                     </div>
 
@@ -1195,20 +1150,6 @@ export default function ProfileView() {
                         </div>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between">
-                        <span className="text-sm">Share Current Location</span>
-                        <ToggleSwitch
-                            aria-label="Share Current Location"
-                            checked={profile.shareLocation}
-                            onCheckedChange={(value) =>
-                                setProfile((currentProfile) =>
-                                    currentProfile
-                                        ? { ...currentProfile, shareLocation: value }
-                                        : currentProfile
-                                )
-                            }
-                        />
-                    </div>
                 </SectionCard>
 
                 {error ? <HelperText className="text-[color:var(--primary-500)]">{error}</HelperText> : null}

@@ -1,11 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { TextInput } from "@/components/ui/inputs/TextInput";
-import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { LocationPickerMap } from "@/components/feature/location/LocationPickerMap";
-import { reverseLocation, searchLocations } from "@/lib/location";
+import { reverseLocation } from "@/lib/location";
 import { LocationSearchItem } from "@/types/location";
 
 type LocationPickerValue = {
@@ -30,6 +28,8 @@ const DEFAULT_CENTER = {
     latitude: 39.0,
     longitude: 35.0,
 };
+const DEFAULT_MAP_ZOOM = 6;
+const SELECTED_LOCATION_ZOOM = 15;
 
 function toPickerValue(item: LocationSearchItem): LocationPickerValue {
     return {
@@ -74,65 +74,29 @@ function mapGeolocationError(geoError: GeolocationPositionError) {
 }
 
 export function LocationPicker({
-    countryCode = "TR",
     value,
     onChange,
     label = "Select location from map",
 }: LocationPickerProps) {
-    const searchInputId = React.useId();
-    const [query, setQuery] = React.useState("");
-    const [searching, setSearching] = React.useState(false);
     const [resolving, setResolving] = React.useState(false);
-    const [results, setResults] = React.useState<LocationSearchItem[]>([]);
     const [error, setError] = React.useState("");
-    const skipNextSearchRef = React.useRef(false);
-    const searchRequestIdRef = React.useRef(0);
+    const [mapViewResetToken, setMapViewResetToken] = React.useState(0);
     const reverseRequestIdRef = React.useRef(0);
+    const hasAttemptedInitialLocationRef = React.useRef(false);
+    const userSelectionVersionRef = React.useRef(0);
+    const latestValueRef = React.useRef<LocationPickerValue | null>(value);
+
+    React.useEffect(() => {
+        latestValueRef.current = value;
+    }, [value]);
 
     const center = value
         ? { latitude: value.latitude, longitude: value.longitude }
         : DEFAULT_CENTER;
 
-    const handleSearch = React.useCallback(async () => {
-        if (query.trim().length < 2) {
-            setResults([]);
-            return;
-        }
-
-        if (skipNextSearchRef.current) {
-            skipNextSearchRef.current = false;
-            return;
-        }
-
-        const currentSearchRequestId = ++searchRequestIdRef.current;
-
-        try {
-            setSearching(true);
-            setError("");
-
-            const response = await searchLocations({
-                q: query.trim(),
-                countryCode,
-                limit: 10,
-            });
-
-            if (currentSearchRequestId !== searchRequestIdRef.current) {
-                return;
-            }
-
-            setResults(response.items);
-        } catch (err) {
-            if (currentSearchRequestId !== searchRequestIdRef.current) {
-                return;
-            }
-
-            setError(err instanceof Error ? err.message : "Could not search locations.");
-        } finally {
-            if (currentSearchRequestId === searchRequestIdRef.current) {
-                setSearching(false);
-            }
-        }
-    }, [countryCode, query]);
+    const markUserSelection = React.useCallback(() => {
+        userSelectionVersionRef.current += 1;
+    }, []);
 
     const handleResolveCoordinates = React.useCallback(
         async (
@@ -142,6 +106,9 @@ export function LocationPicker({
                 source?: string | null;
                 accuracyMeters?: number | null;
                 capturedAt?: string | null;
+            },
+            options?: {
+                shouldApplyResult?: () => boolean;
             }
         ) => {
             const currentReverseRequestId = ++reverseRequestIdRef.current;
@@ -155,6 +122,9 @@ export function LocationPicker({
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
                     return;
                 }
+                if (options?.shouldApplyResult && !options.shouldApplyResult()) {
+                    return;
+                }
 
                 onChange({
                     ...toPickerValue(response.item),
@@ -164,6 +134,9 @@ export function LocationPicker({
                 });
             } catch (err) {
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
+                    return;
+                }
+                if (options?.shouldApplyResult && !options.shouldApplyResult()) {
                     return;
                 }
 
@@ -183,7 +156,14 @@ export function LocationPicker({
         [onChange]
     );
 
-    const handleUseCurrentLocation = React.useCallback(() => {
+    const requestCurrentLocation = React.useCallback((options?: { initial?: boolean }) => {
+        const isInitial = options?.initial === true;
+        const initialSelectionVersion = userSelectionVersionRef.current;
+
+        if (isInitial && latestValueRef.current) {
+            return;
+        }
+
         if (!navigator.geolocation) {
             setError("Geolocation is not supported in this browser.");
             return;
@@ -195,30 +175,58 @@ export function LocationPicker({
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    onChange({
-                        ...toManualPickerValue(
-                            position.coords.latitude,
-                            position.coords.longitude
-                        ),
+                    if (
+                        isInitial &&
+                        (
+                            userSelectionVersionRef.current !== initialSelectionVersion ||
+                            (
+                                latestValueRef.current !== null &&
+                                latestValueRef.current.source !== "current_device"
+                            )
+                        )
+                    ) {
+                        setResolving(false);
+                        return;
+                    }
+
+                    const metadata = {
                         source: "current_device",
                         accuracyMeters:
                             typeof position.coords.accuracy === "number"
                                 ? position.coords.accuracy
                                 : null,
                         capturedAt: new Date(position.timestamp).toISOString(),
+                    };
+
+                    onChange({
+                        ...toManualPickerValue(
+                            position.coords.latitude,
+                            position.coords.longitude
+                        ),
+                        ...metadata,
                     });
+                    setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(
                         position.coords.latitude,
                         position.coords.longitude,
-                        {
-                            source: "current_device",
-                            accuracyMeters:
-                                typeof position.coords.accuracy === "number"
-                                    ? position.coords.accuracy
-                                    : null,
-                            capturedAt: new Date(position.timestamp).toISOString(),
-                        }
+                        metadata,
+                        isInitial
+                            ? {
+                                shouldApplyResult: () => {
+                                    const current = latestValueRef.current;
+                                    return userSelectionVersionRef.current === initialSelectionVersion &&
+                                        (
+                                            current === null ||
+                                            (
+                                                current.source === "current_device" &&
+                                                Math.abs(current.latitude - position.coords.latitude) < 0.000001 &&
+                                                Math.abs(current.longitude - position.coords.longitude) < 0.000001
+                                            )
+                                        );
+                                },
+                            }
+                            : undefined
                     );
                 },
                 (geoError) => {
@@ -252,65 +260,30 @@ export function LocationPicker({
             .catch(() => {
                 requestLocation();
             });
-    }, [handleResolveCoordinates]);
+    }, [handleResolveCoordinates, onChange]);
+
+    const handleUseCurrentLocation = React.useCallback(() => {
+        markUserSelection();
+        requestCurrentLocation();
+    }, [markUserSelection, requestCurrentLocation]);
 
     React.useEffect(() => {
-        const timeout = setTimeout(() => {
-            void handleSearch();
-        }, 350);
+        if (hasAttemptedInitialLocationRef.current || value) {
+            return;
+        }
 
-        return () => clearTimeout(timeout);
-    }, [handleSearch]);
+        hasAttemptedInitialLocationRef.current = true;
+        requestCurrentLocation({ initial: true });
+    }, [requestCurrentLocation, value]);
 
     return (
         <div className="location-picker-wrap flex flex-col gap-3">
             <HelperText className="text-sm text-[color:var(--text-primary)]">{label}</HelperText>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <TextInput
-                    id={searchInputId}
-                    label="Search location"
-                    placeholder="Search location"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                />
-
-                <PrimaryButton
-                    type="button"
-                    className="sm:w-52"
-                    onClick={handleUseCurrentLocation}
-                    loading={resolving}
-                >
-                    Use Current Location
-                </PrimaryButton>
-            </div>
-
-            {results.length > 0 ? (
-                <div className="max-h-44 overflow-auto rounded-[10px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)]">
-                    {results.map((item) => (
-                        <button
-                            key={`${item.placeId}-${item.latitude}-${item.longitude}`}
-                            type="button"
-                            className="w-full border-b border-[color:var(--divider)] px-3 py-2 text-left text-sm text-[color:var(--text-primary)] transition-colors hover:bg-[color:var(--surface-soft)]"
-                            onClick={() => {
-                                onChange({
-                                    ...toPickerValue(item),
-                                    source: "search",
-                                    capturedAt: new Date().toISOString(),
-                                });
-                                skipNextSearchRef.current = true;
-                                setResults([]);
-                                setQuery(item.displayName);
-                            }}
-                        >
-                            {item.displayName}
-                        </button>
-                    ))}
-                </div>
-            ) : null}
-
             <LocationPickerMap
                 center={center}
+                zoom={value ? SELECTED_LOCATION_ZOOM : DEFAULT_MAP_ZOOM}
+                viewResetToken={mapViewResetToken}
                 selectedPosition={
                     value
                         ? {
@@ -320,21 +293,24 @@ export function LocationPicker({
                         : null
                 }
                 onSelectPosition={(position) => {
+                    markUserSelection();
                     onChange({
                         ...toManualPickerValue(position.latitude, position.longitude),
                         source: "map_pin",
                         accuracyMeters: null,
                         capturedAt: new Date().toISOString(),
                     });
+                    setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(position.latitude, position.longitude, {
                         source: "map_pin",
                         accuracyMeters: null,
                     });
                 }}
+                onUseCurrentLocation={handleUseCurrentLocation}
+                currentLocationDisabled={resolving}
             />
 
-            {searching ? <HelperText>Searching locations...</HelperText> : null}
             {resolving ? <HelperText>Resolving selected coordinates...</HelperText> : null}
 
             {value ? (

@@ -76,6 +76,19 @@ function validateStringArray(fieldName, value, errors, { required = false } = {}
   return normalized;
 }
 
+const allowedHelpTypes = new Set(['first_aid', 'food_water', 'shelter', 'search_rescue']);
+
+function validateHelpTypes(value, errors) {
+  const helpTypes = validateStringArray('helpTypes', value, errors, { required: true });
+  const invalidHelpTypes = helpTypes.filter((entry) => !allowedHelpTypes.has(entry));
+
+  if (invalidHelpTypes.length > 0) {
+    errors.push('`helpTypes` can only include: first_aid, food_water, shelter, search_rescue.');
+  }
+
+  return helpTypes;
+}
+
 function validateRequiredString(fieldName, value, errors, { maxLength = 255 } = {}) {
   const normalized = normalizeOptionalString(value);
 
@@ -225,7 +238,7 @@ function validateCreateHelpRequest(payload) {
     };
   }
 
-  const helpTypes = validateStringArray('helpTypes', payload.helpTypes, errors, { required: true });
+  const helpTypes = validateHelpTypes(payload.helpTypes, errors);
   const otherHelpText = validateOptionalString('otherHelpText', payload.otherHelpText, errors, {
     maxLength: 500,
   });
@@ -244,9 +257,14 @@ function validateCreateHelpRequest(payload) {
   const description = validateOptionalString('description', payload.description, errors, {
     maxLength: 2000,
   });
-  const bloodType = validateOptionalString('bloodType', payload.bloodType, errors, {
-    maxLength: 10,
-  });
+  let shareProfileHealthInfoWithVolunteer = false;
+  if (payload.shareProfileHealthInfoWithVolunteer != null) {
+    if (!isBoolean(payload.shareProfileHealthInfoWithVolunteer)) {
+      errors.push('`shareProfileHealthInfoWithVolunteer` must be a boolean.');
+    } else {
+      shareProfileHealthInfoWithVolunteer = payload.shareProfileHealthInfoWithVolunteer;
+    }
+  }
 
   let consentGiven = false;
   if (!isBoolean(payload.consentGiven)) {
@@ -376,7 +394,8 @@ function validateCreateHelpRequest(payload) {
       riskFlags,
       vulnerableGroups,
       description,
-      bloodType,
+      bloodType: '',
+      shareProfileHealthInfoWithVolunteer,
       location,
       contact,
       consentGiven,
