@@ -1990,6 +1990,13 @@ textarea::placeholder {
     color: var(--text-secondary);
 }
 
+.gathering-areas-selected-actions {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .gathering-areas-empty-detail {
     margin: 0;
     font-size: 0.875rem;

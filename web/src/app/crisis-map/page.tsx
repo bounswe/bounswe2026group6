@@ -4,11 +4,12 @@ import * as React from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/buttons/SecondaryButton";
 import { CrisisMap } from "@/components/feature/location/CrisisMap";
 import type { CrisisMapFeature, CrisisRequestType } from "@/components/feature/location/LeafletCrisisMap";
 import { fetchActiveHelpRequests } from "@/lib/crisisMap";
 import { getAccessToken } from "@/lib/auth";
-import { openDirections } from "@/lib/mapDirections";
+import { openDirections, openMapLocation } from "@/lib/mapDirections";
 import type { MapBounds } from "@/components/feature/location/LeafletMapCanvas";
 import {
     effectiveViewportKey,
@@ -333,6 +334,13 @@ export default function CrisisMapPage() {
         );
     }, []);
 
+    const handleOpenInMap = React.useCallback((request: CrisisMapFeature) => {
+        const opened = openMapLocation(request.latitude, request.longitude, request.typeLabel);
+        setDirectionsMessage(
+            opened ? "" : "Map application is unavailable for this request location."
+        );
+    }, []);
+
     return (
         <AppShell title="Help Request Map" containerClassName="gathering-areas-page-container">
             <div className="gathering-areas-page-grid">
@@ -435,13 +443,22 @@ export default function CrisisMapPage() {
                                             <p className="gathering-areas-selected-meta">
                                                 Opened: {formatRelative(selectedRequest.createdAt)}
                                             </p>
-                                            <PrimaryButton
-                                                type="button"
-                                                className="mt-1 h-10 w-auto"
-                                                onClick={() => handleGetDirections(selectedRequest)}
-                                            >
-                                                Get Directions
-                                            </PrimaryButton>
+                                            <div className="gathering-areas-selected-actions">
+                                                <PrimaryButton
+                                                    type="button"
+                                                    className="h-10 w-auto"
+                                                    onClick={() => handleGetDirections(selectedRequest)}
+                                                >
+                                                    Get Directions
+                                                </PrimaryButton>
+                                                <SecondaryButton
+                                                    type="button"
+                                                    className="h-10 w-auto"
+                                                    onClick={() => handleOpenInMap(selectedRequest)}
+                                                >
+                                                    Open in Map
+                                                </SecondaryButton>
+                                            </div>
                                             {directionsMessage ? (
                                                 <p className="gathering-areas-selected-meta">{directionsMessage}</p>
                                             ) : null}
