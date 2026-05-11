@@ -22,7 +22,7 @@ const DEFAULT_CENTER = {
     longitude: 35.0,
 };
 const DEFAULT_ZOOM = 5;
-const CURRENT_LOCATION_ZOOM = 13;
+const CURRENT_LOCATION_ZOOM = 15;
 const DEFAULT_LIMIT = 20;
 const ADDRESS_UNAVAILABLE = "Address unavailable";
 type FetchState = "idle" | "loading" | "success" | "empty" | "error";
@@ -213,6 +213,7 @@ function mapFeatures(features: GatheringAreaFeature[]) {
 export default function GatheringAreasPage() {
     const [center, setCenter] = React.useState(DEFAULT_CENTER);
     const [mapZoom, setMapZoom] = React.useState(DEFAULT_ZOOM);
+    const [mapViewResetToken, setMapViewResetToken] = React.useState(0);
     const [hasUserLocation, setHasUserLocation] = React.useState(false);
     const [areas, setAreas] = React.useState<GatheringAreaMapFeature[]>([]);
     const [categoryOptions, setCategoryOptions] = React.useState<CategoryOption[]>([]);
@@ -446,6 +447,7 @@ export default function GatheringAreasPage() {
                 geolocationDeniedRef.current = false;
                 setCenter(nextCenter);
                 setMapZoom(CURRENT_LOCATION_ZOOM);
+                setMapViewResetToken((token) => token + 1);
                 setHasUserLocation(true);
                 setLocationNote("Showing gathering areas around your current location.");
                 setInfoMessage("Showing resources around your current location.");
@@ -574,6 +576,7 @@ export default function GatheringAreasPage() {
                         <GatheringAreasMap
                             center={center}
                             zoom={mapZoom}
+                            viewResetToken={mapViewResetToken}
                             showLiveLocation={hasUserLocation}
                             features={isDiscoverable ? filteredAreas : []}
                             selectedFeatureId={selectedAreaId}

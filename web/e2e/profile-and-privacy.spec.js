@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { createCompletedUser, fetchMyProfile } = require('./helpers/api');
+const { createCompletedUser, createVerifiedUser, fetchMyProfile } = require('./helpers/api');
 const { resetDatabase } = require('./helpers/db');
 const { getStoredAccessToken, loginThroughUi } = require('./helpers/ui');
 
@@ -68,6 +68,10 @@ async function mockGeolocationError(page, { code, message, permissionState = 'pr
   }, { code, message, permissionState });
 }
 
+async function expectNoWrittenCurrentLocationButton(page) {
+  await expect(page.locator('button', { hasText: 'Use Current Location' })).toHaveCount(0);
+}
+
 test.beforeEach(async () => {
   await resetDatabase();
 });
@@ -104,6 +108,7 @@ test('profile edit no longer exposes Share Current Location control', async ({ p
   await loginToProtectedRoute(page, '/profile', { email, password });
 
   await expect(page.getByRole('button', { name: 'Share Current Location' })).toHaveCount(0);
+  await expectNoWrittenCurrentLocationButton(page);
 
   await page.locator('#height').fill('180');
   await page.locator('#extraAddress').fill('Updated Address 42');
@@ -114,6 +119,24 @@ test('profile edit no longer exposes Share Current Location control', async ({ p
     const profile = await fetchMyProfile(accessToken);
     return profile.privacySettings.locationSharingEnabled;
   }).toBe(false);
+});
+
+test('complete profile location picker initializes from current location without written button', async ({ page }) => {
+  const email = `complete-profile-map-${Date.now()}@example.com`;
+  const password = 'Passw0rd!';
+
+  await createVerifiedUser({ email, password });
+  await mockGeolocationSuccess(page, {
+    latitude: 41.0136,
+    longitude: 28.955,
+    accuracy: 7,
+  });
+
+  await loginToProtectedRoute(page, '/complete-profile', { email, password });
+
+  await expectNoWrittenCurrentLocationButton(page);
+  await expect(page.getByRole('button', { name: 'Use Current Location' })).toBeVisible();
+  await expect(page.getByText('Selected:')).toBeVisible();
 });
 
 test('privacy page enables sharing after profile saves real current-device metadata', async ({ page }) => {
@@ -131,6 +154,7 @@ test('privacy page enables sharing after profile saves real current-device metad
 
   await loginToProtectedRoute(page, '/profile', { email, password });
 
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
   await expect(page.getByText('Selected:')).toBeVisible();
 
@@ -200,6 +224,7 @@ test('shows denied geolocation error on current location action', async ({ page 
   });
 
   await loginToProtectedRoute(page, '/profile', { email, password });
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
 
   await expect(page.getByText('Location permission is denied. Enable location access in your browser settings.')).toBeVisible();
@@ -217,6 +242,7 @@ test('shows position unavailable geolocation error on current location action', 
   });
 
   await loginToProtectedRoute(page, '/profile', { email, password });
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
 
   await expect(page.getByText('Current location is unavailable right now. Please try again or select from map.')).toBeVisible();
@@ -234,6 +260,7 @@ test('shows timeout geolocation error on current location action', async ({ page
   });
 
   await loginToProtectedRoute(page, '/profile', { email, password });
+  await expectNoWrittenCurrentLocationButton(page);
   await page.getByRole('button', { name: 'Use Current Location' }).click();
 
   await expect(page.getByText('Location request timed out. Please try again.')).toBeVisible();

@@ -27,6 +27,7 @@ type LeafletGatheringAreasMapProps = {
     onViewportChange?: (bounds: MapBounds) => void;
     heightClassName?: string;
     zoom?: number;
+    viewResetToken?: number;
 };
 
 function formatCategoryLabel(category: string) {
@@ -127,6 +128,7 @@ export function LeafletGatheringAreasMap({
     onViewportChange,
     heightClassName = "h-[380px] md:h-[500px]",
     zoom = 14,
+    viewResetToken = 0,
 }: LeafletGatheringAreasMapProps) {
     const mapRef = React.useRef<L.Map | null>(null);
     const centerMarkerRef = React.useRef<L.Marker | null>(null);
@@ -230,6 +232,7 @@ export function LeafletGatheringAreasMap({
         <LeafletMapCanvas
             center={center}
             zoom={zoom}
+            viewResetToken={viewResetToken}
             heightClassName={heightClassName}
             ariaLabel="Nearby gathering areas map"
             onViewportChange={onViewportChange}

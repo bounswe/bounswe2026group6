@@ -19,6 +19,7 @@ export type LatLng = {
 type LeafletMapCanvasProps = {
     center: LatLng;
     zoom?: number;
+    viewResetToken?: number;
     heightClassName?: string;
     ariaLabel?: string;
     onMapReady?: (map: L.Map) => void;
@@ -29,6 +30,7 @@ type LeafletMapCanvasProps = {
 export function LeafletMapCanvas({
     center,
     zoom = 12,
+    viewResetToken = 0,
     heightClassName = "h-72",
     ariaLabel = "Map",
     onMapReady,
@@ -105,21 +107,11 @@ export function LeafletMapCanvas({
             return;
         }
 
-        if (map.getZoom() !== zoom) {
-            map.setZoom(zoom);
-        }
-    }, [zoom]);
-
-    React.useEffect(() => {
-        const map = mapRef.current;
-        if (!map) {
-            return;
-        }
-
-        map.setView([center.latitude, center.longitude], map.getZoom(), {
+        map.setView([center.latitude, center.longitude], zoom, {
             animate: true,
         });
-    }, [center.latitude, center.longitude]);
+        map.invalidateSize();
+    }, [center.latitude, center.longitude, zoom, viewResetToken]);
 
     return (
         <div
