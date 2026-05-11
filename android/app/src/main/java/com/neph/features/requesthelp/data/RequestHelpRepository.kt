@@ -94,6 +94,15 @@ data class CreateHelpRequestResult(
     val recordedLocally: Boolean = true
 )
 
+data class MarkSafeHelpRequestCancellationResult(
+    val confirmedCount: Int = 0,
+    val pendingCount: Int = 0,
+    val failedCount: Int = 0
+) {
+    val canMarkSafe: Boolean
+        get() = pendingCount == 0 && failedCount == 0
+}
+
 data class GuestTrackedHelpRequest(
     val requestId: String,
     val guestAccessToken: String
@@ -140,6 +149,63 @@ object RequestHelpRepository {
         }
 
         return database.helpRequestDao().countActiveByOwner(ownerTypeForToken(token)) > 0
+    }
+
+    suspend fun cancelActiveAuthenticatedHelpRequestsForMarkSafe(
+        token: String
+    ): MarkSafeHelpRequestCancellationResult {
+        ensureInitialized()
+        if (token.isBlank()) return MarkSafeHelpRequestCancellationResult()
+
+        try {
+            refreshAuthenticatedHelpRequests(token)
+        } catch (error: ApiException) {
+            if (error.status == 401) {
+                throw error
+            }
+        } catch (_: Exception) {
+            // Fall back to local active requests so marking safe can still proceed offline.
+        }
+
+        val activeRequests = database.helpRequestDao()
+            .getByOwner(LocalOwnerType.AUTHENTICATED)
+            .filter { it.isActiveHelpRequestForStatusUpdate() }
+
+        if (activeRequests.isEmpty()) return MarkSafeHelpRequestCancellationResult()
+
+        var confirmedCount = 0
+        var pendingCount = 0
+        var failedCount = 0
+        activeRequests.forEach { request ->
+            val remoteId = resolveRemoteRequestIdForSync(request)
+            if (remoteId.isNullOrBlank()) {
+                pendingCount += 1
+                return@forEach
+            }
+
+            val response = JsonHttpClient.request(
+                path = "/help-requests/$remoteId/status",
+                method = "PATCH",
+                token = token,
+                body = JSONObject().put("status", "CANCELLED")
+            )
+            val remoteRequest = response.optJSONObject("request")
+            if (remoteRequest?.optString("status")?.trim()?.uppercase(Locale.ROOT) == "CANCELLED") {
+                upsertRemoteHelpRequest(
+                    ownerType = LocalOwnerType.AUTHENTICATED,
+                    request = remoteRequest,
+                    guestAccessToken = null
+                )
+                confirmedCount += 1
+            } else {
+                failedCount += 1
+            }
+        }
+        return MarkSafeHelpRequestCancellationResult(
+            confirmedCount = confirmedCount,
+            pendingCount = pendingCount,
+            failedCount = failedCount
+        )
     }
 
     suspend fun createHelpRequest(
@@ -596,6 +662,12 @@ object RequestHelpRepository {
             ?.takeIf { it.isNotBlank() }
             ?.let { mapOf("x-help-request-access-token" to it) }
             ?: emptyMap()
+    }
+
+    private fun HelpRequestEntity.isActiveHelpRequestForStatusUpdate(): Boolean {
+        return status.trim().uppercase(Locale.ROOT) !in setOf("RESOLVED", "CANCELLED") &&
+            syncStatus != SyncStatus.CONFLICTED &&
+            !isDeleted
     }
 }
 
