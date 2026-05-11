@@ -373,7 +373,7 @@ fun HelpRequestMapScreen(
         }
     }
 
-    LaunchedEffect(effectiveLeafletViewportKey(pendingViewport), viewportRefreshNonce) {
+    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce) {
         val viewport = pendingViewport ?: return@LaunchedEffect
         if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
         val viewportKey = effectiveLeafletViewportKey(viewport) ?: return@LaunchedEffect

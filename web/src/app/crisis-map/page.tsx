@@ -21,7 +21,7 @@ const DEFAULT_CENTER = {
     longitude: 35.0,
 };
 const DEFAULT_ZOOM = 5;
-const CURRENT_LOCATION_ZOOM = 13;
+const CURRENT_LOCATION_ZOOM = 15;
 
 const FETCH_LIMIT = 300;
 type FetchState = "idle" | "loading" | "success" | "empty" | "error";
@@ -125,6 +125,7 @@ function toFeature(item: Awaited<ReturnType<typeof fetchActiveHelpRequests>>["re
 export default function CrisisMapPage() {
     const [center, setCenter] = React.useState(DEFAULT_CENTER);
     const [mapZoom, setMapZoom] = React.useState(DEFAULT_ZOOM);
+    const [mapViewResetToken, setMapViewResetToken] = React.useState(0);
     const [requests, setRequests] = React.useState<CrisisMapFeature[]>([]);
     const [selectedRequestId, setSelectedRequestId] = React.useState<string | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = React.useState(true);
@@ -266,6 +267,7 @@ export default function CrisisMapPage() {
                 };
                 setCenter(nextCenter);
                 setMapZoom(CURRENT_LOCATION_ZOOM);
+                setMapViewResetToken((token) => token + 1);
                 setInfoMessage("Showing requests around your current location.");
             },
             () => {
@@ -340,6 +342,7 @@ export default function CrisisMapPage() {
                             <CrisisMap
                                 center={center}
                                 zoom={mapZoom}
+                                viewResetToken={mapViewResetToken}
                                 features={isViewportDiscoverable(currentViewport) ? visibleRequests : []}
                                 selectedFeatureId={selectedRequestId}
                                 onViewportChange={handleViewportChange}

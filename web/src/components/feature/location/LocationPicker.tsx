@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { TextInput } from "@/components/ui/inputs/TextInput";
-import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { LocationPickerMap } from "@/components/feature/location/LocationPickerMap";
 import { reverseLocation, searchLocations } from "@/lib/location";
@@ -30,6 +29,8 @@ const DEFAULT_CENTER = {
     latitude: 39.0,
     longitude: 35.0,
 };
+const DEFAULT_MAP_ZOOM = 6;
+const SELECTED_LOCATION_ZOOM = 15;
 
 function toPickerValue(item: LocationSearchItem): LocationPickerValue {
     return {
@@ -85,6 +86,7 @@ export function LocationPicker({
     const [resolving, setResolving] = React.useState(false);
     const [results, setResults] = React.useState<LocationSearchItem[]>([]);
     const [error, setError] = React.useState("");
+    const [mapViewResetToken, setMapViewResetToken] = React.useState(0);
     const skipNextSearchRef = React.useRef(false);
     const searchRequestIdRef = React.useRef(0);
     const reverseRequestIdRef = React.useRef(0);
@@ -207,6 +209,7 @@ export function LocationPicker({
                                 : null,
                         capturedAt: new Date(position.timestamp).toISOString(),
                     });
+                    setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(
                         position.coords.latitude,
@@ -266,7 +269,7 @@ export function LocationPicker({
         <div className="location-picker-wrap flex flex-col gap-3">
             <HelperText className="text-sm text-[color:var(--text-primary)]">{label}</HelperText>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex flex-col gap-2">
                 <TextInput
                     id={searchInputId}
                     label="Search location"
@@ -274,15 +277,6 @@ export function LocationPicker({
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                 />
-
-                <PrimaryButton
-                    type="button"
-                    className="sm:w-52"
-                    onClick={handleUseCurrentLocation}
-                    loading={resolving}
-                >
-                    Use Current Location
-                </PrimaryButton>
             </div>
 
             {results.length > 0 ? (
@@ -298,6 +292,7 @@ export function LocationPicker({
                                     source: "search",
                                     capturedAt: new Date().toISOString(),
                                 });
+                                setMapViewResetToken((token) => token + 1);
                                 skipNextSearchRef.current = true;
                                 setResults([]);
                                 setQuery(item.displayName);
@@ -311,6 +306,8 @@ export function LocationPicker({
 
             <LocationPickerMap
                 center={center}
+                zoom={value ? SELECTED_LOCATION_ZOOM : DEFAULT_MAP_ZOOM}
+                viewResetToken={mapViewResetToken}
                 selectedPosition={
                     value
                         ? {
@@ -326,12 +323,15 @@ export function LocationPicker({
                         accuracyMeters: null,
                         capturedAt: new Date().toISOString(),
                     });
+                    setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(position.latitude, position.longitude, {
                         source: "map_pin",
                         accuracyMeters: null,
                     });
                 }}
+                onUseCurrentLocation={handleUseCurrentLocation}
+                currentLocationDisabled={resolving}
             />
 
             {searching ? <HelperText>Searching locations...</HelperText> : null}
