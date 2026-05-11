@@ -95,6 +95,49 @@ class SafetyStatusRepositoryAndroidTest {
     }
 
     @Test
+    fun clearSafeStatusForRequestHelpReplacesSafeStatusWithUnknownAndSyncs() = runBlocking {
+        SafetyStatusRepository.markSafe(
+            token = "access-token-1",
+            location = sampleLocation(),
+            shareLocationConsent = true
+        )
+
+        val state = SafetyStatusRepository.clearSafeStatusForRequestHelp("access-token-1")
+
+        assertEquals(SyncStatus.SYNCED, state.syncStatus)
+        assertEquals("unknown", state.status)
+        assertFalse(state.shareLocationConsent)
+        assertFalse(state.hasLocation)
+        assertEquals("unknown", fakeBackend.currentSafetyStatus().status)
+        assertNull(fakeBackend.currentSafetyStatus().location)
+        assertNull(latestSafetyStatusOperation())
+        assertEquals(0, fakeBackend.profileLocationPatchCount())
+    }
+
+    @Test
+    fun clearSafeStatusForRequestHelpQueuesUnknownPayloadWhenSyncDeferred() = runBlocking {
+        SafetyStatusRepository.markSafe(
+            token = "access-token-1",
+            location = sampleLocation(),
+            shareLocationConsent = true
+        )
+
+        val state = SafetyStatusRepository.clearSafeStatusForRequestHelp("expired-token")
+        val operation = latestSafetyStatusOperation()
+
+        assertEquals(SyncStatus.PENDING_UPDATE, state.syncStatus)
+        assertEquals("unknown", state.status)
+        assertFalse(state.shareLocationConsent)
+        assertFalse(state.hasLocation)
+        assertTrue(state.pendingError.orEmpty().contains("Session expired"))
+        assertEquals("current", operation?.entityId)
+        assertTrue(operation?.payloadJson.orEmpty().contains("\"status\":\"unknown\""))
+        assertTrue(operation?.payloadJson.orEmpty().contains("\"shareLocationConsent\":false"))
+        assertTrue(operation?.payloadJson.orEmpty().contains("\"location\":null"))
+        assertEquals(0, fakeBackend.profileLocationPatchCount())
+    }
+
+    @Test
     fun clearLocalCacheRemovesSafetyStatusAndPendingSyncOperation() = runBlocking {
         SafetyStatusRepository.markSafe(
             token = "expired-token",
