@@ -142,6 +142,68 @@ object RequestHelpRepository {
         return database.helpRequestDao().countActiveByOwner(ownerTypeForToken(token)) > 0
     }
 
+    suspend fun cancelActiveAuthenticatedHelpRequestsForMarkSafe(token: String): Int {
+        ensureInitialized()
+        if (token.isBlank()) return 0
+
+        try {
+            refreshAuthenticatedHelpRequests(token)
+        } catch (error: ApiException) {
+            if (error.status == 401) {
+                throw error
+            }
+        } catch (_: Exception) {
+            // Fall back to local active requests so marking safe can still proceed offline.
+        }
+
+        val activeRequests = database.helpRequestDao()
+            .getByOwner(LocalOwnerType.AUTHENTICATED)
+            .filter { it.isActiveHelpRequestForStatusUpdate() }
+
+        if (activeRequests.isEmpty()) return 0
+
+        val now = System.currentTimeMillis()
+        activeRequests.forEach { request ->
+            val payload = JSONObject().put("status", "CANCELLED")
+            database.helpRequestDao().upsert(
+                request.copy(
+                    status = "CANCELLED",
+                    cancelledAt = now.toIsoLikeString(),
+                    syncStatus = if (request.syncStatus == SyncStatus.PENDING_CREATE) {
+                        SyncStatus.PENDING_CREATE
+                    } else {
+                        SyncStatus.PENDING_UPDATE
+                    },
+                    pendingError = null,
+                    updatedAtEpochMillis = now
+                )
+            )
+
+            val existingOperation = database.syncOperationDao().getLatestPendingOperation(
+                entityType = SyncEntityType.HELP_REQUEST,
+                entityId = request.localId,
+                operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS
+            )
+            database.syncOperationDao().upsert(
+                existingOperation?.copy(
+                    payloadJson = payload.toString(),
+                    status = SyncOperationStatus.PENDING,
+                    attemptCount = 0,
+                    lastAttemptAtEpochMillis = null,
+                    error = null
+                ) ?: SyncOperationEntity(
+                    entityType = SyncEntityType.HELP_REQUEST,
+                    entityId = request.localId,
+                    operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS,
+                    payloadJson = payload.toString(),
+                    createdAtEpochMillis = now
+                )
+            )
+        }
+        OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "mark-safe-cancels-help-request")
+        return activeRequests.size
+    }
+
     suspend fun createHelpRequest(
         token: String?,
         submission: RequestHelpSubmission
@@ -596,6 +658,18 @@ object RequestHelpRepository {
             ?.takeIf { it.isNotBlank() }
             ?.let { mapOf("x-help-request-access-token" to it) }
             ?: emptyMap()
+    }
+
+    private fun HelpRequestEntity.isActiveHelpRequestForStatusUpdate(): Boolean {
+        return status.trim().uppercase(Locale.ROOT) !in setOf("RESOLVED", "CANCELLED") &&
+            syncStatus != SyncStatus.CONFLICTED &&
+            !isDeleted
+    }
+
+    private fun Long.toIsoLikeString(): String {
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return formatter.format(java.util.Date(this))
     }
 }
 

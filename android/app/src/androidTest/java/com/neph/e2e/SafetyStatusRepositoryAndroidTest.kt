@@ -2,9 +2,11 @@ package com.neph.e2e
 
 import android.content.Context
 import com.neph.core.NephAppContext
+import com.neph.core.database.HelpRequestEntity
 import com.neph.core.database.NephDatabaseProvider
 import com.neph.core.database.SafetyStatusEntity
 import com.neph.core.database.SyncOperationEntity
+import com.neph.core.sync.LocalOwnerType
 import com.neph.core.sync.SyncEntityType
 import com.neph.core.sync.SyncOperationStatus
 import com.neph.core.sync.SyncOperationType
@@ -15,6 +17,7 @@ import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetystatus.data.SafetyStatusRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -190,11 +193,32 @@ class SafetyStatusRepositoryAndroidTest {
         assertEquals(LoginDestination.PROFILE, destination)
     }
 
+    @Test
+    fun cancelActiveAuthenticatedHelpRequestsForMarkSafeQueuesCancelledStatus() = runBlocking {
+        val database = NephDatabaseProvider.requireInstance()
+        database.helpRequestDao().upsert(activeHelpRequestEntity())
+
+        val cancelledCount = RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe("access-token-1")
+        val request = database.helpRequestDao().getByLocalId("local_help_1")
+        val operation = database.syncOperationDao().getLatestPendingOperation(
+            entityType = SyncEntityType.HELP_REQUEST,
+            entityId = "local_help_1",
+            operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS
+        )
+
+        assertEquals(1, cancelledCount)
+        assertEquals("CANCELLED", request?.status)
+        assertEquals(SyncStatus.PENDING_UPDATE, request?.syncStatus)
+        assertTrue(request?.cancelledAt.orEmpty().isNotBlank())
+        assertTrue(operation?.payloadJson.orEmpty().contains("\"status\":\"CANCELLED\""))
+    }
+
     private fun initializeSafetyStatusTestDependencies(context: Context) {
         NephAppContext.initialize(context)
         NephDatabaseProvider.initialize(context)
         AuthSessionStore.initialize(context)
         ProfileRepository.initialize(context)
+        RequestHelpRepository.initialize(context)
         SafetyStatusRepository.initialize(context)
     }
 
@@ -226,6 +250,39 @@ class SafetyStatusRepositoryAndroidTest {
             accuracyMeters = 12.5,
             capturedAt = "2026-05-03T10:20:30.000Z",
             source = "DEVICE_GPS"
+        )
+    }
+
+    private fun activeHelpRequestEntity(): HelpRequestEntity {
+        return HelpRequestEntity(
+            localId = "local_help_1",
+            remoteId = "remote_help_1",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            guestAccessToken = null,
+            helpTypesJson = """["other"]""",
+            otherHelpText = "Need help",
+            affectedPeopleCount = 1,
+            riskFlagsJson = "[]",
+            vulnerableGroupsJson = "[]",
+            description = "Need help",
+            bloodType = "",
+            country = "Turkey",
+            city = "Istanbul",
+            district = "Kadikoy",
+            neighborhood = "Moda",
+            extraAddress = "",
+            contactFullName = "Safe Tester",
+            contactPhone = "5551234567",
+            contactAlternativePhone = null,
+            status = "SYNCED",
+            helperFirstName = null,
+            helperLastName = null,
+            helperPhone = null,
+            helperProfession = null,
+            helperExpertise = null,
+            helpersJson = "[]",
+            createdAtEpochMillis = 1000L,
+            updatedAtEpochMillis = 1000L
         )
     }
 }

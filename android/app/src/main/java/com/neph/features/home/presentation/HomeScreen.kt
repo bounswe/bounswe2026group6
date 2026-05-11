@@ -129,6 +129,7 @@ fun HomeScreen(
     var requestHelpError by remember { mutableStateOf("") }
     var markSafeLoading by remember { mutableStateOf(false) }
     var showMarkSafeLocationConsentDialog by remember { mutableStateOf(false) }
+    var showActiveHelpRequestMarkSafeDialog by remember { mutableStateOf(false) }
     var emergencyInfo by remember { mutableStateOf("") }
     var emergencyError by remember { mutableStateOf("") }
     var locationPermissionInfo by remember { mutableStateOf("") }
@@ -410,7 +411,59 @@ fun HomeScreen(
             return
         }
 
-        showMarkSafeLocationConsentDialog = true
+        val safeSessionToken = sessionToken
+        markSafeLoading = true
+        scope.launch {
+            try {
+                val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(safeSessionToken)
+                if (hasActiveRequest) {
+                    showActiveHelpRequestMarkSafeDialog = true
+                } else {
+                    showMarkSafeLocationConsentDialog = true
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                showMarkSafeLocationConsentDialog = true
+            } finally {
+                markSafeLoading = false
+            }
+        }
+    }
+
+    fun confirmMarkSafeWithActiveHelpRequest() {
+        val safeSessionToken = sessionToken
+        if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
+            showActiveHelpRequestMarkSafeDialog = false
+            emergencyError = "Please log in before marking yourself safe."
+            onNavigateToLogin()
+            return
+        }
+
+        markSafeLoading = true
+        scope.launch {
+            try {
+                RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe(safeSessionToken)
+                showActiveHelpRequestMarkSafeDialog = false
+                showMarkSafeLocationConsentDialog = true
+            } catch (error: ApiException) {
+                showActiveHelpRequestMarkSafeDialog = false
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    emergencyError = "Your session expired. Please log in again before marking yourself safe."
+                    onNavigateToLogin()
+                } else {
+                    emergencyError = "Could not update your active help request. Please try again."
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (_: Exception) {
+                showActiveHelpRequestMarkSafeDialog = false
+                emergencyError = "Could not update your active help request. Please try again."
+            } finally {
+                markSafeLoading = false
+            }
+        }
     }
 
     fun handleMarkSafeWithOptionalLocation(
@@ -494,6 +547,30 @@ fun HomeScreen(
         } else {
             locationPermissionRequester.requestPermission()
         }
+    }
+
+    if (showActiveHelpRequestMarkSafeDialog) {
+        AlertDialog(
+            onDismissRequest = { showActiveHelpRequestMarkSafeDialog = false },
+            title = {
+                Text(text = "Mark yourself safe?")
+            },
+            text = {
+                Text(
+                    text = "You have an active help request. Marking yourself safe will cancel or update that request. Are you sure you want to continue?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = ::confirmMarkSafeWithActiveHelpRequest) {
+                    Text("Mark safe")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showActiveHelpRequestMarkSafeDialog = false }) {
+                    Text("Keep request active")
+                }
+            }
+        )
     }
 
     if (showMarkSafeLocationConsentDialog) {
@@ -662,7 +739,7 @@ private fun HomeGreetingHero(
     val safetyTone = when (safetyStatus.lowercase()) {
         "safe" -> Triple(MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.onTertiary, "You're marked safe")
         "not_safe", "needs_help" -> Triple(MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.onError, "Help requested")
-        else -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Status unknown")
+        else -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "No safety status yet")
     }
     val greetingPrimary = if (isAuthenticated) "Hello" else "Welcome"
     val greetingDetail = if (isAuthenticated) {
