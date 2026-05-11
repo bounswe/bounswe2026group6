@@ -94,6 +94,15 @@ data class CreateHelpRequestResult(
     val recordedLocally: Boolean = true
 )
 
+data class MarkSafeHelpRequestCancellationResult(
+    val confirmedCount: Int = 0,
+    val pendingCount: Int = 0,
+    val failedCount: Int = 0
+) {
+    val canMarkSafe: Boolean
+        get() = pendingCount == 0 && failedCount == 0
+}
+
 data class GuestTrackedHelpRequest(
     val requestId: String,
     val guestAccessToken: String
@@ -142,9 +151,11 @@ object RequestHelpRepository {
         return database.helpRequestDao().countActiveByOwner(ownerTypeForToken(token)) > 0
     }
 
-    suspend fun cancelActiveAuthenticatedHelpRequestsForMarkSafe(token: String): Int {
+    suspend fun cancelActiveAuthenticatedHelpRequestsForMarkSafe(
+        token: String
+    ): MarkSafeHelpRequestCancellationResult {
         ensureInitialized()
-        if (token.isBlank()) return 0
+        if (token.isBlank()) return MarkSafeHelpRequestCancellationResult()
 
         try {
             refreshAuthenticatedHelpRequests(token)
@@ -160,48 +171,41 @@ object RequestHelpRepository {
             .getByOwner(LocalOwnerType.AUTHENTICATED)
             .filter { it.isActiveHelpRequestForStatusUpdate() }
 
-        if (activeRequests.isEmpty()) return 0
+        if (activeRequests.isEmpty()) return MarkSafeHelpRequestCancellationResult()
 
-        val now = System.currentTimeMillis()
+        var confirmedCount = 0
+        var pendingCount = 0
+        var failedCount = 0
         activeRequests.forEach { request ->
-            val payload = JSONObject().put("status", "CANCELLED")
-            database.helpRequestDao().upsert(
-                request.copy(
-                    status = "CANCELLED",
-                    cancelledAt = now.toIsoLikeString(),
-                    syncStatus = if (request.syncStatus == SyncStatus.PENDING_CREATE) {
-                        SyncStatus.PENDING_CREATE
-                    } else {
-                        SyncStatus.PENDING_UPDATE
-                    },
-                    pendingError = null,
-                    updatedAtEpochMillis = now
-                )
-            )
+            val remoteId = resolveRemoteRequestIdForSync(request)
+            if (remoteId.isNullOrBlank()) {
+                pendingCount += 1
+                return@forEach
+            }
 
-            val existingOperation = database.syncOperationDao().getLatestPendingOperation(
-                entityType = SyncEntityType.HELP_REQUEST,
-                entityId = request.localId,
-                operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS
+            val response = JsonHttpClient.request(
+                path = "/help-requests/$remoteId/status",
+                method = "PATCH",
+                token = token,
+                body = JSONObject().put("status", "CANCELLED")
             )
-            database.syncOperationDao().upsert(
-                existingOperation?.copy(
-                    payloadJson = payload.toString(),
-                    status = SyncOperationStatus.PENDING,
-                    attemptCount = 0,
-                    lastAttemptAtEpochMillis = null,
-                    error = null
-                ) ?: SyncOperationEntity(
-                    entityType = SyncEntityType.HELP_REQUEST,
-                    entityId = request.localId,
-                    operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS,
-                    payloadJson = payload.toString(),
-                    createdAtEpochMillis = now
+            val remoteRequest = response.optJSONObject("request")
+            if (remoteRequest?.optString("status")?.trim()?.uppercase(Locale.ROOT) == "CANCELLED") {
+                upsertRemoteHelpRequest(
+                    ownerType = LocalOwnerType.AUTHENTICATED,
+                    request = remoteRequest,
+                    guestAccessToken = null
                 )
-            )
+                confirmedCount += 1
+            } else {
+                failedCount += 1
+            }
         }
-        OfflineSyncScheduler.enqueueSync(NephAppContext.get(), reason = "mark-safe-cancels-help-request")
-        return activeRequests.size
+        return MarkSafeHelpRequestCancellationResult(
+            confirmedCount = confirmedCount,
+            pendingCount = pendingCount,
+            failedCount = failedCount
+        )
     }
 
     suspend fun createHelpRequest(
@@ -664,12 +668,6 @@ object RequestHelpRepository {
         return status.trim().uppercase(Locale.ROOT) !in setOf("RESOLVED", "CANCELLED") &&
             syncStatus != SyncStatus.CONFLICTED &&
             !isDeleted
-    }
-
-    private fun Long.toIsoLikeString(): String {
-        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-        formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        return formatter.format(java.util.Date(this))
     }
 }
 

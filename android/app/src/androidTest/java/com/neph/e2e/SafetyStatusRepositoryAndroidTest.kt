@@ -194,11 +194,11 @@ class SafetyStatusRepositoryAndroidTest {
     }
 
     @Test
-    fun cancelActiveAuthenticatedHelpRequestsForMarkSafeQueuesCancelledStatus() = runBlocking {
+    fun cancelActiveAuthenticatedHelpRequestsForMarkSafeRequiresConfirmedRemoteCancellation() = runBlocking {
         val database = NephDatabaseProvider.requireInstance()
         database.helpRequestDao().upsert(activeHelpRequestEntity())
 
-        val cancelledCount = RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe("access-token-1")
+        val result = RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe("access-token-1")
         val request = database.helpRequestDao().getByLocalId("local_help_1")
         val operation = database.syncOperationDao().getLatestPendingOperation(
             entityType = SyncEntityType.HELP_REQUEST,
@@ -206,11 +206,43 @@ class SafetyStatusRepositoryAndroidTest {
             operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS
         )
 
-        assertEquals(1, cancelledCount)
+        assertTrue(result.canMarkSafe)
+        assertEquals(1, result.confirmedCount)
+        assertEquals(0, result.pendingCount)
+        assertEquals(0, result.failedCount)
         assertEquals("CANCELLED", request?.status)
-        assertEquals(SyncStatus.PENDING_UPDATE, request?.syncStatus)
+        assertEquals(SyncStatus.SYNCED, request?.syncStatus)
         assertTrue(request?.cancelledAt.orEmpty().isNotBlank())
-        assertTrue(operation?.payloadJson.orEmpty().contains("\"status\":\"CANCELLED\""))
+        assertNull(operation)
+    }
+
+    @Test
+    fun cancelActiveAuthenticatedHelpRequestsForMarkSafeLeavesPendingCreateActive() = runBlocking {
+        val database = NephDatabaseProvider.requireInstance()
+        database.helpRequestDao().upsert(
+            activeHelpRequestEntity(
+                localId = "local_pending_help_1",
+                remoteId = null,
+                syncStatus = SyncStatus.PENDING_CREATE
+            )
+        )
+
+        val result = RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe("access-token-1")
+        val request = database.helpRequestDao().getByLocalId("local_pending_help_1")
+        val operation = database.syncOperationDao().getLatestPendingOperation(
+            entityType = SyncEntityType.HELP_REQUEST,
+            entityId = "local_pending_help_1",
+            operationType = SyncOperationType.UPDATE_HELP_REQUEST_STATUS
+        )
+
+        assertFalse(result.canMarkSafe)
+        assertEquals(0, result.confirmedCount)
+        assertEquals(1, result.pendingCount)
+        assertEquals(0, result.failedCount)
+        assertEquals("SYNCED", request?.status)
+        assertEquals(SyncStatus.PENDING_CREATE, request?.syncStatus)
+        assertNull(request?.cancelledAt)
+        assertNull(operation)
     }
 
     private fun initializeSafetyStatusTestDependencies(context: Context) {
@@ -253,10 +285,14 @@ class SafetyStatusRepositoryAndroidTest {
         )
     }
 
-    private fun activeHelpRequestEntity(): HelpRequestEntity {
+    private fun activeHelpRequestEntity(
+        localId: String = "local_help_1",
+        remoteId: String? = "remote_help_1",
+        syncStatus: String = SyncStatus.SYNCED
+    ): HelpRequestEntity {
         return HelpRequestEntity(
-            localId = "local_help_1",
-            remoteId = "remote_help_1",
+            localId = localId,
+            remoteId = remoteId,
             ownerType = LocalOwnerType.AUTHENTICATED,
             guestAccessToken = null,
             helpTypesJson = """["other"]""",
@@ -281,6 +317,7 @@ class SafetyStatusRepositoryAndroidTest {
             helperProfession = null,
             helperExpertise = null,
             helpersJson = "[]",
+            syncStatus = syncStatus,
             createdAtEpochMillis = 1000L,
             updatedAtEpochMillis = 1000L
         )

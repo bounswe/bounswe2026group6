@@ -426,8 +426,16 @@ fun HomeScreen(
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    emergencyError = "Your session expired. Please log in again before marking yourself safe."
+                    onNavigateToLogin()
+                } else {
+                    emergencyError = "Could not verify your active help request status. Please try again."
+                }
             } catch (_: Exception) {
-                showMarkSafeLocationConsentDialog = true
+                emergencyError = "Could not verify your active help request status. Please try again."
             } finally {
                 markSafeLoading = false
             }
@@ -467,7 +475,13 @@ fun HomeScreen(
         scope.launch {
             try {
                 if (shouldCancelActiveHelpRequest) {
-                    RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe(safeSessionToken)
+                    val cancellationResult =
+                        RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe(safeSessionToken)
+                    if (!cancellationResult.canMarkSafe) {
+                        emergencyError =
+                            "Your active help request could not be cancelled yet. Please try again once it syncs before marking yourself safe."
+                        return@launch
+                    }
                 }
                 val locationAttempt = if (shareLocation && !permissionDeniedBeforeCapture) {
                     DeviceLocationProvider.captureCurrentLocationForSharing(
@@ -502,12 +516,20 @@ fun HomeScreen(
                     emergencyError = "Your session expired. Please log in again before marking yourself safe."
                     onNavigateToLogin()
                 } else {
-                    emergencyError = error.message.ifBlank { "Could not mark you safe. Please try again." }
+                    emergencyError = if (shouldCancelActiveHelpRequest) {
+                        "Your active help request could not be cancelled yet. Please try again once it syncs before marking yourself safe."
+                    } else {
+                        error.message.ifBlank { "Could not mark you safe. Please try again." }
+                    }
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                emergencyError = "Could not mark you safe. Please try again."
+                emergencyError = if (shouldCancelActiveHelpRequest) {
+                    "Your active help request could not be cancelled yet. Please try again once it syncs before marking yourself safe."
+                } else {
+                    "Could not mark you safe. Please try again."
+                }
             } finally {
                 pendingCancelActiveHelpRequestForMarkSafe = false
                 markSafeLoading = false
