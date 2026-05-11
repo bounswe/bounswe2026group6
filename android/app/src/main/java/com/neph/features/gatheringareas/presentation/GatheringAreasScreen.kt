@@ -396,6 +396,7 @@ fun GatheringAreasScreen(
         activeFilterKeys.contains(item.category.trim().lowercase())
     }.orEmpty()
     val isFilterEmpty = currentResult != null && currentResult.areas.isNotEmpty() && visibleAreas.isEmpty()
+    val mapActionsEnabled = !loading && !backgroundUpdating
 
     if (selectedAreaId != null && visibleAreas.none { it.id == selectedAreaId }) {
         selectedAreaId = null
@@ -456,7 +457,7 @@ fun GatheringAreasScreen(
                             pendingViewport = viewport
                             viewportRefreshNonce += 1
                         },
-                        enabled = !loading
+                        enabled = mapActionsEnabled
                     )
                 }
             }
@@ -477,7 +478,7 @@ fun GatheringAreasScreen(
                 loadingResources = loading,
                 updatingResources = backgroundUpdating,
                 onShowCurrentLocation = ::showCurrentLocationOnMap,
-                showCurrentLocationEnabled = !loading,
+                showCurrentLocationEnabled = mapActionsEnabled,
                 onViewportChanged = ::handleViewportChanged
             )
 
@@ -499,7 +500,8 @@ fun GatheringAreasScreen(
                                     onClick = {
                                         pendingViewport = currentViewport
                                         viewportRefreshNonce += 1
-                                    }
+                                    },
+                                    enabled = mapActionsEnabled
                                 )
                             }
                         }
@@ -519,7 +521,8 @@ fun GatheringAreasScreen(
                                     onClick = {
                                         pendingViewport = currentViewport
                                         viewportRefreshNonce += 1
-                                    }
+                                    },
+                                    enabled = mapActionsEnabled
                                 )
                             }
                         }
@@ -663,7 +666,8 @@ fun GatheringAreasScreen(
                                 onClick = {
                                     pendingViewport = currentViewport
                                     viewportRefreshNonce += 1
-                                }
+                                },
+                                enabled = mapActionsEnabled
                             )
                         }
                     }
@@ -851,11 +855,11 @@ private fun GatheringAreasMapCard(
                 HelperText(text = ResourceLoadingMessage)
             }
 
-            if (updatingResources && markers.isNotEmpty()) {
+            if (updatingResources) {
                 HelperText(text = ResourceUpdatingMessage)
             }
 
-            if (markers.isEmpty() && !loadingResources) {
+            if (markers.isEmpty() && !loadingResources && !updatingResources) {
                 HelperText(
                     text = emptyMarkersMessage
                 )

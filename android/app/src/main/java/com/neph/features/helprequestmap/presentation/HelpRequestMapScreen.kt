@@ -475,6 +475,7 @@ fun HelpRequestMapScreen(
 
     val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId }
     val isFilterEmpty = !loading && requests.isNotEmpty() && visibleRequests.isEmpty()
+    val mapActionsEnabled = !loading && !backgroundUpdating
     val mapEmptyMarkersMessage = helpRequestMapEmptyMessage(
         blockingLoading = loading,
         errorMessage = errorMessage,
@@ -518,7 +519,7 @@ fun HelpRequestMapScreen(
                     SecondaryButton(
                         text = "Refresh Help Request Map",
                         onClick = { queueViewportRefresh() },
-                        enabled = !loading
+                        enabled = mapActionsEnabled
                     )
                 }
             }
@@ -535,7 +536,7 @@ fun HelpRequestMapScreen(
                     mapZoom = mapZoom,
                     mapResetToken = mapResetNonce,
                     onShowCurrentLocation = ::showCurrentLocationOnMap,
-                    showCurrentLocationEnabled = !loading,
+                    showCurrentLocationEnabled = mapActionsEnabled,
                     onViewportChanged = ::handleViewportChanged,
                     onSelectRequest = { selectedRequestId = it }
                 )
@@ -557,7 +558,8 @@ fun HelpRequestMapScreen(
                                 )
                                 SecondaryButton(
                                     text = "Retry",
-                                    onClick = { queueViewportRefresh() }
+                                    onClick = { queueViewportRefresh() },
+                                    enabled = mapActionsEnabled
                                 )
                             }
                         }
@@ -643,7 +645,8 @@ fun HelpRequestMapScreen(
                         HelperText(text = errorMessage)
                         SecondaryButton(
                             text = "Retry",
-                            onClick = { queueViewportRefresh() }
+                            onClick = { queueViewportRefresh() },
+                            enabled = mapActionsEnabled
                         )
                     }
                 }
@@ -920,7 +923,7 @@ private fun CrisisRequestMapPanel(
     val effectiveCenterLatitude = if (shouldFitRequestMarkers) mapInstanceKey.centerLatitude else mapCenterLatitude
     val effectiveCenterLongitude = if (shouldFitRequestMarkers) mapInstanceKey.centerLongitude else mapCenterLongitude
     val effectiveZoom = if (shouldFitRequestMarkers) 13 else mapZoom
-    val mapInstanceId = remember(mapResetToken, mapInstanceKey) {
+    val mapInstanceId = remember(mapResetToken) {
         newLeafletMapInstanceId()
     }
     val currentMapInstanceIdState = remember { mutableStateOf(mapInstanceId) }
@@ -1052,11 +1055,11 @@ private fun CrisisRequestMapPanel(
             HelperText(text = ResourceLoadingMessage)
         }
 
-        if (updatingResources && markers.isNotEmpty()) {
+        if (updatingResources) {
             HelperText(text = ResourceUpdatingMessage)
         }
 
-        if (markers.isEmpty() && !loadingResources) {
+        if (markers.isEmpty() && !loadingResources && !updatingResources) {
             HelperText(text = emptyMarkersMessage)
         }
 
