@@ -68,6 +68,7 @@ import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.requesthelp.data.RequestHelpSubmission
 import com.neph.features.requesthelp.data.jsonArrayToStringList
+import com.neph.features.safetystatus.data.SafetyStatusRepository
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
@@ -938,6 +939,11 @@ fun RequestHelpScreen(
                     if (hasActiveRequest) {
                         errorMessage = "You can only have one active help request at a time."
                         return@launch
+                    }
+                    runCatching {
+                        SafetyStatusRepository.clearSafeStatusForRequestHelp(sessionToken)
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
                     }
                 }
 

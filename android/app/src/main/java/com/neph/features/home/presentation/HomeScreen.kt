@@ -62,8 +62,6 @@ import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.profile.data.ProfileRepository
-import com.neph.features.requesthelp.data.EmergencyDraftRequirementsException
-import com.neph.features.requesthelp.data.RequestHelpReverseLocation
 import com.neph.features.requesthelp.data.RequestHelpRepository
 import com.neph.features.safetycircles.presentation.CircleStatusCard
 import com.neph.features.safetystatus.data.SafetyStatusRepository
@@ -297,14 +295,6 @@ fun HomeScreen(
         }
     }
 
-    fun RequestHelpReverseLocation?.hasCompleteEmergencyAdministrativeLocation(): Boolean {
-        return this != null &&
-            !country.isNullOrBlank() &&
-            !city.isNullOrBlank() &&
-            !district.isNullOrBlank() &&
-            !neighborhood.isNullOrBlank()
-    }
-
     fun handleRequestHelp() {
         availabilityError = ""
         availabilityInfo = ""
@@ -315,14 +305,6 @@ fun HomeScreen(
         scope.launch {
             requestHelpLoading = true
             try {
-                if (isAuthenticated && !sessionToken.isNullOrBlank()) {
-                    runCatching {
-                        SafetyStatusRepository.clearSafeStatusForRequestHelp(sessionToken)
-                    }.onFailure { error ->
-                        if (error is CancellationException) throw error
-                    }
-                }
-
                 val hasActiveRequest = try {
                     if (!sessionToken.isNullOrBlank()) {
                         RequestHelpRepository.hasActiveHelpRequest(sessionToken)
@@ -360,27 +342,9 @@ fun HomeScreen(
                         runCatching {
                             OperationalLocationRepository.saveAndSyncIfAuthenticated(currentLocation)
                         }
-                    }
-                    val reverseLocation = if (currentLocation != null) {
-                        RequestHelpRepository.reverseGeocodeCurrentLocation(
-                            latitude = currentLocation.latitude,
-                            longitude = currentLocation.longitude
-                        )
-                    } else {
-                        null
-                    }
-                    if (currentLocation != null && !reverseLocation.hasCompleteEmergencyAdministrativeLocation()) {
                         RequestHelpRepository.storePendingCoordinateSnapshot(currentLocation)
-                        onRequestHelp(null)
-                        return@launch
                     }
-                    val draft = RequestHelpRepository.createEmergencyDraft(
-                        token = sessionToken,
-                        profile = ProfileRepository.getProfile(),
-                        currentLocation = currentLocation,
-                        reverseLocation = reverseLocation
-                    )
-                    onRequestHelp(draft.requestId)
+                    onRequestHelp(null)
                 }
             } catch (error: ApiException) {
                 if (error.status == 401) {
@@ -390,8 +354,6 @@ fun HomeScreen(
                 } else {
                     requestHelpError = "We could not verify your current help request status. Please try again."
                 }
-            } catch (_: EmergencyDraftRequirementsException) {
-                onRequestHelp(null)
             } catch (_: Exception) {
                 requestHelpError = "We could not verify your current help request status. Please try again."
             } finally {
