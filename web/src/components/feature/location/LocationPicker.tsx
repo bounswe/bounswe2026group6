@@ -90,10 +90,25 @@ export function LocationPicker({
     const skipNextSearchRef = React.useRef(false);
     const searchRequestIdRef = React.useRef(0);
     const reverseRequestIdRef = React.useRef(0);
+    const hasAttemptedInitialLocationRef = React.useRef(false);
+    const userSelectionVersionRef = React.useRef(0);
+    const latestValueRef = React.useRef<LocationPickerValue | null>(value);
+
+    React.useEffect(() => {
+        latestValueRef.current = value;
+    }, [value]);
 
     const center = value
         ? { latitude: value.latitude, longitude: value.longitude }
         : DEFAULT_CENTER;
+
+    const markUserSelection = React.useCallback(() => {
+        userSelectionVersionRef.current += 1;
+    }, []);
+
+    const invalidatePendingReverseLookup = React.useCallback(() => {
+        reverseRequestIdRef.current += 1;
+    }, []);
 
     const handleSearch = React.useCallback(async () => {
         if (query.trim().length < 2) {
@@ -144,6 +159,9 @@ export function LocationPicker({
                 source?: string | null;
                 accuracyMeters?: number | null;
                 capturedAt?: string | null;
+            },
+            options?: {
+                shouldApplyResult?: () => boolean;
             }
         ) => {
             const currentReverseRequestId = ++reverseRequestIdRef.current;
@@ -157,6 +175,9 @@ export function LocationPicker({
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
                     return;
                 }
+                if (options?.shouldApplyResult && !options.shouldApplyResult()) {
+                    return;
+                }
 
                 onChange({
                     ...toPickerValue(response.item),
@@ -166,6 +187,9 @@ export function LocationPicker({
                 });
             } catch (err) {
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
+                    return;
+                }
+                if (options?.shouldApplyResult && !options.shouldApplyResult()) {
                     return;
                 }
 
@@ -185,7 +209,14 @@ export function LocationPicker({
         [onChange]
     );
 
-    const handleUseCurrentLocation = React.useCallback(() => {
+    const requestCurrentLocation = React.useCallback((options?: { initial?: boolean }) => {
+        const isInitial = options?.initial === true;
+        const initialSelectionVersion = userSelectionVersionRef.current;
+
+        if (isInitial && latestValueRef.current) {
+            return;
+        }
+
         if (!navigator.geolocation) {
             setError("Geolocation is not supported in this browser.");
             return;
@@ -197,31 +228,58 @@ export function LocationPicker({
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    onChange({
-                        ...toManualPickerValue(
-                            position.coords.latitude,
-                            position.coords.longitude
-                        ),
+                    if (
+                        isInitial &&
+                        (
+                            userSelectionVersionRef.current !== initialSelectionVersion ||
+                            (
+                                latestValueRef.current !== null &&
+                                latestValueRef.current.source !== "current_device"
+                            )
+                        )
+                    ) {
+                        setResolving(false);
+                        return;
+                    }
+
+                    const metadata = {
                         source: "current_device",
                         accuracyMeters:
                             typeof position.coords.accuracy === "number"
                                 ? position.coords.accuracy
                                 : null,
                         capturedAt: new Date(position.timestamp).toISOString(),
+                    };
+
+                    onChange({
+                        ...toManualPickerValue(
+                            position.coords.latitude,
+                            position.coords.longitude
+                        ),
+                        ...metadata,
                     });
                     setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(
                         position.coords.latitude,
                         position.coords.longitude,
-                        {
-                            source: "current_device",
-                            accuracyMeters:
-                                typeof position.coords.accuracy === "number"
-                                    ? position.coords.accuracy
-                                    : null,
-                            capturedAt: new Date(position.timestamp).toISOString(),
-                        }
+                        metadata,
+                        isInitial
+                            ? {
+                                shouldApplyResult: () => {
+                                    const current = latestValueRef.current;
+                                    return userSelectionVersionRef.current === initialSelectionVersion &&
+                                        (
+                                            current === null ||
+                                            (
+                                                current.source === "current_device" &&
+                                                Math.abs(current.latitude - position.coords.latitude) < 0.000001 &&
+                                                Math.abs(current.longitude - position.coords.longitude) < 0.000001
+                                            )
+                                        );
+                                },
+                            }
+                            : undefined
                     );
                 },
                 (geoError) => {
@@ -257,6 +315,20 @@ export function LocationPicker({
             });
     }, [handleResolveCoordinates]);
 
+    const handleUseCurrentLocation = React.useCallback(() => {
+        markUserSelection();
+        requestCurrentLocation();
+    }, [markUserSelection, requestCurrentLocation]);
+
+    React.useEffect(() => {
+        if (hasAttemptedInitialLocationRef.current || value) {
+            return;
+        }
+
+        hasAttemptedInitialLocationRef.current = true;
+        requestCurrentLocation({ initial: true });
+    }, [requestCurrentLocation, value]);
+
     React.useEffect(() => {
         const timeout = setTimeout(() => {
             void handleSearch();
@@ -287,6 +359,8 @@ export function LocationPicker({
                             type="button"
                             className="w-full border-b border-[color:var(--divider)] px-3 py-2 text-left text-sm text-[color:var(--text-primary)] transition-colors hover:bg-[color:var(--surface-soft)]"
                             onClick={() => {
+                                markUserSelection();
+                                invalidatePendingReverseLookup();
                                 onChange({
                                     ...toPickerValue(item),
                                     source: "search",
@@ -317,6 +391,7 @@ export function LocationPicker({
                         : null
                 }
                 onSelectPosition={(position) => {
+                    markUserSelection();
                     onChange({
                         ...toManualPickerValue(position.latitude, position.longitude),
                         source: "map_pin",
