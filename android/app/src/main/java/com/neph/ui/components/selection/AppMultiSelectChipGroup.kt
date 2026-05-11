@@ -20,6 +20,8 @@ fun AppMultiSelectChipGroup(
     selectedOptions: List<String>,
     onOptionToggle: (String) -> Unit,
     modifier: Modifier = Modifier,
+    optionModifier: @Composable (String) -> Modifier = { Modifier },
+    optionEnabled: (String) -> Boolean = { true },
     error: String? = null
 ) {
     val spacing = LocalNephSpacing.current
@@ -46,6 +48,8 @@ fun AppMultiSelectChipGroup(
                 FilterChip(
                     selected = selected,
                     onClick = { onOptionToggle(option) },
+                    modifier = optionModifier(option),
+                    enabled = optionEnabled(option),
                     label = {
                         Text(
                             text = option,

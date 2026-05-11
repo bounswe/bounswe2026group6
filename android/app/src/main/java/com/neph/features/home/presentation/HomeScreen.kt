@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,9 +36,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -52,6 +55,9 @@ import com.neph.features.availability.data.AvailabilityRepository
 import com.neph.features.availability.presentation.AvailableToHelpCard
 import com.neph.features.availability.presentation.AvailabilitySyncIndicator
 import com.neph.features.operationallocation.data.OperationalLocationRepository
+import com.neph.features.onboarding.data.MobileOnboardingJourney
+import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.onboarding.presentation.mobileOnboardingPulse
 import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
@@ -65,8 +71,10 @@ import com.neph.features.safetystatus.data.SafetyStatusState
 import com.neph.navigation.Routes
 import com.neph.ui.layout.AppDrawerScaffold
 import com.neph.ui.location.rememberForegroundLocationPermissionRequester
+import com.neph.ui.components.theme.ThemeIconButton
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephTheme
+import com.neph.ui.components.theme.ThemeIconButton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -82,6 +90,8 @@ fun HomeScreen(
     onProfileClick: () -> Unit,
     profileBadgeText: String,
     isAuthenticated: Boolean,
+    mobileOnboardingStepId: MobileOnboardingStepId? = null,
+    onMobileOnboardingStepCompleted: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalNephSpacing.current
@@ -135,6 +145,8 @@ fun HomeScreen(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isMobileOnboardingActive = mobileOnboardingStepId != null
+    val isRequestHelpOnboardingTarget = mobileOnboardingStepId == MobileOnboardingStepId.HOME_DASHBOARD
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -301,6 +313,14 @@ fun HomeScreen(
         scope.launch {
             requestHelpLoading = true
             try {
+                if (isAuthenticated && !sessionToken.isNullOrBlank()) {
+                    runCatching {
+                        SafetyStatusRepository.clearSafeStatusForRequestHelp(sessionToken)
+                    }.onFailure { error ->
+                        if (error is CancellationException) throw error
+                    }
+                }
+
                 val hasActiveRequest = try {
                     if (!sessionToken.isNullOrBlank()) {
                         RequestHelpRepository.hasActiveHelpRequest(sessionToken)
@@ -386,8 +406,7 @@ fun HomeScreen(
         emergencyInfo = ""
 
         if (!isAuthenticated || sessionToken.isNullOrBlank()) {
-            emergencyError = "Please log in before marking yourself safe."
-            onNavigateToLogin()
+            emergencyError = "Please log in to mark yourself safe."
             return
         }
 
@@ -519,7 +538,12 @@ fun HomeScreen(
         onOpenSettings = onOpenSettings,
         onProfileClick = onProfileClick,
         profileBadgeText = profileBadgeText,
-        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account"
+        profileLabel = if (isAuthenticated) "Profile" else "Login / Create Account",
+        mobileOnboardingStepId = mobileOnboardingStepId,
+        onMobileOnboardingStepCompleted = onMobileOnboardingStepCompleted,
+        topBarActions = {
+            ThemeIconButton()
+        }
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -531,15 +555,32 @@ fun HomeScreen(
                 safetyStatus = safetyStatusState.status
             )
 
+            if (isRequestHelpOnboardingTarget) {
+                MobileOnboardingWelcomeMessage()
+            }
+
             EmergencyHelpAction(
                 loading = requestHelpLoading,
-                enabled = !availabilityLoading && !markSafeLoading,
-                onClick = ::handleRequestHelp
+                enabled = !availabilityLoading &&
+                    !markSafeLoading &&
+                    (!isMobileOnboardingActive || isRequestHelpOnboardingTarget),
+                modifier = Modifier.mobileOnboardingPulse(isRequestHelpOnboardingTarget),
+                onClick = {
+                    if (isRequestHelpOnboardingTarget) {
+                        onRequestHelp(null)
+                        val message = MobileOnboardingJourney
+                            .stepFor(requireNotNull(mobileOnboardingStepId), isAuthenticated)
+                            ?.completionMessage
+                        onMobileOnboardingStepCompleted(message)
+                    } else {
+                        handleRequestHelp()
+                    }
+                }
             )
 
             MarkSafeRow(
                 loading = markSafeLoading,
-                enabled = !availabilityLoading && !requestHelpLoading && !markSafeLoading,
+                enabled = !isMobileOnboardingActive && !availabilityLoading && !requestHelpLoading && !markSafeLoading,
                 statusMessage = buildSafetyStatusSyncMessage(safetyStatusState),
                 isError = safetyStatusState.isFailedSync,
                 onClick = ::requestMarkSafeConfirmation
@@ -582,8 +623,8 @@ fun HomeScreen(
                         else -> ""
                     },
                     syncIndicator = availabilitySyncIndicator,
-                    onRefreshLocationAndBecomeAvailable = { handleAvailabilityChange(true) },
-                    onAvailabilityChange = ::handleAvailabilityChange
+                    onRefreshLocationAndBecomeAvailable = { if (!isMobileOnboardingActive) handleAvailabilityChange(true) },
+                    onAvailabilityChange = { if (!isMobileOnboardingActive) handleAvailabilityChange(it) }
                 )
             }
 
@@ -688,6 +729,7 @@ private fun HomeGreetingHero(
 private fun EmergencyHelpAction(
     loading: Boolean,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val spacing = LocalNephSpacing.current
@@ -700,6 +742,8 @@ private fun EmergencyHelpAction(
     )
     Row(
         modifier = Modifier
+            .then(modifier)
+            .testTag("home_request_help_action")
             .fillMaxWidth()
             .heightIn(min = 96.dp)
             .background(brush = gradient, shape = RoundedCornerShape(24.dp))
@@ -746,6 +790,56 @@ private fun EmergencyHelpAction(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
             )
+        }
+    }
+}
+
+@Composable
+private fun MobileOnboardingWelcomeMessage() {
+    val spacing = LocalNephSpacing.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("mobile_onboarding_welcome_message")
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .blur(18.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f),
+                    shape = RoundedCornerShape(24.dp)
+                )
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                    shape = RoundedCornerShape(24.dp)
+                ),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            tonalElevation = 6.dp,
+            shadowElevation = 2.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs)
+            ) {
+                Text(
+                    text = "Welcome to NEPH",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "This short app guide is a safe practice flow. Follow the highlighted controls; it will not create a real help request.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

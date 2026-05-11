@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import com.neph.ui.theme.LocalNephSpacing
 
 @Composable
@@ -20,6 +21,7 @@ fun AppCheckbox(
     label: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    testTag: String? = null,
     error: String? = null
 ) {
     val spacing = LocalNephSpacing.current
@@ -36,6 +38,7 @@ fun AppCheckbox(
             Checkbox(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                modifier = if (testTag.isNullOrBlank()) Modifier else Modifier.testTag(testTag),
                 enabled = enabled,
                 colors = CheckboxDefaults.colors(
                     checkedColor = MaterialTheme.colorScheme.primary,
@@ -55,7 +58,7 @@ fun AppCheckbox(
 
         if (isError) {
             Text(
-                text = error ?: "",
+                text = error.orEmpty(),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error
             )
