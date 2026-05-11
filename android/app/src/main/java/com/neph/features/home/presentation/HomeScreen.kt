@@ -130,6 +130,7 @@ fun HomeScreen(
     var markSafeLoading by remember { mutableStateOf(false) }
     var showMarkSafeLocationConsentDialog by remember { mutableStateOf(false) }
     var showActiveHelpRequestMarkSafeDialog by remember { mutableStateOf(false) }
+    var pendingCancelActiveHelpRequestForMarkSafe by remember { mutableStateOf(false) }
     var emergencyInfo by remember { mutableStateOf("") }
     var emergencyError by remember { mutableStateOf("") }
     var locationPermissionInfo by remember { mutableStateOf("") }
@@ -407,10 +408,12 @@ fun HomeScreen(
         emergencyInfo = ""
 
         if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+            pendingCancelActiveHelpRequestForMarkSafe = false
             emergencyError = "Please log in to mark yourself safe."
             return
         }
 
+        pendingCancelActiveHelpRequestForMarkSafe = false
         val safeSessionToken = sessionToken
         markSafeLoading = true
         scope.launch {
@@ -440,30 +443,9 @@ fun HomeScreen(
             return
         }
 
-        markSafeLoading = true
-        scope.launch {
-            try {
-                RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe(safeSessionToken)
-                showActiveHelpRequestMarkSafeDialog = false
-                showMarkSafeLocationConsentDialog = true
-            } catch (error: ApiException) {
-                showActiveHelpRequestMarkSafeDialog = false
-                if (error.status == 401) {
-                    AuthRepository.logout()
-                    emergencyError = "Your session expired. Please log in again before marking yourself safe."
-                    onNavigateToLogin()
-                } else {
-                    emergencyError = "Could not update your active help request. Please try again."
-                }
-            } catch (cancellationException: CancellationException) {
-                throw cancellationException
-            } catch (_: Exception) {
-                showActiveHelpRequestMarkSafeDialog = false
-                emergencyError = "Could not update your active help request. Please try again."
-            } finally {
-                markSafeLoading = false
-            }
-        }
+        pendingCancelActiveHelpRequestForMarkSafe = true
+        showActiveHelpRequestMarkSafeDialog = false
+        showMarkSafeLocationConsentDialog = true
     }
 
     fun handleMarkSafeWithOptionalLocation(
@@ -473,15 +455,20 @@ fun HomeScreen(
         val safeSessionToken = sessionToken
         if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
             showMarkSafeLocationConsentDialog = false
+            pendingCancelActiveHelpRequestForMarkSafe = false
             emergencyError = "Please log in before marking yourself safe."
             onNavigateToLogin()
             return
         }
 
+        val shouldCancelActiveHelpRequest = pendingCancelActiveHelpRequestForMarkSafe
         showMarkSafeLocationConsentDialog = false
         markSafeLoading = true
         scope.launch {
             try {
+                if (shouldCancelActiveHelpRequest) {
+                    RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe(safeSessionToken)
+                }
                 val locationAttempt = if (shareLocation && !permissionDeniedBeforeCapture) {
                     DeviceLocationProvider.captureCurrentLocationForSharing(
                         context = context,
@@ -522,6 +509,7 @@ fun HomeScreen(
             } catch (_: Exception) {
                 emergencyError = "Could not mark you safe. Please try again."
             } finally {
+                pendingCancelActiveHelpRequestForMarkSafe = false
                 markSafeLoading = false
             }
         }
@@ -551,7 +539,10 @@ fun HomeScreen(
 
     if (showActiveHelpRequestMarkSafeDialog) {
         AlertDialog(
-            onDismissRequest = { showActiveHelpRequestMarkSafeDialog = false },
+            onDismissRequest = {
+                pendingCancelActiveHelpRequestForMarkSafe = false
+                showActiveHelpRequestMarkSafeDialog = false
+            },
             title = {
                 Text(text = "Mark yourself safe?")
             },
@@ -566,7 +557,12 @@ fun HomeScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showActiveHelpRequestMarkSafeDialog = false }) {
+                TextButton(
+                    onClick = {
+                        pendingCancelActiveHelpRequestForMarkSafe = false
+                        showActiveHelpRequestMarkSafeDialog = false
+                    }
+                ) {
                     Text("Keep request active")
                 }
             }
@@ -575,7 +571,10 @@ fun HomeScreen(
 
     if (showMarkSafeLocationConsentDialog) {
         AlertDialog(
-            onDismissRequest = { showMarkSafeLocationConsentDialog = false },
+            onDismissRequest = {
+                pendingCancelActiveHelpRequestForMarkSafe = false
+                showMarkSafeLocationConsentDialog = false
+            },
             title = {
                 Text(text = "Share location with your safe status?")
             },
