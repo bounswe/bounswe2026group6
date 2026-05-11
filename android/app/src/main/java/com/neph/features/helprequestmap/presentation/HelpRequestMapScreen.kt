@@ -246,8 +246,18 @@ fun HelpRequestMapScreen(
     var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
     var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
     var mapResetNonce by remember { mutableStateOf(0) }
+    var initialMarkerFitApplied by remember { mutableStateOf(false) }
+    var markerFitBoundsToken by remember { mutableStateOf<Int?>(null) }
 
     fun applyRequestResult(result: ActiveHelpRequestsResult, viewportKey: String?) {
+        if (
+            !initialMarkerFitApplied &&
+            viewportKey == null &&
+            result.requests.any { it.hasValidMapCoordinates() }
+        ) {
+            markerFitBoundsToken = (markerFitBoundsToken ?: 0) + 1
+            initialMarkerFitApplied = true
+        }
         requests = result.requests
         viewportKey?.let { lastFetchedViewportKey = it }
         viewportRefreshNonce = 0
@@ -300,6 +310,7 @@ fun HelpRequestMapScreen(
                     mapCenterLongitude = location.longitude
                     mapZoom = HelpRequestMapCurrentLocationZoom
                     mapResetNonce += 1
+                    markerFitBoundsToken = null
                     selectedRequestId = null
                     lastFetchedViewportKey = null
                     loading = false
@@ -535,6 +546,7 @@ fun HelpRequestMapScreen(
                     mapCenterLongitude = mapCenterLongitude,
                     mapZoom = mapZoom,
                     mapResetToken = mapResetNonce,
+                    fitBoundsRequestToken = markerFitBoundsToken,
                     onShowCurrentLocation = ::showCurrentLocationOnMap,
                     showCurrentLocationEnabled = mapActionsEnabled,
                     onViewportChanged = ::handleViewportChanged,
@@ -908,6 +920,7 @@ private fun CrisisRequestMapPanel(
     mapCenterLongitude: Double = TurkeyOverviewLongitude,
     mapZoom: Int = TurkeyOverviewZoom,
     mapResetToken: Int = 0,
+    fitBoundsRequestToken: Int? = null,
     onShowCurrentLocation: (() -> Unit)? = null,
     showCurrentLocationEnabled: Boolean = true,
     onViewportChanged: (LeafletMapViewport) -> Unit,
@@ -1002,6 +1015,7 @@ private fun CrisisRequestMapPanel(
                 zoom = effectiveZoom,
                 showCenterMarker = false,
                 fitBoundsToMarkers = shouldFitRequestMarkers,
+                fitBoundsRequestToken = fitBoundsRequestToken,
                 onMarkerSelected = { markerInstanceId, markerId ->
                     if (markerInstanceId == currentMapInstanceIdState.value) {
                         onSelectRequest(markerId)
