@@ -13,14 +13,23 @@ export function formatOperationalLabel(value: string | null | undefined) {
         .join(" ");
 }
 
+const dateTimeWithoutOffsetPattern = /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/;
+const timezoneOffsetPattern = /(?:[zZ]|[+-]\d{2}:?\d{2})$/;
+
 function parseTimestamp(value: string) {
-    const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const normalizedValue = value.trim();
+    const dateOnlyMatch = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (dateOnlyMatch) {
         const [, year, month, day] = dateOnlyMatch;
         return new Date(Number(year), Number(month) - 1, Number(day));
     }
 
-    const date = new Date(value);
+    const parseValue =
+        dateTimeWithoutOffsetPattern.test(normalizedValue) && !timezoneOffsetPattern.test(normalizedValue)
+            ? `${normalizedValue.replace(" ", "T")}Z`
+            : normalizedValue;
+
+    const date = new Date(parseValue);
     return Number.isNaN(date.getTime()) ? null : date;
 }
 

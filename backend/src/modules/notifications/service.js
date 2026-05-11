@@ -74,6 +74,32 @@ function decodeCursor(cursor) {
   }
 }
 
+const DATE_TIME_WITHOUT_OFFSET_PATTERN = /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/;
+const TIMEZONE_OFFSET_PATTERN = /(?:[zZ]|[+-]\d{2}:?\d{2})$/;
+
+function toClientTimestamp(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const normalizedValue = String(value).trim();
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const parseValue =
+    DATE_TIME_WITHOUT_OFFSET_PATTERN.test(normalizedValue) && !TIMEZONE_OFFSET_PATTERN.test(normalizedValue)
+      ? `${normalizedValue.replace(' ', 'T')}Z`
+      : normalizedValue;
+  const date = new Date(parseValue);
+
+  return Number.isNaN(date.getTime()) ? normalizedValue : date.toISOString();
+}
+
 function mapNotificationForClient(notification) {
   return {
     id: notification.id,
@@ -81,8 +107,8 @@ function mapNotificationForClient(notification) {
     title: notification.title,
     body: notification.body,
     isRead: notification.isRead,
-    readAt: notification.readAt,
-    createdAt: notification.createdAt,
+    readAt: toClientTimestamp(notification.readAt),
+    createdAt: toClientTimestamp(notification.createdAt),
     actorUserId: notification.actorUserId,
     entity: notification.entity,
     data: notification.data,
