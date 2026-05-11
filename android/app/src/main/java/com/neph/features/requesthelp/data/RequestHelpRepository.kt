@@ -74,7 +74,7 @@ data class RequestHelpSubmission(
     val description: String,
     val riskFlags: List<String>,
     val vulnerableGroups: List<String>,
-    val bloodType: String,
+    val shareProfileHealthInfoWithVolunteer: Boolean,
     val location: RequestHelpLocationSubmission,
     val contact: RequestHelpContactSubmission,
     val consentGiven: Boolean
@@ -93,6 +93,15 @@ data class CreateHelpRequestResult(
     val guestAccessToken: String? = null,
     val recordedLocally: Boolean = true
 )
+
+data class MarkSafeHelpRequestCancellationResult(
+    val confirmedCount: Int = 0,
+    val pendingCount: Int = 0,
+    val failedCount: Int = 0
+) {
+    val canMarkSafe: Boolean
+        get() = pendingCount == 0 && failedCount == 0
+}
 
 data class GuestTrackedHelpRequest(
     val requestId: String,
@@ -140,6 +149,63 @@ object RequestHelpRepository {
         }
 
         return database.helpRequestDao().countActiveByOwner(ownerTypeForToken(token)) > 0
+    }
+
+    suspend fun cancelActiveAuthenticatedHelpRequestsForMarkSafe(
+        token: String
+    ): MarkSafeHelpRequestCancellationResult {
+        ensureInitialized()
+        if (token.isBlank()) return MarkSafeHelpRequestCancellationResult()
+
+        try {
+            refreshAuthenticatedHelpRequests(token)
+        } catch (error: ApiException) {
+            if (error.status == 401) {
+                throw error
+            }
+        } catch (_: Exception) {
+            // Fall back to local active requests so marking safe can still proceed offline.
+        }
+
+        val activeRequests = database.helpRequestDao()
+            .getByOwner(LocalOwnerType.AUTHENTICATED)
+            .filter { it.isActiveHelpRequestForStatusUpdate() }
+
+        if (activeRequests.isEmpty()) return MarkSafeHelpRequestCancellationResult()
+
+        var confirmedCount = 0
+        var pendingCount = 0
+        var failedCount = 0
+        activeRequests.forEach { request ->
+            val remoteId = resolveRemoteRequestIdForSync(request)
+            if (remoteId.isNullOrBlank()) {
+                pendingCount += 1
+                return@forEach
+            }
+
+            val response = JsonHttpClient.request(
+                path = "/help-requests/$remoteId/status",
+                method = "PATCH",
+                token = token,
+                body = JSONObject().put("status", "CANCELLED")
+            )
+            val remoteRequest = response.optJSONObject("request")
+            if (remoteRequest?.optString("status")?.trim()?.uppercase(Locale.ROOT) == "CANCELLED") {
+                upsertRemoteHelpRequest(
+                    ownerType = LocalOwnerType.AUTHENTICATED,
+                    request = remoteRequest,
+                    guestAccessToken = null
+                )
+                confirmedCount += 1
+            } else {
+                failedCount += 1
+            }
+        }
+        return MarkSafeHelpRequestCancellationResult(
+            confirmedCount = confirmedCount,
+            pendingCount = pendingCount,
+            failedCount = failedCount
+        )
     }
 
     suspend fun createHelpRequest(
@@ -597,6 +663,12 @@ object RequestHelpRepository {
             ?.let { mapOf("x-help-request-access-token" to it) }
             ?: emptyMap()
     }
+
+    private fun HelpRequestEntity.isActiveHelpRequestForStatusUpdate(): Boolean {
+        return status.trim().uppercase(Locale.ROOT) !in setOf("RESOLVED", "CANCELLED") &&
+            syncStatus != SyncStatus.CONFLICTED &&
+            !isDeleted
+    }
 }
 
 private fun JSONObject.optTrimmedString(key: String): String? {
@@ -616,7 +688,7 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
         put("description", description)
         put("riskFlags", JSONArray(riskFlags))
         put("vulnerableGroups", JSONArray(vulnerableGroups))
-        put("bloodType", bloodType)
+        put("shareProfileHealthInfoWithVolunteer", shareProfileHealthInfoWithVolunteer)
         put(
             "location",
             JSONObject().apply {
@@ -699,13 +771,13 @@ internal fun buildEmergencyDraftSubmission(
     val extraAddress = reverseLocation.extraAddress?.trim()?.takeIf { it.isNotBlank() } ?: ""
 
     return RequestHelpSubmission(
-        helpTypes = listOf("other"),
-        otherHelpText = "Emergency assistance requested from mobile app",
+        helpTypes = listOf("search_rescue"),
+        otherHelpText = "",
         affectedPeopleCount = 1,
         description = "Emergency assistance requested from mobile app. Details pending.",
         riskFlags = emptyList(),
         vulnerableGroups = emptyList(),
-        bloodType = profile.bloodType.orEmpty(),
+        shareProfileHealthInfoWithVolunteer = false,
         location = RequestHelpLocationSubmission(
             country = country,
             city = city,
@@ -744,7 +816,8 @@ internal fun RequestHelpSubmission.toEntity(
         riskFlagsJson = JSONArray(riskFlags).toString(),
         vulnerableGroupsJson = JSONArray(vulnerableGroups).toString(),
         description = description,
-        bloodType = bloodType,
+        bloodType = "",
+        shareProfileHealthInfoWithVolunteer = shareProfileHealthInfoWithVolunteer,
         country = location.country,
         city = location.city,
         district = location.district,
@@ -809,6 +882,7 @@ internal fun JSONObject.toHelpRequestEntity(
         vulnerableGroupsJson = optJSONArray("vulnerableGroups").orEmptyJsonArrayString(),
         description = optString("description"),
         bloodType = optString("bloodType"),
+        shareProfileHealthInfoWithVolunteer = optBoolean("shareProfileHealthInfoWithVolunteer", false),
         country = location.optString("country"),
         city = location.optString("city"),
         district = location.optString("district"),

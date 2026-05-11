@@ -208,6 +208,8 @@ class FakeNephBackend {
             route == "/availability/status" && method == "GET" -> handleAvailabilityStatus(token)
             route == "/availability/my-assignment" && method == "GET" -> handleCurrentAssignment(token)
             route == "/help-requests" && method == "GET" -> handleHelpRequestList(token)
+            route.startsWith("/help-requests/") && route.endsWith("/status") && method == "PATCH" ->
+                handlePatchHelpRequestStatus(token, route, body)
             route == "/help-requests/active" && method == "GET" -> handleActiveHelpRequests(uri)
             route == "/location/tree" && method == "GET" -> handleLocationTree(uri)
             route == "/gathering-areas/nearby" && method == "GET" -> handleNearbyGatheringAreas(uri)
@@ -359,7 +361,7 @@ class FakeNephBackend {
             put(
                 JSONObject()
                     .put("requestId", "fake-map-assigned")
-                    .put("type", "search_and_rescue")
+                    .put("type", "search_rescue")
                     .put("status", "PENDING")
                     .put("urgencyLevel", "HIGH")
                     .put("createdAt", "2026-05-01T09:55:00.000Z")
@@ -753,6 +755,28 @@ class FakeNephBackend {
     private fun handleHelpRequestList(token: String?): JSONObject {
         requireAuthorizedUser(token)
         return JSONObject().put("requests", JSONArray())
+    }
+
+    private fun handlePatchHelpRequestStatus(token: String?, route: String, body: JSONObject?): JSONObject {
+        requireAuthorizedUser(token)
+        val requestId = route
+            .removePrefix("/help-requests/")
+            .removeSuffix("/status")
+            .trim()
+        val status = body?.requiredString("status") ?: "SYNCED"
+        return JSONObject().put(
+            "request",
+            JSONObject()
+                .put("id", requestId)
+                .put("status", status)
+                .put("helpTypes", JSONArray())
+                .put("affectedPeopleCount", 1)
+                .put("riskFlags", JSONArray())
+                .put("vulnerableGroups", JSONArray())
+                .put("location", JSONObject())
+                .put("contact", JSONObject())
+                .put("cancelledAt", if (status == "CANCELLED") Instant.now().toString() else JSONObject.NULL)
+        )
     }
 
     private fun profileResponseJson(user: FakeUserState, profile: FakeProfileState): JSONObject {

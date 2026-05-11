@@ -9,7 +9,7 @@ import {
     type EmergencyAnalytics,
     type EmergencyAnalyticsComparisonMetric,
 } from "@/lib/admin";
-import { formatOperationalLabel } from "@/lib/formatters";
+import { formatOperationalLabel, formatTimestampDate } from "@/lib/formatters";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
@@ -466,7 +466,7 @@ export default function AdminEmergencyInsightsView() {
                                     <tbody>
                                         {dailyTrend.map((row) => (
                                             <tr key={row.date}>
-                                                <td>{row.date}</td>
+                                                <td>{formatTimestampDate(row.date)}</td>
                                                 <td>{row.created}</td>
                                                 <td>{row.resolved}</td>
                                                 <td>{row.cancelled}</td>

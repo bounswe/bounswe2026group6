@@ -4,6 +4,7 @@ import com.neph.core.NephAppContext
 import com.neph.core.database.HelpRequestEntity
 import com.neph.core.database.NephDatabaseProvider
 import com.neph.core.database.SyncOperationEntity
+import com.neph.core.format.formatInstantWithRelativeDay
 import com.neph.core.network.JsonHttpClient
 import com.neph.core.sync.LocalOwnerType
 import com.neph.core.sync.OfflineSyncScheduler
@@ -20,6 +21,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 data class MyHelpRequestUiModel(
     val id: String,
@@ -423,9 +427,19 @@ private fun buildShortDescription(description: String): String {
 }
 
 private fun formatEpochMillis(raw: Long): String {
-    val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
-    return formatter.format(java.util.Date(raw))
+    return formatInstantWithRelativeDay(
+        instant = Instant.ofEpochMilli(raw),
+        fallbackFormatter = EpochDisplayFormatter,
+        timeFormatter = EpochTimeFormatter,
+        relativeSeparator = " "
+    )
 }
+
+private val EpochDisplayFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
+
+private val EpochTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
 @Suppress("unused")
 private fun JSONArray?.toStringList(): List<String> {

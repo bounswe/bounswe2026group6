@@ -11,10 +11,13 @@ import type { LatLng } from "@/components/feature/location/LeafletMapCanvas";
 type LeafletLocationMapProps = {
     center: LatLng;
     zoom?: number;
+    viewResetToken?: number;
     selectedPosition: LatLng | null;
     heightClassName?: string;
     interactionMode?: "selectable" | "readonly";
     onSelectPosition?: (position: LatLng) => void;
+    onUseCurrentLocation?: () => void;
+    currentLocationDisabled?: boolean;
 };
 
 function toAssetUrl(asset: string | { src: string }) {
@@ -34,10 +37,13 @@ const locationMarkerIcon = L.icon({
 export function LeafletLocationMap({
     center,
     zoom = 12,
+    viewResetToken = 0,
     selectedPosition,
     heightClassName = "h-72",
     interactionMode = "selectable",
     onSelectPosition,
+    onUseCurrentLocation,
+    currentLocationDisabled = false,
 }: LeafletLocationMapProps) {
     const mapRef = React.useRef<L.Map | null>(null);
     const markerRef = React.useRef<L.Marker | null>(null);
@@ -117,26 +123,57 @@ export function LeafletLocationMap({
     }, [selectedPosition, interactionMode, mapReadyVersion]);
 
     return (
-        <LeafletMapCanvas
-            center={center}
-            zoom={zoom}
-            heightClassName={heightClassName}
-            ariaLabel={
-                interactionMode === "readonly"
-                    ? "Saved location preview map"
-                    : "Location picker map"
-            }
-            onMapReady={(map) => {
-                mapRef.current = map;
-                setMapReadyVersion((version) => version + 1);
-            }}
-            onMapClick={
-                interactionMode === "selectable"
-                    ? (position) => {
-                        onSelectPositionRef.current?.(position);
-                    }
-                    : undefined
-            }
-        />
+        <div className="location-picker-map-wrap">
+            <LeafletMapCanvas
+                center={center}
+                zoom={zoom}
+                viewResetToken={viewResetToken}
+                heightClassName={heightClassName}
+                ariaLabel={
+                    interactionMode === "readonly"
+                        ? "Saved location preview map"
+                        : "Location picker map"
+                }
+                onMapReady={(map) => {
+                    mapRef.current = map;
+                    setMapReadyVersion((version) => version + 1);
+                }}
+                onMapClick={
+                    interactionMode === "selectable"
+                        ? (position) => {
+                            onSelectPositionRef.current?.(position);
+                        }
+                        : undefined
+                }
+            />
+
+            {interactionMode === "selectable" && onUseCurrentLocation ? (
+                <button
+                    type="button"
+                    aria-label="Use Current Location"
+                    title="Use Current Location"
+                    className="location-picker-map-current-location"
+                    onClick={onUseCurrentLocation}
+                    disabled={currentLocationDisabled}
+                >
+                    <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M12 3V6M12 18V21M3 12H6M18 12H21M12 16.5A4.5 4.5 0 1 0 12 7.5A4.5 4.5 0 0 0 12 16.5Z"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                    </svg>
+                </button>
+            ) : null}
+        </div>
     );
 }

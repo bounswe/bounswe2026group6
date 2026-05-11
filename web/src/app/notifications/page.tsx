@@ -15,18 +15,7 @@ import {
     updateNotificationPreferences,
     type NotificationItem,
 } from "@/lib/notifications";
-
-function formatDateTime(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return value;
-    }
-
-    return date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-    });
-}
+import { formatTimestampDateTime } from "@/lib/formatters";
 
 function formatTypeLabel(value: string) {
     const normalized = (value || "").trim().toLowerCase();
@@ -240,7 +229,7 @@ export default function NotificationsPage() {
                                             <span className="notifications-item-type-chip">
                                                 {formatTypeLabel(item.type)}
                                             </span>
-                                            <span className="news-item-date">{formatDateTime(item.createdAt)}</span>
+                                            <span className="news-item-date">{formatTimestampDateTime(item.createdAt)}</span>
                                         </div>
 
                                         <h3 className="notifications-item-title">
@@ -255,7 +244,7 @@ export default function NotificationsPage() {
                                             </p>
                                             <p>
                                                 <strong>Status:</strong> {item.isRead ? "Read" : "Unread"}
-                                                {item.readAt ? ` - Read at ${formatDateTime(item.readAt)}` : ""}
+                                                {item.readAt ? ` - Read at ${formatTimestampDateTime(item.readAt)}` : ""}
                                             </p>
                                         </div>
 

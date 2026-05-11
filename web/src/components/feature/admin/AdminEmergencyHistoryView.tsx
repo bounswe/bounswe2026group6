@@ -8,7 +8,7 @@ import {
     fetchAdminEmergencyHistory,
     type EmergencyHistoryItem,
 } from "@/lib/admin";
-import { formatOperationalLabel } from "@/lib/formatters";
+import { formatOperationalLabel, formatTimestampDateTime } from "@/lib/formatters";
 import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
@@ -39,7 +39,7 @@ function formatDateTime(value: string | null) {
         return value;
     }
 
-    return date.toLocaleString();
+    return formatTimestampDateTime(value);
 }
 
 export default function AdminEmergencyHistoryView() {

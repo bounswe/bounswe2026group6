@@ -18,6 +18,7 @@ import {
     readCachedAnnouncements,
     type NewsItem,
 } from "@/lib/news";
+import { formatTimestampDateTime } from "@/lib/formatters";
 
 type HeroSlide = {
     title: string;
@@ -75,15 +76,7 @@ function describeNewsPreviewFailure(err: unknown) {
 }
 
 function formatLastUpdated(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return value;
-    }
-
-    return date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-    });
+    return formatTimestampDateTime(value);
 }
 
 export default function HomePage() {

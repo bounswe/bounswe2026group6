@@ -54,9 +54,7 @@ import com.neph.features.profile.data.LocationTreeRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
 import com.neph.features.profile.data.PhoneParts
-import com.neph.features.profile.data.bloodTypeOptions
 import com.neph.features.profile.data.locationData
-import com.neph.features.profile.data.normalizeBloodType
 import com.neph.features.profile.data.normalizePhoneParts
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.onboarding.data.MobileOnboardingJourney
@@ -127,12 +125,11 @@ private const val RequestHelpMapCoordinateSource = "map_selection"
 
 private data class RequestHelpFormState(
     val helpTypes: List<String> = emptyList(),
-    val otherHelpType: String = "",
     val affectedPeopleCount: String = "",
     val riskFlags: List<String> = emptyList(),
     val vulnerableGroups: List<String> = emptyList(),
     val situationDescription: String = "",
-    val bloodType: String = "",
+    val shareProfileHealthInfoWithVolunteer: Boolean = false,
     val country: String = "",
     val city: String = "",
     val district: String = "",
@@ -168,9 +165,9 @@ private data class RequestHelpFieldErrors(
 
 private val helpTypeApiValues = mapOf(
     "First Aid" to "first_aid",
+    "Search & Rescue" to "search_rescue",
     "Food & Water" to "food_water",
-    "Shelter" to "shelter",
-    "Search & Rescue" to "search_rescue"
+    "Shelter" to "shelter"
 )
 
 private val helpTypeLabelsByApiValue = helpTypeApiValues.entries.associate { (label, value) -> value to label }
@@ -190,10 +187,8 @@ private fun parseBackendPhoneNumber(countryCode: String, phone: String): Long? {
 
 private fun buildPrefilledForm(profile: ProfileData): RequestHelpFormState {
     val phoneParts: PhoneParts = normalizePhoneParts(profile.phone)
-    val normalizedBloodType = normalizeBloodType(profile.bloodType).orEmpty()
 
     return RequestHelpFormState(
-        bloodType = normalizedBloodType,
         country = profile.country.orEmpty(),
         city = profile.city.orEmpty(),
         district = profile.district.orEmpty(),
@@ -228,12 +223,11 @@ private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
     val phoneParts = normalizePhoneParts(contactPhone)
     return RequestHelpFormState(
         helpTypes = helpTypesJson.jsonArrayToStringList().mapNotNull { helpTypeLabelsByApiValue[it] },
-        otherHelpType = otherHelpText,
         affectedPeopleCount = affectedPeopleCount.toString(),
         riskFlags = riskFlagsJson.jsonArrayToStringList(),
         vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList(),
         situationDescription = description,
-        bloodType = bloodType,
+        shareProfileHealthInfoWithVolunteer = shareProfileHealthInfoWithVolunteer,
         country = country,
         city = city,
         district = district,
@@ -376,12 +370,12 @@ private fun buildSubmission(
 
     return RequestHelpSubmission(
         helpTypes = state.helpTypes.mapNotNull { helpTypeApiValues[it] },
-        otherHelpText = state.otherHelpType.trim(),
+        otherHelpText = "",
         affectedPeopleCount = state.affectedPeopleCount.toIntOrNull() ?: 1,
         description = state.situationDescription.trim(),
         riskFlags = state.riskFlags.map { it.trim() },
         vulnerableGroups = state.vulnerableGroups.map { it.trim() },
-        bloodType = state.bloodType.trim(),
+        shareProfileHealthInfoWithVolunteer = state.shareProfileHealthInfoWithVolunteer,
         location = RequestHelpLocationSubmission(
             country = findCountryLabel(state.country, locations).ifBlank { state.country.trim() },
             city = findCityLabel(state.country, state.city, locations).ifBlank { state.city.trim() },
@@ -1018,8 +1012,7 @@ fun RequestHelpScreen(
                         selectedOptions = formState.helpTypes,
                         onOptionToggle = {
                             formState = formState.copy(
-                                helpTypes = toggleSelection(formState.helpTypes, it),
-                                otherHelpType = if (it == "Other" && "Other" in formState.helpTypes) "" else formState.otherHelpType
+                                helpTypes = toggleSelection(formState.helpTypes, it)
                             )
                             if (isHelpTypeOnboardingTarget && it == "Search & Rescue") {
                                 completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_TYPE)
@@ -1037,15 +1030,6 @@ fun RequestHelpScreen(
                         },
                         error = fieldErrors.helpTypes
                     )
-
-                    if ("Other" in formState.helpTypes) {
-                        AppTextField(
-                            value = formState.otherHelpType,
-                            onValueChange = { formState = formState.copy(otherHelpType = it) },
-                            label = "Other Help Type Details",
-                            placeholder = "Add a short detail if needed"
-                        )
-                    }
                 }
             }
 
@@ -1069,7 +1053,7 @@ fun RequestHelpScreen(
                     )
 
                     AppMultiSelectChipGroup(
-                        label = "Risk Flags",
+                        label = "Risk Flags (optional)",
                         options = riskFlagOptions,
                         selectedOptions = formState.riskFlags,
                         onOptionToggle = {
@@ -1093,7 +1077,7 @@ fun RequestHelpScreen(
                     )
 
                     AppMultiSelectChipGroup(
-                        label = "Vulnerable Groups",
+                        label = "Vulnerable Groups (optional)",
                         options = vulnerableGroupOptions,
                         selectedOptions = formState.vulnerableGroups,
                         onOptionToggle = {
@@ -1111,13 +1095,12 @@ fun RequestHelpScreen(
                         error = fieldErrors.situationDescription
                     )
 
-                    AppDropdown(
-                        value = formState.bloodType,
-                        onValueChange = { formState = formState.copy(bloodType = it) },
-                        label = "Blood Type",
-                        options = bloodTypeOptions,
-                        placeholder = "Select blood type",
-                        selectedTextMapper = { it.label }
+                    AppCheckbox(
+                        checked = formState.shareProfileHealthInfoWithVolunteer,
+                        onCheckedChange = {
+                            formState = formState.copy(shareProfileHealthInfoWithVolunteer = it)
+                        },
+                        label = "I agree to share my profile health information with the volunteer assigned to this request."
                     )
                 }
             }

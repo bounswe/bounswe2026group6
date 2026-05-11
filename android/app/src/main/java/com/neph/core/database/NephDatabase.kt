@@ -19,7 +19,7 @@ import com.neph.BuildConfig
         SyncOperationEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class NephDatabase : RoomDatabase() {
@@ -213,6 +213,15 @@ object NephDatabaseProvider {
             database.execSQL("ALTER TABLE assigned_requests ADD COLUMN longitude REAL")
         }
     }
+    private val Migration11To12 = object : Migration(11, 12) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE help_requests ADD COLUMN shareProfileHealthInfoWithVolunteer INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE assigned_requests ADD COLUMN shareProfileHealthInfoWithVolunteer INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE assigned_requests ADD COLUMN medicalConditionsJson TEXT NOT NULL DEFAULT '[]'")
+            database.execSQL("ALTER TABLE assigned_requests ADD COLUMN chronicDiseasesJson TEXT NOT NULL DEFAULT '[]'")
+            database.execSQL("ALTER TABLE assigned_requests ADD COLUMN allergiesJson TEXT NOT NULL DEFAULT '[]'")
+        }
+    }
 
     fun initialize(context: Context) {
         getInstance(context)
@@ -234,7 +243,8 @@ object NephDatabaseProvider {
                 Migration7To8,
                 Migration8To9,
                 Migration9To10,
-                Migration10To11
+                Migration10To11,
+                Migration11To12
             )
                 .build()
                 .also { instance = it }

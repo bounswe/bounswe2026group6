@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { LocationPickerMap } from "@/components/feature/location/LocationPickerMap";
 import { reverseLocation } from "@/lib/location";
@@ -29,6 +28,8 @@ const DEFAULT_CENTER = {
     latitude: 39.0,
     longitude: 35.0,
 };
+const DEFAULT_MAP_ZOOM = 6;
+const SELECTED_LOCATION_ZOOM = 15;
 
 function toPickerValue(item: LocationSearchItem): LocationPickerValue {
     return {
@@ -79,11 +80,23 @@ export function LocationPicker({
 }: LocationPickerProps) {
     const [resolving, setResolving] = React.useState(false);
     const [error, setError] = React.useState("");
+    const [mapViewResetToken, setMapViewResetToken] = React.useState(0);
     const reverseRequestIdRef = React.useRef(0);
+    const hasAttemptedInitialLocationRef = React.useRef(false);
+    const userSelectionVersionRef = React.useRef(0);
+    const latestValueRef = React.useRef<LocationPickerValue | null>(value);
+
+    React.useEffect(() => {
+        latestValueRef.current = value;
+    }, [value]);
 
     const center = value
         ? { latitude: value.latitude, longitude: value.longitude }
         : DEFAULT_CENTER;
+
+    const markUserSelection = React.useCallback(() => {
+        userSelectionVersionRef.current += 1;
+    }, []);
 
     const handleResolveCoordinates = React.useCallback(
         async (
@@ -93,6 +106,9 @@ export function LocationPicker({
                 source?: string | null;
                 accuracyMeters?: number | null;
                 capturedAt?: string | null;
+            },
+            options?: {
+                shouldApplyResult?: () => boolean;
             }
         ) => {
             const currentReverseRequestId = ++reverseRequestIdRef.current;
@@ -106,6 +122,9 @@ export function LocationPicker({
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
                     return;
                 }
+                if (options?.shouldApplyResult && !options.shouldApplyResult()) {
+                    return;
+                }
 
                 onChange({
                     ...toPickerValue(response.item),
@@ -115,6 +134,9 @@ export function LocationPicker({
                 });
             } catch (err) {
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
+                    return;
+                }
+                if (options?.shouldApplyResult && !options.shouldApplyResult()) {
                     return;
                 }
 
@@ -134,7 +156,14 @@ export function LocationPicker({
         [onChange]
     );
 
-    const handleUseCurrentLocation = React.useCallback(() => {
+    const requestCurrentLocation = React.useCallback((options?: { initial?: boolean }) => {
+        const isInitial = options?.initial === true;
+        const initialSelectionVersion = userSelectionVersionRef.current;
+
+        if (isInitial && latestValueRef.current) {
+            return;
+        }
+
         if (!navigator.geolocation) {
             setError("Geolocation is not supported in this browser.");
             return;
@@ -146,30 +175,58 @@ export function LocationPicker({
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    onChange({
-                        ...toManualPickerValue(
-                            position.coords.latitude,
-                            position.coords.longitude
-                        ),
+                    if (
+                        isInitial &&
+                        (
+                            userSelectionVersionRef.current !== initialSelectionVersion ||
+                            (
+                                latestValueRef.current !== null &&
+                                latestValueRef.current.source !== "current_device"
+                            )
+                        )
+                    ) {
+                        setResolving(false);
+                        return;
+                    }
+
+                    const metadata = {
                         source: "current_device",
                         accuracyMeters:
                             typeof position.coords.accuracy === "number"
                                 ? position.coords.accuracy
                                 : null,
                         capturedAt: new Date(position.timestamp).toISOString(),
+                    };
+
+                    onChange({
+                        ...toManualPickerValue(
+                            position.coords.latitude,
+                            position.coords.longitude
+                        ),
+                        ...metadata,
                     });
+                    setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(
                         position.coords.latitude,
                         position.coords.longitude,
-                        {
-                            source: "current_device",
-                            accuracyMeters:
-                                typeof position.coords.accuracy === "number"
-                                    ? position.coords.accuracy
-                                    : null,
-                            capturedAt: new Date(position.timestamp).toISOString(),
-                        }
+                        metadata,
+                        isInitial
+                            ? {
+                                shouldApplyResult: () => {
+                                    const current = latestValueRef.current;
+                                    return userSelectionVersionRef.current === initialSelectionVersion &&
+                                        (
+                                            current === null ||
+                                            (
+                                                current.source === "current_device" &&
+                                                Math.abs(current.latitude - position.coords.latitude) < 0.000001 &&
+                                                Math.abs(current.longitude - position.coords.longitude) < 0.000001
+                                            )
+                                        );
+                                },
+                            }
+                            : undefined
                     );
                 },
                 (geoError) => {
@@ -203,23 +260,30 @@ export function LocationPicker({
             .catch(() => {
                 requestLocation();
             });
-    }, [handleResolveCoordinates]);
+    }, [handleResolveCoordinates, onChange]);
+
+    const handleUseCurrentLocation = React.useCallback(() => {
+        markUserSelection();
+        requestCurrentLocation();
+    }, [markUserSelection, requestCurrentLocation]);
+
+    React.useEffect(() => {
+        if (hasAttemptedInitialLocationRef.current || value) {
+            return;
+        }
+
+        hasAttemptedInitialLocationRef.current = true;
+        requestCurrentLocation({ initial: true });
+    }, [requestCurrentLocation, value]);
 
     return (
         <div className="location-picker-wrap flex flex-col gap-3">
             <HelperText className="text-sm text-[color:var(--text-primary)]">{label}</HelperText>
 
-            <PrimaryButton
-                type="button"
-                className="w-full sm:w-52"
-                onClick={handleUseCurrentLocation}
-                loading={resolving}
-            >
-                Use Current Location
-            </PrimaryButton>
-
             <LocationPickerMap
                 center={center}
+                zoom={value ? SELECTED_LOCATION_ZOOM : DEFAULT_MAP_ZOOM}
+                viewResetToken={mapViewResetToken}
                 selectedPosition={
                     value
                         ? {
@@ -229,18 +293,22 @@ export function LocationPicker({
                         : null
                 }
                 onSelectPosition={(position) => {
+                    markUserSelection();
                     onChange({
                         ...toManualPickerValue(position.latitude, position.longitude),
                         source: "map_pin",
                         accuracyMeters: null,
                         capturedAt: new Date().toISOString(),
                     });
+                    setMapViewResetToken((token) => token + 1);
 
                     void handleResolveCoordinates(position.latitude, position.longitude, {
                         source: "map_pin",
                         accuracyMeters: null,
                     });
                 }}
+                onUseCurrentLocation={handleUseCurrentLocation}
+                currentLocationDisabled={resolving}
             />
 
             {resolving ? <HelperText>Resolving selected coordinates...</HelperText> : null}

@@ -129,6 +129,8 @@ fun HomeScreen(
     var requestHelpError by remember { mutableStateOf("") }
     var markSafeLoading by remember { mutableStateOf(false) }
     var showMarkSafeLocationConsentDialog by remember { mutableStateOf(false) }
+    var showActiveHelpRequestMarkSafeDialog by remember { mutableStateOf(false) }
+    var pendingCancelActiveHelpRequestForMarkSafe by remember { mutableStateOf(false) }
     var emergencyInfo by remember { mutableStateOf("") }
     var emergencyError by remember { mutableStateOf("") }
     var locationPermissionInfo by remember { mutableStateOf("") }
@@ -406,10 +408,51 @@ fun HomeScreen(
         emergencyInfo = ""
 
         if (!isAuthenticated || sessionToken.isNullOrBlank()) {
+            pendingCancelActiveHelpRequestForMarkSafe = false
             emergencyError = "Please log in to mark yourself safe."
             return
         }
 
+        pendingCancelActiveHelpRequestForMarkSafe = false
+        val safeSessionToken = sessionToken
+        markSafeLoading = true
+        scope.launch {
+            try {
+                val hasActiveRequest = RequestHelpRepository.hasActiveHelpRequest(safeSessionToken)
+                if (hasActiveRequest) {
+                    showActiveHelpRequestMarkSafeDialog = true
+                } else {
+                    showMarkSafeLocationConsentDialog = true
+                }
+            } catch (cancellationException: CancellationException) {
+                throw cancellationException
+            } catch (error: ApiException) {
+                if (error.status == 401) {
+                    AuthRepository.logout()
+                    emergencyError = "Your session expired. Please log in again before marking yourself safe."
+                    onNavigateToLogin()
+                } else {
+                    emergencyError = "Could not verify your active help request status. Please try again."
+                }
+            } catch (_: Exception) {
+                emergencyError = "Could not verify your active help request status. Please try again."
+            } finally {
+                markSafeLoading = false
+            }
+        }
+    }
+
+    fun confirmMarkSafeWithActiveHelpRequest() {
+        val safeSessionToken = sessionToken
+        if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
+            showActiveHelpRequestMarkSafeDialog = false
+            emergencyError = "Please log in before marking yourself safe."
+            onNavigateToLogin()
+            return
+        }
+
+        pendingCancelActiveHelpRequestForMarkSafe = true
+        showActiveHelpRequestMarkSafeDialog = false
         showMarkSafeLocationConsentDialog = true
     }
 
@@ -420,15 +463,26 @@ fun HomeScreen(
         val safeSessionToken = sessionToken
         if (!isAuthenticated || safeSessionToken.isNullOrBlank()) {
             showMarkSafeLocationConsentDialog = false
+            pendingCancelActiveHelpRequestForMarkSafe = false
             emergencyError = "Please log in before marking yourself safe."
             onNavigateToLogin()
             return
         }
 
+        val shouldCancelActiveHelpRequest = pendingCancelActiveHelpRequestForMarkSafe
         showMarkSafeLocationConsentDialog = false
         markSafeLoading = true
         scope.launch {
             try {
+                if (shouldCancelActiveHelpRequest) {
+                    val cancellationResult =
+                        RequestHelpRepository.cancelActiveAuthenticatedHelpRequestsForMarkSafe(safeSessionToken)
+                    if (!cancellationResult.canMarkSafe) {
+                        emergencyError =
+                            "Your active help request could not be cancelled yet. Please try again once it syncs before marking yourself safe."
+                        return@launch
+                    }
+                }
                 val locationAttempt = if (shareLocation && !permissionDeniedBeforeCapture) {
                     DeviceLocationProvider.captureCurrentLocationForSharing(
                         context = context,
@@ -462,13 +516,22 @@ fun HomeScreen(
                     emergencyError = "Your session expired. Please log in again before marking yourself safe."
                     onNavigateToLogin()
                 } else {
-                    emergencyError = error.message.ifBlank { "Could not mark you safe. Please try again." }
+                    emergencyError = if (shouldCancelActiveHelpRequest) {
+                        "Your active help request could not be cancelled yet. Please try again once it syncs before marking yourself safe."
+                    } else {
+                        error.message.ifBlank { "Could not mark you safe. Please try again." }
+                    }
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
-                emergencyError = "Could not mark you safe. Please try again."
+                emergencyError = if (shouldCancelActiveHelpRequest) {
+                    "Your active help request could not be cancelled yet. Please try again once it syncs before marking yourself safe."
+                } else {
+                    "Could not mark you safe. Please try again."
+                }
             } finally {
+                pendingCancelActiveHelpRequestForMarkSafe = false
                 markSafeLoading = false
             }
         }
@@ -496,9 +559,44 @@ fun HomeScreen(
         }
     }
 
+    if (showActiveHelpRequestMarkSafeDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingCancelActiveHelpRequestForMarkSafe = false
+                showActiveHelpRequestMarkSafeDialog = false
+            },
+            title = {
+                Text(text = "Mark yourself safe?")
+            },
+            text = {
+                Text(
+                    text = "You have an active help request. Marking yourself safe will cancel or update that request. Are you sure you want to continue?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = ::confirmMarkSafeWithActiveHelpRequest) {
+                    Text("Mark safe")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingCancelActiveHelpRequestForMarkSafe = false
+                        showActiveHelpRequestMarkSafeDialog = false
+                    }
+                ) {
+                    Text("Keep request active")
+                }
+            }
+        )
+    }
+
     if (showMarkSafeLocationConsentDialog) {
         AlertDialog(
-            onDismissRequest = { showMarkSafeLocationConsentDialog = false },
+            onDismissRequest = {
+                pendingCancelActiveHelpRequestForMarkSafe = false
+                showMarkSafeLocationConsentDialog = false
+            },
             title = {
                 Text(text = "Share location with your safe status?")
             },
@@ -662,7 +760,7 @@ private fun HomeGreetingHero(
     val safetyTone = when (safetyStatus.lowercase()) {
         "safe" -> Triple(MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.onTertiary, "You're marked safe")
         "not_safe", "needs_help" -> Triple(MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.onError, "Help requested")
-        else -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Status unknown")
+        else -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "No safety status yet")
     }
     val greetingPrimary = if (isAuthenticated) "Hello" else "Welcome"
     val greetingDetail = if (isAuthenticated) {

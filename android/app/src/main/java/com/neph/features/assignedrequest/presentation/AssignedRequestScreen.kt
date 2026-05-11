@@ -358,8 +358,28 @@ fun AssignedRequestScreen(
                                 )
                             }
 
-                            request.bloodType?.let {
-                                DetailLine(label = "Blood type", value = it)
+                            if (request.shareProfileHealthInfoWithVolunteer) {
+                                request.bloodType?.let {
+                                    DetailLine(label = "Blood type", value = it)
+                                }
+
+                                if (request.medicalConditions.isNotEmpty()) {
+                                    DetailLine(
+                                        label = "Medical conditions",
+                                        value = request.medicalConditions.joinToString(", ")
+                                    )
+                                }
+
+                                if (request.chronicDiseases.isNotEmpty()) {
+                                    DetailLine(
+                                        label = "Chronic diseases",
+                                        value = request.chronicDiseases.joinToString(", ")
+                                    )
+                                }
+
+                                if (request.allergies.isNotEmpty()) {
+                                    DetailLine(label = "Allergies", value = request.allergies.joinToString(", "))
+                                }
                             }
                         }
                     }
