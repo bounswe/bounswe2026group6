@@ -216,6 +216,7 @@ CREATE TABLE help_requests (
     need_type              VARCHAR(200) NOT NULL,
     description            TEXT,
     blood_type             VARCHAR(10),
+    share_profile_health_info_with_volunteer BOOLEAN NOT NULL DEFAULT FALSE,
     contact_full_name      VARCHAR(200) NOT NULL,
     contact_phone          BIGINT NOT NULL,
     contact_alternative_phone BIGINT,

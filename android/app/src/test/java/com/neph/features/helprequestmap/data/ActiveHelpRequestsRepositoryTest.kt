@@ -34,7 +34,7 @@ class ActiveHelpRequestsRepositoryTest {
                     .put(
                         JSONObject()
                             .put("requestId", "req-assigned")
-                            .put("type", "search_and_rescue")
+                            .put("type", "search_rescue")
                             .put("status", "PENDING")
                             .put("urgencyLevel", "HIGH")
                             .put("createdAt", "2026-05-01T10:05:00.000Z")
@@ -199,7 +199,10 @@ class ActiveHelpRequestsRepositoryTest {
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("water"))
         assertEquals(CrisisRequestType.FOOD_WATER, ActiveHelpRequestsRepository.normalizeRequestType("food_water"))
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_rescue"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("fire_brigade"))
         assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("search_and_rescue"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("sar"))
+        assertEquals(CrisisRequestType.SEARCH_AND_RESCUE, ActiveHelpRequestsRepository.normalizeRequestType("rescue"))
         assertEquals(CrisisRequestType.OTHER, ActiveHelpRequestsRepository.normalizeRequestType("unknown"))
     }
 

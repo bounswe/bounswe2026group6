@@ -32,6 +32,7 @@ const ResourceLoadingMessage = "Loading resources in this area...";
 const ResourceEmptyMessage = "No resources were found in this visible area.";
 const ResourceErrorMessage = "Resources could not be loaded for this area. Please try again.";
 const ResourceProviderUnavailableMessage = "Gathering areas provider is temporarily unavailable. Please retry.";
+const CurrentLocationResolvingMessage = "Resolving your current location...";
 
 type CategoryOption = {
     key: string;
@@ -435,7 +436,7 @@ export default function GatheringAreasPage() {
             return;
         }
 
-        setInfoMessage("Resolving your current location...");
+        setInfoMessage(CurrentLocationResolvingMessage);
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -513,7 +514,9 @@ export default function GatheringAreasPage() {
         setError("");
         setFetchState("idle");
         setInfoMessage((current) =>
-            geolocationDeniedRef.current ? current : ResourceZoomedOutMessage
+            current === CurrentLocationResolvingMessage || geolocationDeniedRef.current
+                ? current
+                : ResourceZoomedOutMessage
         );
     }, []);
 
@@ -535,7 +538,12 @@ export default function GatheringAreasPage() {
     const isError = fetchState === "error";
     const isEmpty = fetchState === "empty" && isDiscoverable && Boolean(lastFetchedViewportKey);
     const isFilterEmpty = !isLoading && !isError && isDiscoverable && areas.length > 0 && filteredAreas.length === 0;
-    const searchContextLine = isDiscoverable
+    const searchContextLine = !isInitialState && !isDiscoverable && (
+        infoMessage === CurrentLocationResolvingMessage ||
+        infoMessage === "Location permission was denied or unavailable. Continue by moving the map manually."
+    )
+        ? infoMessage
+        : isDiscoverable
         ? "Showing resources in the visible map area."
         : ResourceZoomedOutMessage;
 
@@ -718,7 +726,7 @@ export default function GatheringAreasPage() {
                                         </p>
                                     ) : (
                                         <p className="gathering-areas-empty-detail">
-                                            {infoMessage || ResourceInitialMessage}
+                                            {ResourceInitialMessage}
                                         </p>
                                     )}
                                 </div>
@@ -804,7 +812,7 @@ export default function GatheringAreasPage() {
 
                     {isInitialState ? (
                         <div className="gathering-areas-status-box">
-                            <p>{ResourceInitialMessage}</p>
+                            <p>{infoMessage || ResourceInitialMessage}</p>
                         </div>
                     ) : null}
                 </SectionCard>

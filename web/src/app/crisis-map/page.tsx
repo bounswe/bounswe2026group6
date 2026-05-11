@@ -56,7 +56,13 @@ function normalizeType(type: string): CrisisRequestType {
     if (value === "first_aid") {
         return "FIRST_AID";
     }
-    if (value === "fire_brigade" || value === "search_and_rescue") {
+    if (
+        value === "search_rescue" ||
+        value === "search_and_rescue" ||
+        value === "sar" ||
+        value === "fire_brigade" ||
+        value === "rescue"
+    ) {
         return "SEARCH_AND_RESCUE";
     }
     if (value === "food" || value === "water" || value === "food_water") {

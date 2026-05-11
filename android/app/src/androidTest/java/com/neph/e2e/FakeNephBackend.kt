@@ -361,7 +361,7 @@ class FakeNephBackend {
             put(
                 JSONObject()
                     .put("requestId", "fake-map-assigned")
-                    .put("type", "search_and_rescue")
+                    .put("type", "search_rescue")
                     .put("status", "PENDING")
                     .put("urgencyLevel", "HIGH")
                     .put("createdAt", "2026-05-01T09:55:00.000Z")

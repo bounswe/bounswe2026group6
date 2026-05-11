@@ -140,7 +140,10 @@ object ActiveHelpRequestsRepository {
             "shelter" -> CrisisRequestType.SHELTER
             "first_aid" -> CrisisRequestType.FIRST_AID
             "search_rescue",
-            "search_and_rescue" -> CrisisRequestType.SEARCH_AND_RESCUE
+            "search_and_rescue",
+            "sar",
+            "fire_brigade",
+            "rescue" -> CrisisRequestType.SEARCH_AND_RESCUE
             "food",
             "water",
             "food_water" -> CrisisRequestType.FOOD_WATER

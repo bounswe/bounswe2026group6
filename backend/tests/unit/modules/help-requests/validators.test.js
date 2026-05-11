@@ -71,13 +71,13 @@ describe('help-requests validators', () => {
 	describe('validateCreateHelpRequest', () => {
 		function buildPayload() {
 			return {
-				helpTypes: ['first_aid', 'fire_brigade'],
+				helpTypes: ['first_aid', 'food_water'],
 				otherHelpText: '',
 				affectedPeopleCount: 3,
 				riskFlags: ['fire', 'electric_hazard'],
 				vulnerableGroups: ['children', 'pregnant'],
 				description: 'Apartment entrance blocked, one person bleeding.',
-				bloodType: 'A+',
+				shareProfileHealthInfoWithVolunteer: true,
 				location: {
 					country: 'turkiye',
 					city: 'istanbul',
@@ -99,11 +99,13 @@ describe('help-requests validators', () => {
 
 			expect(errors).toHaveLength(0);
 			expect(warnings).toEqual([]);
-			expect(value.helpTypes).toEqual(['first_aid', 'fire_brigade']);
+			expect(value.helpTypes).toEqual(['first_aid', 'food_water']);
 			expect(value.needType).toBe('first_aid');
 			expect(value.affectedPeopleCount).toBe(3);
 			expect(value.location.city).toBe('istanbul');
 			expect(value.contact.fullName).toBe('Ayse Yilmaz');
+			expect(value.bloodType).toBe('');
+			expect(value.shareProfileHealthInfoWithVolunteer).toBe(true);
 			expect(value.consentGiven).toBe(true);
 			expect(value.isSavedLocally).toBe(false);
 		});
@@ -146,6 +148,16 @@ describe('help-requests validators', () => {
 			expect(value.description).toBe('');
 			expect(value.location.neighborhood).toBe('');
 			expect(value.contact.fullName).toBe('');
+			expect(value.shareProfileHealthInfoWithVolunteer).toBe(false);
+		});
+
+		test('rejects removed help types', () => {
+			const payload = buildPayload();
+			payload.helpTypes = ['fire_brigade', 'evacuation_transport', 'security_support', 'other'];
+
+			const { errors } = validateCreateHelpRequest(payload);
+
+			expect(errors).toContain('`helpTypes` can only include: first_aid, food_water, shelter, search_rescue.');
 		});
 
 		test('rejects invalid provided affectedPeopleCount instead of defaulting it', () => {
@@ -187,13 +199,12 @@ describe('help-requests validators', () => {
 		test('trims optional strings while preserving numeric phones', () => {
 			const payload = buildPayload();
 			payload.otherHelpText = '  extra detail  ';
-			payload.bloodType = '  A+  ';
 			payload.location.extraAddress = '  back door  ';
 
 			const { value } = validateCreateHelpRequest(payload);
 
 			expect(value.otherHelpText).toBe('extra detail');
-			expect(value.bloodType).toBe('A+');
+			expect(value.bloodType).toBe('');
 			expect(value.location.extraAddress).toBe('back door');
 			expect(value.contact.alternativePhone).toBe(5321234567);
 		});

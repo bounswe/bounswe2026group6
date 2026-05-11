@@ -39,13 +39,13 @@ function minutesFromNow(minutes) {
 
 function buildCreatePayload(overrides = {}) {
 	return {
-		helpTypes: ['first_aid', 'fire_brigade'],
+		helpTypes: ['first_aid', 'food_water'],
 		otherHelpText: '',
 		affectedPeopleCount: 3,
 		riskFlags: ['fire', 'electric_hazard'],
 		vulnerableGroups: ['children', 'pregnant'],
 		description: 'Apartment entrance blocked, one person bleeding.',
-		bloodType: 'A+',
+		shareProfileHealthInfoWithVolunteer: true,
 		location: {
 			country: 'turkiye',
 			city: 'istanbul',
@@ -200,7 +200,7 @@ describe('help-requests integration', () => {
 		expect(response.status).toBe(201);
 		expect(response.body.guestAccessToken).toEqual(expect.any(String));
 		expect(response.body.request.userId).toBeNull();
-		expect(response.body.request.helpTypes).toEqual(['first_aid', 'fire_brigade']);
+		expect(response.body.request.helpTypes).toEqual(['first_aid', 'food_water']);
 		expect(response.body.request.contact.fullName).toBe('Ayse Yilmaz');
 		expect(response.body.request.status).toBe('SYNCED');
 		expect(response.body.request.urgencyLevel).toBe('HIGH');
@@ -259,7 +259,8 @@ describe('help-requests integration', () => {
 		expect(response.body.request.affectedPeopleCount).toBe(payload.affectedPeopleCount);
 		expect(response.body.request.riskFlags).toEqual(payload.riskFlags);
 		expect(response.body.request.vulnerableGroups).toEqual(payload.vulnerableGroups);
-		expect(response.body.request.bloodType).toBe(payload.bloodType);
+		expect(response.body.request.bloodType).toBe('');
+		expect(response.body.request.shareProfileHealthInfoWithVolunteer).toBe(true);
 		expect(response.body.request.location).toEqual(payload.location);
 		expect(response.body.request.location).not.toHaveProperty('coordinate');
 		expect(response.body.request.location).not.toHaveProperty('latitude');
@@ -409,7 +410,6 @@ describe('help-requests integration', () => {
 
 		const payload = buildCreatePayload({
 			otherHelpText: '  generator needed  ',
-			bloodType: '  A+  ',
 			location: {
 				country: 'turkiye',
 				city: 'istanbul',
@@ -431,7 +431,7 @@ describe('help-requests integration', () => {
 
 		expect(response.status).toBe(201);
 		expect(response.body.request.otherHelpText).toBe('generator needed');
-		expect(response.body.request.bloodType).toBe('A+');
+		expect(response.body.request.bloodType).toBe('');
 		expect(response.body.request.location.extraAddress).toBe('Need entry from the back');
 		expect(response.body.request.contact.phone).toBe(5052318546);
 		expect(response.body.request.contact.alternativePhone).toBe(5321234567);
@@ -562,12 +562,12 @@ describe('help-requests integration', () => {
 		await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token1}`)
-			.send(buildCreatePayload({ helpTypes: ['food'] }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'] }));
 
 		await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token1}`)
-			.send(buildCreatePayload({ helpTypes: ['water'] }));
+			.send(buildCreatePayload({ helpTypes: ['shelter'] }));
 
 		await request(app)
 			.post('/api/help-requests')
@@ -598,12 +598,12 @@ describe('help-requests integration', () => {
 		const activeCreate = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['food'], description: 'active request' }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'], description: 'active request' }));
 
 		const resolvedCreate = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['water'], description: 'resolved request' }));
+			.send(buildCreatePayload({ helpTypes: ['shelter'], description: 'resolved request' }));
 
 		const cancelledCreate = await request(app)
 			.post('/api/help-requests')
@@ -670,7 +670,7 @@ describe('help-requests integration', () => {
 		expect(response.status).toBe(200);
 		expect(response.body.request.id).toBe(requestId);
 		expect(response.body.request.description).toBe('broken leg');
-		expect(response.body.request.helpTypes).toEqual(['first_aid', 'fire_brigade']);
+		expect(response.body.request.helpTypes).toEqual(['first_aid', 'food_water']);
 	});
 
 	test('GET /api/help-requests/:requestId returns 401 without auth and guest token', async () => {
@@ -847,7 +847,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token1}`)
-			.send(buildCreatePayload({ helpTypes: ['food'] }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -981,7 +981,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['food'] }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'] }));
 
 		const requestId = createResponse.body.request.id;
 		expect(createResponse.body.request.status).toBe('SYNCED');
@@ -1005,7 +1005,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['food'] }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -1105,7 +1105,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['food'] }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -1132,7 +1132,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['food'] }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -1212,7 +1212,7 @@ describe('help-requests integration', () => {
 		const createResponse = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
-			.send(buildCreatePayload({ helpTypes: ['water'] }));
+			.send(buildCreatePayload({ helpTypes: ['shelter'] }));
 
 		const requestId = createResponse.body.request.id;
 
@@ -1263,7 +1263,7 @@ describe('help-requests integration', () => {
 
 		expect(assignmentRes.status).toBe(200);
 		const asg = assignmentRes.body.assignment;
-		expect(asg.help_types).toEqual(['first_aid', 'fire_brigade']);
+		expect(asg.help_types).toEqual(['first_aid', 'food_water']);
 		expect(asg.affected_people_count).toBe(3);
 		expect(asg.risk_flags).toEqual(['fire', 'electric_hazard']);
 		expect(asg.vulnerable_groups).toEqual(['children', 'pregnant']);
@@ -1418,7 +1418,7 @@ describe('help-requests integration', () => {
 		const createRes = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${requesterToken}`)
-			.send(buildCreatePayload({ helpTypes: ['fire_brigade'], needType: 'fire_brigade' }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'], needType: 'food_water' }));
 
 		const requestId = createRes.body.request.id;
 
@@ -1488,7 +1488,7 @@ describe('help-requests integration', () => {
 		const createRes = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${requesterToken}`)
-			.send(buildCreatePayload({ helpTypes: ['food'], needType: 'food' }));
+			.send(buildCreatePayload({ helpTypes: ['food_water'], needType: 'food_water' }));
 
 		const requestId = createRes.body.request.id;
 
@@ -1704,7 +1704,7 @@ describe('help-requests integration', () => {
 		const response = await request(app)
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${buildAuthToken(requesterId)}`)
-			.send(buildCreatePayload({ helpTypes: ['first_aid', 'fire_brigade'] }));
+			.send(buildCreatePayload({ helpTypes: ['first_aid', 'search_rescue'] }));
 
 		expect(response.status).toBe(201);
 		expect(response.body.request.status).toBe('MATCHED');
@@ -1741,7 +1741,7 @@ describe('help-requests integration', () => {
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${buildAuthToken(requesterId)}`)
 			.send(buildCreatePayload({
-				helpTypes: ['first_aid', 'fire_brigade'],
+				helpTypes: ['first_aid', 'search_rescue'],
 				location: {
 					country: 'turkiye',
 					city: 'istanbul',
@@ -1927,7 +1927,7 @@ describe('help-requests integration', () => {
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${token}`)
 			.send(buildCreatePayload({
-				helpTypes: ['food'],
+				helpTypes: ['food_water'],
 				location: {
 					country: 'turkiye',
 					city: 'ankara',
@@ -2085,7 +2085,7 @@ describe('help-requests integration', () => {
 			.post('/api/help-requests')
 			.set('Authorization', `Bearer ${requesterToken}`)
 			.send(buildCreatePayload({
-				helpTypes: ['food'],
+				helpTypes: ['food_water'],
 				location: {
 					country: 'turkiye',
 					city: 'istanbul',

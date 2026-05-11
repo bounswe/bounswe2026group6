@@ -30,6 +30,7 @@ class RequestHelpOfflineMappingTest {
         assertEquals("PENDING_SYNC", entity.status)
         assertEquals("Need water and medication", entity.description)
         assertEquals(listOf("food_water", "first_aid"), entity.helpTypesJson.jsonArrayToStringList())
+        assertTrue(entity.shareProfileHealthInfoWithVolunteer)
         assertFalse(entity.isDeleted)
     }
 
@@ -42,6 +43,7 @@ class RequestHelpOfflineMappingTest {
         assertEquals(3, json.getInt("affectedPeopleCount"))
         assertEquals("Kadikoy", json.getJSONObject("location").getString("district"))
         assertEquals(5551234567L, json.getJSONObject("contact").getLong("phone"))
+        assertTrue(json.getBoolean("shareProfileHealthInfoWithVolunteer"))
         assertTrue(json.getBoolean("consentGiven"))
     }
 
@@ -158,7 +160,7 @@ class RequestHelpOfflineMappingTest {
             put("riskFlags", JSONArray(listOf("fire")))
             put("vulnerableGroups", JSONArray(listOf("elderly")))
             put("description", "Need support")
-            put("bloodType", "A+")
+            put("shareProfileHealthInfoWithVolunteer", true)
             put("status", "RESOLVED")
             put("urgencyLevel", "MEDIUM")
             put("priorityLevel", "MEDIUM")
@@ -184,6 +186,7 @@ class RequestHelpOfflineMappingTest {
         assertEquals("2026-04-26T11:30:00.000Z", entity.resolvedAt)
         assertNull(entity.cancelledAt)
         assertEquals("2026-04-26T10:00:00.000Z", entity.serverCreatedAt)
+        assertTrue(entity.shareProfileHealthInfoWithVolunteer)
     }
 
     @Test
@@ -264,6 +267,8 @@ class RequestHelpOfflineMappingTest {
         assertEquals(29.009, submission.location.longitude ?: 0.0, 0.0)
         assertEquals("gps", submission.location.coordinateSource)
         assertEquals(12.0, submission.location.coordinateAccuracyMeters ?: 0.0, 0.0)
+        assertEquals(listOf("search_rescue"), submission.helpTypes)
+        assertFalse(submission.shareProfileHealthInfoWithVolunteer)
         assertTrue(submission.consentGiven)
     }
 
@@ -275,7 +280,7 @@ class RequestHelpOfflineMappingTest {
             description = "Need water and medication",
             riskFlags = listOf("Flooding"),
             vulnerableGroups = listOf("Elderly"),
-            bloodType = "A+",
+            shareProfileHealthInfoWithVolunteer = true,
             location = RequestHelpLocationSubmission(
                 country = "Turkey",
                 city = "Istanbul",

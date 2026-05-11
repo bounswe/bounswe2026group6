@@ -74,7 +74,7 @@ data class RequestHelpSubmission(
     val description: String,
     val riskFlags: List<String>,
     val vulnerableGroups: List<String>,
-    val bloodType: String,
+    val shareProfileHealthInfoWithVolunteer: Boolean,
     val location: RequestHelpLocationSubmission,
     val contact: RequestHelpContactSubmission,
     val consentGiven: Boolean
@@ -688,7 +688,7 @@ internal fun RequestHelpSubmission.toJson(): JSONObject {
         put("description", description)
         put("riskFlags", JSONArray(riskFlags))
         put("vulnerableGroups", JSONArray(vulnerableGroups))
-        put("bloodType", bloodType)
+        put("shareProfileHealthInfoWithVolunteer", shareProfileHealthInfoWithVolunteer)
         put(
             "location",
             JSONObject().apply {
@@ -771,13 +771,13 @@ internal fun buildEmergencyDraftSubmission(
     val extraAddress = reverseLocation.extraAddress?.trim()?.takeIf { it.isNotBlank() } ?: ""
 
     return RequestHelpSubmission(
-        helpTypes = listOf("other"),
-        otherHelpText = "Emergency assistance requested from mobile app",
+        helpTypes = listOf("search_rescue"),
+        otherHelpText = "",
         affectedPeopleCount = 1,
         description = "Emergency assistance requested from mobile app. Details pending.",
         riskFlags = emptyList(),
         vulnerableGroups = emptyList(),
-        bloodType = profile.bloodType.orEmpty(),
+        shareProfileHealthInfoWithVolunteer = false,
         location = RequestHelpLocationSubmission(
             country = country,
             city = city,
@@ -816,7 +816,8 @@ internal fun RequestHelpSubmission.toEntity(
         riskFlagsJson = JSONArray(riskFlags).toString(),
         vulnerableGroupsJson = JSONArray(vulnerableGroups).toString(),
         description = description,
-        bloodType = bloodType,
+        bloodType = "",
+        shareProfileHealthInfoWithVolunteer = shareProfileHealthInfoWithVolunteer,
         country = location.country,
         city = location.city,
         district = location.district,
@@ -881,6 +882,7 @@ internal fun JSONObject.toHelpRequestEntity(
         vulnerableGroupsJson = optJSONArray("vulnerableGroups").orEmptyJsonArrayString(),
         description = optString("description"),
         bloodType = optString("bloodType"),
+        shareProfileHealthInfoWithVolunteer = optBoolean("shareProfileHealthInfoWithVolunteer", false),
         country = location.optString("country"),
         city = location.optString("city"),
         district = location.optString("district"),
