@@ -95,6 +95,8 @@ describe('notifications service', () => {
       title: 'Title',
       body: 'Body',
       isRead: false,
+      readAt: null,
+      createdAt: '2026-04-22T20:00:00.000Z',
     });
     expect(repository.insertNotificationDelivery).toHaveBeenCalled();
   });
@@ -136,8 +138,35 @@ describe('notifications service', () => {
       cursorNotificationId: null,
     });
     expect(result.items).toHaveLength(2);
+    expect(result.items[0]).toMatchObject({
+      id: 'notif_2',
+      createdAt: '2026-04-22T20:00:00.000Z',
+    });
     expect(result.unreadCount).toBe(3);
     expect(typeof result.nextCursor).toBe('string');
+  });
+
+  test('listMyNotifications normalizes offsetless notification timestamps as UTC ISO strings', async () => {
+    const rows = [
+      createStoredNotification({
+        id: 'notif_1',
+        createdAt: '2026-04-22 20:00:00',
+        readAt: '2026-04-22T20:05:00',
+      }),
+    ];
+    repository.listNotificationsByRecipient.mockResolvedValue(rows);
+    repository.countUnreadNotifications.mockResolvedValue(1);
+
+    const result = await listMyNotifications('user_1', {
+      limit: 20,
+      unreadOnly: false,
+      cursor: null,
+    });
+
+    expect(result.items[0]).toMatchObject({
+      createdAt: '2026-04-22T20:00:00.000Z',
+      readAt: '2026-04-22T20:05:00.000Z',
+    });
   });
 
   test('listMyNotifications rejects malformed cursor', async () => {
