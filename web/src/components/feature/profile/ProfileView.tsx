@@ -1034,7 +1034,7 @@ export default function ProfileView() {
                         <LocationPicker
                             value={locationPickerValue}
                             onChange={handleLocationPickerChange}
-                            label="Select location from map or search"
+                            label="Select location from map"
                         />
                     </div>
 

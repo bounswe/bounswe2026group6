@@ -1,11 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { TextInput } from "@/components/ui/inputs/TextInput";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import { HelperText } from "@/components/ui/display/HelperText";
 import { LocationPickerMap } from "@/components/feature/location/LocationPickerMap";
-import { reverseLocation, searchLocations } from "@/lib/location";
+import { reverseLocation } from "@/lib/location";
 import { LocationSearchItem } from "@/types/location";
 
 type LocationPickerValue = {
@@ -74,65 +73,17 @@ function mapGeolocationError(geoError: GeolocationPositionError) {
 }
 
 export function LocationPicker({
-    countryCode = "TR",
     value,
     onChange,
     label = "Select location from map",
 }: LocationPickerProps) {
-    const searchInputId = React.useId();
-    const [query, setQuery] = React.useState("");
-    const [searching, setSearching] = React.useState(false);
     const [resolving, setResolving] = React.useState(false);
-    const [results, setResults] = React.useState<LocationSearchItem[]>([]);
     const [error, setError] = React.useState("");
-    const skipNextSearchRef = React.useRef(false);
-    const searchRequestIdRef = React.useRef(0);
     const reverseRequestIdRef = React.useRef(0);
 
     const center = value
         ? { latitude: value.latitude, longitude: value.longitude }
         : DEFAULT_CENTER;
-
-    const handleSearch = React.useCallback(async () => {
-        if (query.trim().length < 2) {
-            setResults([]);
-            return;
-        }
-
-        if (skipNextSearchRef.current) {
-            skipNextSearchRef.current = false;
-            return;
-        }
-
-        const currentSearchRequestId = ++searchRequestIdRef.current;
-
-        try {
-            setSearching(true);
-            setError("");
-
-            const response = await searchLocations({
-                q: query.trim(),
-                countryCode,
-                limit: 10,
-            });
-
-            if (currentSearchRequestId !== searchRequestIdRef.current) {
-                return;
-            }
-
-            setResults(response.items);
-        } catch (err) {
-            if (currentSearchRequestId !== searchRequestIdRef.current) {
-                return;
-            }
-
-            setError(err instanceof Error ? err.message : "Could not search locations.");
-        } finally {
-            if (currentSearchRequestId === searchRequestIdRef.current) {
-                setSearching(false);
-            }
-        }
-    }, [countryCode, query]);
 
     const handleResolveCoordinates = React.useCallback(
         async (
@@ -254,60 +205,18 @@ export function LocationPicker({
             });
     }, [handleResolveCoordinates]);
 
-    React.useEffect(() => {
-        const timeout = setTimeout(() => {
-            void handleSearch();
-        }, 350);
-
-        return () => clearTimeout(timeout);
-    }, [handleSearch]);
-
     return (
         <div className="location-picker-wrap flex flex-col gap-3">
             <HelperText className="text-sm text-[color:var(--text-primary)]">{label}</HelperText>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <TextInput
-                    id={searchInputId}
-                    label="Search location"
-                    placeholder="Search location"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                />
-
-                <PrimaryButton
-                    type="button"
-                    className="sm:w-52"
-                    onClick={handleUseCurrentLocation}
-                    loading={resolving}
-                >
-                    Use Current Location
-                </PrimaryButton>
-            </div>
-
-            {results.length > 0 ? (
-                <div className="max-h-44 overflow-auto rounded-[10px] border border-[color:var(--border-subtle)] bg-[color:var(--surface-card)]">
-                    {results.map((item) => (
-                        <button
-                            key={`${item.placeId}-${item.latitude}-${item.longitude}`}
-                            type="button"
-                            className="w-full border-b border-[color:var(--divider)] px-3 py-2 text-left text-sm text-[color:var(--text-primary)] transition-colors hover:bg-[color:var(--surface-soft)]"
-                            onClick={() => {
-                                onChange({
-                                    ...toPickerValue(item),
-                                    source: "search",
-                                    capturedAt: new Date().toISOString(),
-                                });
-                                skipNextSearchRef.current = true;
-                                setResults([]);
-                                setQuery(item.displayName);
-                            }}
-                        >
-                            {item.displayName}
-                        </button>
-                    ))}
-                </div>
-            ) : null}
+            <PrimaryButton
+                type="button"
+                className="w-full sm:w-52"
+                onClick={handleUseCurrentLocation}
+                loading={resolving}
+            >
+                Use Current Location
+            </PrimaryButton>
 
             <LocationPickerMap
                 center={center}
@@ -334,7 +243,6 @@ export function LocationPicker({
                 }}
             />
 
-            {searching ? <HelperText>Searching locations...</HelperText> : null}
             {resolving ? <HelperText>Resolving selected coordinates...</HelperText> : null}
 
             {value ? (
