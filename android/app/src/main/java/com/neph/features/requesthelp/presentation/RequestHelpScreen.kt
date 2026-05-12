@@ -1313,7 +1313,7 @@ fun RequestHelpScreen(
             }
 
             PrimaryButton(
-                text = "Send Help Request",
+                text = requestHelpPrimaryActionLabel(activeDraftLocalId),
                 onClick = ::handleSubmit,
                 modifier = Modifier
                     .then(
@@ -1333,6 +1333,10 @@ fun RequestHelpScreen(
             )
         }
     }
+}
+
+internal fun requestHelpPrimaryActionLabel(draftLocalId: String?): String {
+    return if (draftLocalId.isNullOrBlank()) "Send Help Request" else "Save Changes"
 }
 
 @Composable
