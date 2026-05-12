@@ -43,6 +43,7 @@ import com.neph.features.helprequestmap.data.ActiveHelpRequestsResult
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsRepository
 import com.neph.features.helprequestmap.data.CrisisRequestType
 import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.navigation.Routes
@@ -246,6 +247,9 @@ fun HelpRequestMapScreen(
     var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
     var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
     var mapResetNonce by remember { mutableStateOf(0) }
+    var currentLocation by remember { mutableStateOf<CurrentDeviceLocation?>(null) }
+    var attemptedInitialLocation by remember { mutableStateOf(false) }
+    var initialLocationPermissionRequestPending by remember { mutableStateOf(false) }
     var initialMarkerFitApplied by remember { mutableStateOf(false) }
     var markerFitBoundsToken by remember { mutableStateOf<Int?>(null) }
 
@@ -287,12 +291,14 @@ fun HelpRequestMapScreen(
         viewportRefreshNonce += 1
     }
 
-    fun requestCurrentLocationAndRefresh() {
+    fun requestCurrentLocationAndRefresh(silent: Boolean = false) {
         scope.launch {
             loading = true
             backgroundUpdating = false
             errorMessage = ""
-            infoMessage = ""
+            if (!silent) {
+                infoMessage = ""
+            }
 
             try {
                 val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
@@ -302,6 +308,7 @@ fun HelpRequestMapScreen(
 
                 val location = attempt.location
                 if (location != null) {
+                    currentLocation = location
                     viewportRequestSerial += 1
                     currentViewport = null
                     pendingViewport = null
@@ -313,24 +320,29 @@ fun HelpRequestMapScreen(
                     markerFitBoundsToken = null
                     selectedRequestId = null
                     lastFetchedViewportKey = null
+                    infoMessage = ""
                     loading = false
                     backgroundUpdating = false
                     return@launch
                 }
 
                 loading = false
-                infoMessage = when (attempt.warning) {
-                    CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Location permission was denied. Help request map was not recentered."
+                if (!silent) {
+                    infoMessage = when (attempt.warning) {
+                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                            "Location permission was denied. Help request map was not recentered."
 
-                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
-                    null -> "Current location is unavailable. Help request map was not recentered."
+                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                        null -> "Current location is unavailable. Help request map was not recentered."
+                    }
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
                 loading = false
-                infoMessage = "Current location is unavailable. Help request map was not recentered."
+                if (!silent) {
+                    infoMessage = "Current location is unavailable. Help request map was not recentered."
+                }
             }
         }
     }
@@ -438,13 +450,17 @@ fun HelpRequestMapScreen(
     }
 
     val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        val isInitialRequest = initialLocationPermissionRequestPending
+        initialLocationPermissionRequestPending = false
         if (result.granted) {
-            requestCurrentLocationAndRefresh()
+            requestCurrentLocationAndRefresh(silent = isInitialRequest)
         } else {
             errorMessage = ""
             loading = false
             backgroundUpdating = false
-            infoMessage = "Location permission was denied. Help request map was not recentered."
+            if (!isInitialRequest) {
+                infoMessage = "Location permission was denied. Help request map was not recentered."
+            }
         }
     }
 
@@ -452,6 +468,17 @@ fun HelpRequestMapScreen(
         if (locationPermissionRequester.refreshPermissionState()) {
             requestCurrentLocationAndRefresh()
         } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (attemptedInitialLocation) return@LaunchedEffect
+        attemptedInitialLocation = true
+        if (locationPermissionRequester.refreshPermissionState()) {
+            requestCurrentLocationAndRefresh(silent = true)
+        } else {
+            initialLocationPermissionRequestPending = true
             locationPermissionRequester.requestPermission()
         }
     }
@@ -474,6 +501,7 @@ fun HelpRequestMapScreen(
             pendingViewport = viewport
         } else {
             viewportRequestSerial += 1
+            pendingViewport = null
             requests = emptyList()
             selectedRequestId = null
             lastFetchedViewportKey = null
@@ -544,6 +572,8 @@ fun HelpRequestMapScreen(
                     updatingResources = backgroundUpdating,
                     mapCenterLatitude = mapCenterLatitude,
                     mapCenterLongitude = mapCenterLongitude,
+                    currentLocationLatitude = currentLocation?.latitude,
+                    currentLocationLongitude = currentLocation?.longitude,
                     mapZoom = mapZoom,
                     mapResetToken = mapResetNonce,
                     fitBoundsRequestToken = markerFitBoundsToken,
@@ -918,6 +948,8 @@ private fun CrisisRequestMapPanel(
     updatingResources: Boolean = false,
     mapCenterLatitude: Double = TurkeyOverviewLatitude,
     mapCenterLongitude: Double = TurkeyOverviewLongitude,
+    currentLocationLatitude: Double? = null,
+    currentLocationLongitude: Double? = null,
     mapZoom: Int = TurkeyOverviewZoom,
     mapResetToken: Int = 0,
     fitBoundsRequestToken: Int? = null,
@@ -1009,6 +1041,8 @@ private fun CrisisRequestMapPanel(
                 currentMapInstanceId = { currentMapInstanceIdState.value },
                 centerLatitude = effectiveCenterLatitude,
                 centerLongitude = effectiveCenterLongitude,
+                currentLocationLatitude = currentLocationLatitude,
+                currentLocationLongitude = currentLocationLongitude,
                 markers = markers,
                 selectedMarkerId = selectedRequestId,
                 mapHeightCssPx = HelpRequestMapHeightCssPx,
