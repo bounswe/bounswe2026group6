@@ -224,9 +224,29 @@ Debug Android emulator builds use `http://10.0.2.2:3000/api` to reach the host b
 
 The signed release APK must be attached to the GitHub Release manually or by the release workflow.
 
+### Final Boğaziçi demo data
+
+Final demo data is stored in the normal backend migration flow:
+
+- `backend/migrations/20260512_120000__seed_bogazici_final_demo_data.sql`
+
+It is applied by the normal backend migration runner. In Docker Compose, backend migrations run automatically on startup, so no separate `ENABLE_DEMO_SEED=true npm run seed:demo` command is needed for the Boğaziçi final demo data after migrations run. The old `backend/demo-migrations/` flow is optional legacy demo data only.
+
+Boğaziçi final demo accounts:
+
+| Email | Password |
+| --- | --- |
+| `bogazici_reserve_1@neph.test` | `DemoPass123!` |
+| `bogazici_reserve_2@neph.test` | `DemoPass123!` |
+| `bogazici_reserve_3@neph.test` | `DemoPass123!` |
+| `bogazici_reserve_4@neph.test` | `DemoPass123!` |
+| `bogazici_assigned_1@neph.test` | `DemoPass123!` |
+| `bogazici_assigned_2@neph.test` | `DemoPass123!` |
+| `bogazici_requester_new_hall@neph.test` | `DemoPass123!` |
+
 ### Optional legacy demo data seed
 
-Demo-ready data is stored as SQL seed migrations under `backend/demo-migrations/`, but it is not applied by the normal backend migration flow. This keeps regular `npm run migrate` and `start:with-migrations` safe for normal environments.
+Additional legacy demo-ready data is stored as SQL seed migrations under `backend/demo-migrations/`, but it is not applied by the normal backend migration flow. This keeps regular `npm run migrate` and `start:with-migrations` safe for normal environments.
 
 To apply the demo dataset intentionally, run the regular migrations first and then run the guarded demo seed command:
 
@@ -292,7 +312,7 @@ Relevant files:
 - `web/Dockerfile`
 - `infra/docker/postgres/init.sql`
 
-### Production setup
+## Production setup
 
 Production deployment requires backend production environment values for database credentials or `DATABASE_URL`, a secure `JWT_SECRET`, SMTP values if email flows are used, Google OAuth values if Google Sign-In is used, and push notification values if push delivery is enabled. It also requires web production values for `NEXT_PUBLIC_API_BASE_URL` and `API_BASE_URL`.
 
