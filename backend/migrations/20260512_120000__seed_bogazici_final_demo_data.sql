@@ -437,4 +437,24 @@ VALUES
 -- a non-demo assignment into a demo assignment.
 ON CONFLICT (volunteer_id) WHERE is_cancelled = FALSE DO NOTHING;
 
+-- Keep demo request status consistent when DO NOTHING preserves an existing
+-- non-demo active assignment for the intended demo volunteer.
+UPDATE help_requests hr
+SET status = CASE
+  WHEN EXISTS (
+    SELECT 1
+    FROM assignments a
+    WHERE a.assignment_id = expected.assignment_id
+      AND a.request_id = expected.request_id
+      AND a.is_cancelled = FALSE
+  ) THEN 'ASSIGNED'::request_status
+  ELSE 'PENDING'::request_status
+END
+FROM (
+  VALUES
+    ('demo_bogazici_request_new_hall_medical', 'demo_bogazici_assignment_new_hall_medical'),
+    ('demo_bogazici_request_hisarustu_food', 'demo_bogazici_assignment_hisarustu_food')
+) AS expected(request_id, assignment_id)
+WHERE hr.request_id = expected.request_id;
+
 COMMIT;
