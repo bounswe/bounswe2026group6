@@ -45,15 +45,13 @@ private sealed interface NewsUiState {
 
 private const val SummaryMaxLength = 180
 
-private data class AnnouncementSummary(val text: String, val hasMore: Boolean)
-
-private fun summarizeAnnouncementContent(content: String): AnnouncementSummary {
+private fun summarizeAnnouncementContent(content: String): String {
     val normalized = content.replace(Regex("\\s+"), " ").trim()
     if (normalized.length <= SummaryMaxLength) {
-        return AnnouncementSummary(text = normalized, hasMore = false)
+        return normalized
     }
     val truncated = normalized.substring(0, SummaryMaxLength - 1).trim()
-    return AnnouncementSummary(text = "$truncated…", hasMore = true)
+    return "$truncated…"
 }
 
 @Composable
@@ -254,7 +252,7 @@ private fun AnnouncementList(
                 )
 
                 Text(
-                    text = summary.text,
+                    text = summary,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

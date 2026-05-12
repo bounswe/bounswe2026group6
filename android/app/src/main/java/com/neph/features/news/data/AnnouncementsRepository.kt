@@ -13,9 +13,10 @@ data class Announcement(
 
 object AnnouncementsRepository {
     private const val DefaultLimit = 100
+    private const val MaxLimit = 100
 
     suspend fun fetchAnnouncements(limit: Int = DefaultLimit): List<Announcement> {
-        val normalizedLimit = limit.coerceIn(1, 200)
+        val normalizedLimit = limit.coerceIn(1, MaxLimit)
         val response = JsonHttpClient.request(
             path = "/announcements?limit=$normalizedLimit"
         )
