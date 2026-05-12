@@ -15,14 +15,22 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.neph.BuildConfig
 import org.json.JSONArray
@@ -214,6 +222,44 @@ fun leafletViewportBboxString(viewport: LeafletMapViewport): String {
         viewport.east,
         viewport.north
     )
+}
+
+internal fun leafletMapStatusOverlayMessage(
+    mapInitialized: Boolean,
+    mapError: String,
+    loadingResources: Boolean,
+    updatingResources: Boolean
+): String? {
+    return when {
+        !mapInitialized && mapError.isBlank() -> "Loading map..."
+        loadingResources -> "Loading resources in this area..."
+        updatingResources -> "Updating visible area..."
+        else -> null
+    }
+}
+
+@Composable
+internal fun LeafletMapStatusOverlay(
+    message: String?,
+    modifier: Modifier = Modifier
+) {
+    if (message.isNullOrBlank()) return
+
+    Box(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(10.dp)
+            )
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")

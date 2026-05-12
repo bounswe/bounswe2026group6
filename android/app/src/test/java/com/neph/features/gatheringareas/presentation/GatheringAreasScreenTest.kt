@@ -110,6 +110,7 @@ class GatheringAreasScreenTest {
         )
 
         assertTrue(isGatheringAreasProviderUnavailable(fallback))
+        assertFalse(shouldMarkGatheringAreasViewportFetched(fallback))
         assertEquals(
             "Provider did not return markers for this area.",
             gatheringAreasMapEmptyMessage(
@@ -130,6 +131,7 @@ class GatheringAreasScreenTest {
             "Showing cached gathering areas; provider data may be temporarily unavailable.",
             gatheringAreasResultHelperMessage(stale)
         )
+        assertTrue(shouldMarkGatheringAreasViewportFetched(stale))
     }
 
     @Test

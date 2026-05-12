@@ -2,6 +2,7 @@ package com.neph.ui.map
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -177,6 +178,57 @@ class LeafletMapWebViewTest {
                 viewportKey = "29.0010,40.9000,29.1010,41.1000,z12",
                 lastFetchedViewportKey = "29.0004,40.9000,29.1004,41.1000,z12",
                 manualRefresh = false
+            )
+        )
+    }
+
+    @Test
+    fun leafletMapStatusOverlayMessage_prefersMapInitializationBeforeResourceStates() {
+        assertEquals(
+            "Loading map...",
+            leafletMapStatusOverlayMessage(
+                mapInitialized = false,
+                mapError = "",
+                loadingResources = true,
+                updatingResources = true
+            )
+        )
+        assertNull(
+            leafletMapStatusOverlayMessage(
+                mapInitialized = false,
+                mapError = LeafletMapInitializationTimeoutMessage,
+                loadingResources = false,
+                updatingResources = false
+            )
+        )
+    }
+
+    @Test
+    fun leafletMapStatusOverlayMessage_distinguishesLoadingAndUpdatingResources() {
+        assertEquals(
+            "Loading resources in this area...",
+            leafletMapStatusOverlayMessage(
+                mapInitialized = true,
+                mapError = "",
+                loadingResources = true,
+                updatingResources = true
+            )
+        )
+        assertEquals(
+            "Updating visible area...",
+            leafletMapStatusOverlayMessage(
+                mapInitialized = true,
+                mapError = "",
+                loadingResources = false,
+                updatingResources = true
+            )
+        )
+        assertNull(
+            leafletMapStatusOverlayMessage(
+                mapInitialized = true,
+                mapError = "",
+                loadingResources = false,
+                updatingResources = false
             )
         )
     }

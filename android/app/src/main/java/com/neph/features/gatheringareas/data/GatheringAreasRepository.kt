@@ -53,7 +53,7 @@ object GatheringAreasRepository {
     internal const val DefaultLimit = 50
     private const val MaxRadiusMeters = 10000
     private const val MaxLimit = 50
-    private const val NearbyRequestTimeoutMillis = 8000L
+    private const val NearbyRequestTimeoutMillis = 15_000L
     private const val DebugLogTag = "GatheringAreasRepo"
 
     suspend fun fetchNearbyGatheringAreas(
