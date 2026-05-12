@@ -43,7 +43,7 @@ import com.neph.features.auth.presentation.components.SocialAuthMode
 import com.neph.features.auth.util.isValidEmail
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
-import com.neph.ui.components.display.BrandLogo
+import com.neph.ui.components.display.AuthHeaderAppLogo
 import com.neph.ui.components.display.Divider
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.inputs.AppTextField
@@ -260,10 +260,7 @@ fun SignupScreen(
         title = "Create Account",
         subtitle = "Set up your account and get ready before emergencies happen.",
         logoContent = {
-            BrandLogo(
-                size = 64.dp,
-                showWordmark = false
-            )
+            AuthHeaderAppLogo(size = 64.dp)
         },
         footerContent = {
             AuthFooterLinks(
