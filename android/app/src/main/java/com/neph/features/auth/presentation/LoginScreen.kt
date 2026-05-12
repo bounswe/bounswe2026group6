@@ -43,7 +43,7 @@ import com.neph.features.auth.util.isValidEmail
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
-import com.neph.ui.components.display.BrandLogo
+import com.neph.ui.components.display.AuthHeaderAppLogo
 import com.neph.ui.components.display.Divider
 import com.neph.ui.components.display.HelperText
 import com.neph.ui.components.inputs.AppTextField
@@ -212,10 +212,7 @@ fun LoginScreen(
         title = "Welcome back",
         subtitle = "Log in to manage your emergency information and stay ready.",
         logoContent = {
-            BrandLogo(
-                size = 64.dp,
-                showWordmark = false
-            )
+            AuthHeaderAppLogo(size = 64.dp)
         },
         footerContent = {
             AuthFooterLinks(

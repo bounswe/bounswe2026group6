@@ -12,7 +12,6 @@ import {
     type EmergencyContact,
 } from "../../lib/emergencyNumbers";
 import {
-    FALLBACK_ANNOUNCEMENTS,
     announcementToNewsItem,
     fetchAnnouncements,
     readCachedAnnouncements,
@@ -109,19 +108,22 @@ export default function HomePage() {
             const cached = readCachedAnnouncements();
             const cachedAnnouncements = cached?.announcements.slice(0, 3) || [];
             const hasCachedAnnouncements = cachedAnnouncements.length > 0;
-            const fallbackAnnouncements = hasCachedAnnouncements
-                ? cachedAnnouncements
-                : FALLBACK_ANNOUNCEMENTS.slice(0, 3);
-            const sourceLabel = hasCachedAnnouncements
-                ? "cached announcements"
-                : "demo announcements";
 
-            setPreviewNews(fallbackAnnouncements.map(announcementToNewsItem));
-            setNewsUpdatedAt(hasCachedAnnouncements && cached ? cached.savedAt : FALLBACK_ANNOUNCEMENTS[0]?.createdAt || "");
-            setUsingFallbackNews(true);
-            setNewsError(
-                `Latest announcements could not be refreshed (${describeNewsPreviewFailure(err)}). Showing ${sourceLabel}.`
-            );
+            if (hasCachedAnnouncements) {
+                setPreviewNews(cachedAnnouncements.map(announcementToNewsItem));
+                setNewsUpdatedAt(cached?.savedAt || "");
+                setUsingFallbackNews(true);
+                setNewsError(
+                    `Latest announcements could not be refreshed (${describeNewsPreviewFailure(err)}). Showing cached announcements.`
+                );
+            } else {
+                setPreviewNews([]);
+                setNewsUpdatedAt("");
+                setUsingFallbackNews(true);
+                setNewsError(
+                    `Latest announcements could not be loaded (${describeNewsPreviewFailure(err)}).`
+                );
+            }
         } finally {
             setNewsLoading(false);
         }

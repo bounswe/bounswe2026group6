@@ -1,5 +1,6 @@
 package com.neph.ui.components.display
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,9 +15,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.neph.R
 import com.neph.ui.theme.LocalNephSpacing
 import com.neph.ui.theme.NephShapeTokens
 
@@ -112,4 +116,17 @@ fun BrandLogoCompact(
             color = MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+@Composable
+fun AuthHeaderAppLogo(
+    modifier: Modifier = Modifier,
+    size: Dp = 64.dp
+) {
+    Image(
+        painter = painterResource(id = R.mipmap.ic_launcher_round),
+        contentDescription = "NEPH",
+        modifier = modifier.size(size),
+        contentScale = ContentScale.Fit
+    )
 }

@@ -29,6 +29,7 @@ import com.neph.features.home.presentation.HomeScreen
 import com.neph.features.myhelprequests.presentation.MyHelpRequestsScreen
 import com.neph.features.nearbyusers.presentation.NearbyVisibleUsersScreen
 import com.neph.features.news.presentation.NewsScreen
+import com.neph.features.news.presentation.AnnouncementDetailScreen
 import com.neph.features.notifications.presentation.NotificationsScreen
 import com.neph.features.privacysecurity.presentation.PrivacySecurityScreen
 import com.neph.features.profile.data.ProfileRepository
@@ -172,8 +173,26 @@ fun AppNavGraph(
                         navigateToLogin()
                     }
                 },
+                onOpenAnnouncement = { announcementId ->
+                    navController.navigate(Routes.newsDetail(announcementId))
+                },
                 profileBadgeText = profileBadgeText,
                 isAuthenticated = authenticated
+            )
+        }
+
+        composable(
+            route = "${Routes.NewsDetail.route}/{${Routes.NewsAnnouncementIdArg}}",
+            arguments = listOf(
+                navArgument(Routes.NewsAnnouncementIdArg) {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val announcementId = backStackEntry.arguments?.getString(Routes.NewsAnnouncementIdArg).orEmpty()
+            AnnouncementDetailScreen(
+                announcementId = announcementId,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
@@ -502,9 +521,13 @@ fun AppNavGraph(
                     navigateToLogin()
                 },
                 onNavigateToMyHelpRequests = {
-                    val popped = navController.popBackStack(Routes.MyHelpRequests.route, inclusive = false)
-                    if (!popped) {
-                        navigateToDrawerRoute(Routes.MyHelpRequests.route)
+                    navController.navigate(Routes.MyHelpRequests.route) {
+                        popUpTo(Routes.Home.route) {
+                            inclusive = false
+                            saveState = false
+                        }
+                        launchSingleTop = true
+                        restoreState = false
                     }
                 },
                 mobileOnboardingStepId = mobileOnboardingStepId,

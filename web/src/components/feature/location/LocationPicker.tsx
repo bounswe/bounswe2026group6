@@ -31,15 +31,24 @@ const DEFAULT_CENTER = {
 const DEFAULT_MAP_ZOOM = 6;
 const SELECTED_LOCATION_ZOOM = 15;
 
-function toPickerValue(item: LocationSearchItem): LocationPickerValue {
+function toReverseEnrichedPickerValue(
+    latitude: number,
+    longitude: number,
+    item: LocationSearchItem,
+    metadata?: {
+        source?: string | null;
+        accuracyMeters?: number | null;
+        capturedAt?: string | null;
+    }
+): LocationPickerValue {
     return {
         placeId: item.placeId,
         displayName: item.displayName,
-        latitude: item.latitude,
-        longitude: item.longitude,
-        accuracyMeters: null,
-        source: "search",
-        capturedAt: new Date().toISOString(),
+        latitude,
+        longitude,
+        accuracyMeters: metadata?.accuracyMeters ?? null,
+        source: metadata?.source ?? "map_pin",
+        capturedAt: metadata?.capturedAt ?? new Date().toISOString(),
         administrative: item.administrative,
     };
 }
@@ -126,12 +135,7 @@ export function LocationPicker({
                     return;
                 }
 
-                onChange({
-                    ...toPickerValue(response.item),
-                    source: metadata?.source ?? "map_pin",
-                    accuracyMeters: metadata?.accuracyMeters ?? null,
-                    capturedAt: metadata?.capturedAt ?? new Date().toISOString(),
-                });
+                onChange(toReverseEnrichedPickerValue(latitude, longitude, response.item, metadata));
             } catch (err) {
                 if (currentReverseRequestId !== reverseRequestIdRef.current) {
                     return;

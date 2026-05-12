@@ -34,33 +34,6 @@ export type AnnouncementCache = {
     savedAt: string;
 };
 
-export const FALLBACK_ANNOUNCEMENTS: Announcement[] = [
-    {
-        id: "seed_announcement_gathering_area",
-        adminId: "seed",
-        title: "Know your nearest gathering area",
-        content:
-            "Check the gathering areas page and keep your location information up to date so emergency guidance can stay relevant.",
-        createdAt: "2026-04-29T12:10:00.000Z",
-    },
-    {
-        id: "seed_announcement_volunteer_expansion",
-        adminId: "seed",
-        title: "Community safety volunteers are expanding",
-        content:
-            "New volunteer coordination improvements are being prepared to help communities respond faster during emergencies.",
-        createdAt: "2026-04-29T12:05:00.000Z",
-    },
-    {
-        id: "seed_announcement_preparedness_checklist",
-        adminId: "seed",
-        title: "Preparedness checklist updated",
-        content:
-            "Review your household emergency bag, contact list, medication details, and nearest gathering area before an emergency occurs.",
-        createdAt: "2026-04-29T12:00:00.000Z",
-    },
-];
-
 function buildAnnouncementsPath(options: { limit?: number } = {}) {
     const params = new URLSearchParams();
     if (typeof options.limit === "number") {

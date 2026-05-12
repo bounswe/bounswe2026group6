@@ -292,6 +292,7 @@ fun LeafletMarkerMap(
     zoom: Int = 13,
     showCenterMarker: Boolean = true,
     fitBoundsToMarkers: Boolean = true,
+    fitBoundsRequestToken: Int? = null,
     onMarkerSelected: (String, String) -> Unit,
     onMapReady: (String, String) -> Unit,
     onMapError: (String, String) -> Unit,
@@ -345,17 +346,26 @@ fun LeafletMarkerMap(
         html = html,
         bridgeName = LeafletMarkerMapBridgeName,
         bridge = bridge,
-        javaScriptUpdate = buildMarkerMapUpdateScript(markers, selectedMarkerId),
+        javaScriptUpdate = buildMarkerMapUpdateScript(
+            markers = markers,
+            selectedMarkerId = selectedMarkerId,
+            fitBoundsRequestToken = fitBoundsRequestToken
+        ),
         modifier = modifier
     )
 }
 
-private fun buildMarkerMapUpdateScript(markers: List<LeafletMapMarker>, selectedMarkerId: String?): String {
+private fun buildMarkerMapUpdateScript(
+    markers: List<LeafletMapMarker>,
+    selectedMarkerId: String?,
+    fitBoundsRequestToken: Int?
+): String {
     val markersJson = leafletMarkersJson(markers)
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
+    val fitBoundsRequestTokenJson = fitBoundsRequestToken?.toString() ?: "null"
     return """
         if (window.nephSetMarkers) {
-            window.nephSetMarkers($markersJson, $selectedMarkerJson);
+            window.nephSetMarkers($markersJson, $selectedMarkerJson, $fitBoundsRequestTokenJson);
         } else if (window.nephSelectMarker) {
             window.nephSelectMarker($selectedMarkerJson);
         }
@@ -576,6 +586,7 @@ internal fun buildLeafletMarkerMapHtml(
                 var markerData = $markersJson;
                 var selectedMarkerId = $selectedMarkerJson;
                 var fitBoundsToMarkers = $fitBoundsToMarkersJson;
+                var lastAppliedFitBoundsRequestToken = null;
                 var mapElement = document.getElementById('map');
                 if (!mapElement) {
                     failMap('Map failed to load.');
@@ -644,7 +655,7 @@ internal fun buildLeafletMarkerMapHtml(
                     });
                 };
 
-                window.nephSetMarkers = function(nextMarkers, nextSelectedMarkerId) {
+                window.nephSetMarkers = function(nextMarkers, nextSelectedMarkerId, fitBoundsRequestToken) {
                     markerData = Array.isArray(nextMarkers) ? nextMarkers : [];
                     selectedMarkerId = nextSelectedMarkerId || null;
                     Object.keys(areaMarkersById).forEach(function(id) {
@@ -652,6 +663,7 @@ internal fun buildLeafletMarkerMapHtml(
                     });
                     areaMarkersById = {};
                     bounds = [center];
+                    var markerBounds = [];
 
                     markerData.forEach(function(marker) {
                         var selected = marker.id === selectedMarkerId;
@@ -674,7 +686,24 @@ internal fun buildLeafletMarkerMapHtml(
                             data: marker
                         };
                         bounds.push([marker.latitude, marker.longitude]);
+                        markerBounds.push([marker.latitude, marker.longitude]);
                     });
+
+                    var normalizedFitBoundsRequestToken =
+                        fitBoundsRequestToken === null || typeof fitBoundsRequestToken === 'undefined'
+                            ? null
+                            : String(fitBoundsRequestToken);
+                    if (
+                        normalizedFitBoundsRequestToken !== null &&
+                        normalizedFitBoundsRequestToken !== lastAppliedFitBoundsRequestToken
+                    ) {
+                        if (markerBounds.length > 1) {
+                            map.fitBounds(markerBounds, { padding: [24, 24], maxZoom: 15 });
+                        } else if (markerBounds.length === 1) {
+                            map.setView(markerBounds[0], 15);
+                        }
+                        lastAppliedFitBoundsRequestToken = normalizedFitBoundsRequestToken;
+                    }
                 };
 
                 window.nephSetMarkers(markerData, selectedMarkerId);

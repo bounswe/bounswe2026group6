@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.dp
 import com.neph.ui.components.buttons.PrimaryButton
 import com.neph.ui.components.buttons.SecondaryButton
 import com.neph.ui.components.buttons.TextActionButton
-import com.neph.ui.components.display.BrandLogo
+import com.neph.ui.components.display.AuthHeaderAppLogo
 import com.neph.ui.layout.AuthScaffold
 import com.neph.ui.theme.LocalNephSpacing
 
@@ -23,10 +23,7 @@ fun WelcomeScreen(
         title = "Welcome to NEPH",
         subtitle = "Prepare, connect, and stay ready with your neighborhood emergency hub.",
         logoContent = {
-            BrandLogo(
-                size = 72.dp,
-                showWordmark = false
-            )
+            AuthHeaderAppLogo(size = 72.dp)
         }
     ) {
         Column(

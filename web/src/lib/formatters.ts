@@ -64,7 +64,7 @@ export function formatTimestampDate(value: string, now = new Date()) {
         return relativeLabel;
     }
 
-    return date.toLocaleDateString(undefined, {
+    return date.toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -79,13 +79,13 @@ export function formatTimestampDateTime(value: string, now = new Date()) {
 
     const relativeLabel = getRelativeDayLabel(date, now);
     if (relativeLabel) {
-        return `${relativeLabel}, ${date.toLocaleTimeString(undefined, {
+        return `${relativeLabel}, ${date.toLocaleTimeString("en-US", {
             hour: "numeric",
             minute: "2-digit",
         })}`;
     }
 
-    return date.toLocaleString(undefined, {
+    return date.toLocaleString("en-US", {
         dateStyle: "medium",
         timeStyle: "short",
     });

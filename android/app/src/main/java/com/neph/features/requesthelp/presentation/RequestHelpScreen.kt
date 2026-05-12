@@ -934,8 +934,10 @@ fun RequestHelpScreen(
         loading = true
         scope.launch {
             try {
+                val editLocalId = activeDraftLocalId.takeIf { it.isNotBlank() }
+                val existingDraft = editLocalId?.let { RequestHelpRepository.getLocalHelpRequest(it) }
                 if (isLoggedIn) {
-                    val hasActiveRequest = activeDraftLocalId.isBlank() && RequestHelpRepository.hasActiveHelpRequest(sessionToken)
+                    val hasActiveRequest = existingDraft == null && RequestHelpRepository.hasActiveHelpRequest(sessionToken)
                     if (hasActiveRequest) {
                         errorMessage = "You can only have one active help request at a time."
                         return@launch
@@ -948,10 +950,10 @@ fun RequestHelpScreen(
                 }
 
                 val submission = buildSubmission(formState, availableLocationData)
-                val result = if (activeDraftLocalId.isNotBlank()) {
+                val result = if (editLocalId != null && existingDraft != null) {
                     RequestHelpRepository.updateHelpRequest(
                         token = sessionToken,
-                        localId = activeDraftLocalId,
+                        localId = editLocalId,
                         submission = submission,
                         preserveExistingCoordinates = !formState.locationWasManuallyChanged
                     )
@@ -961,7 +963,7 @@ fun RequestHelpScreen(
                         submission = submission
                     )
                 }
-                activeDraftLocalId = result.requestId
+                activeDraftLocalId = if (existingDraft != null) "" else result.requestId
                 infoMessage = "Help request saved on this device and queued for sync."
                 if (isSendOnboardingTarget) {
                     completeRequestHelpOnboardingStep(MobileOnboardingStepId.REQUEST_HELP_SEND)
