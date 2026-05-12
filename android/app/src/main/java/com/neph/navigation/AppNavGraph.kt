@@ -86,6 +86,31 @@ fun AppNavGraph(
             return
         }
 
+        if (route == Routes.Home.route) {
+            if (navController.currentBackStackEntry?.destination?.route == Routes.Home.route) {
+                return
+            }
+
+            // Home is the root tab: do not save/restore the popped request stack
+            // under the Home route, or the restored stack can put Requests back
+            // on top immediately after the user taps Home.
+            val poppedToExistingHome = navController.popBackStack(
+                route = Routes.Home.route,
+                inclusive = false
+            )
+            if (!poppedToExistingHome) {
+                navController.navigate(Routes.Home.route) {
+                    popUpTo(navController.graph.id) {
+                        inclusive = true
+                        saveState = false
+                    }
+                    launchSingleTop = true
+                    restoreState = false
+                }
+            }
+            return
+        }
+
         navController.navigate(route) {
             popUpTo(Routes.Home.route) {
                 saveState = true
