@@ -249,6 +249,7 @@ internal fun buildMyHelpRequestsOverview(
 
 internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
     val helpTypes = helpTypesJson.jsonArrayToStringList().map(::formatHelpType)
+    val displayDescription = buildDescriptionText(description)
     val normalizedStatus = status.trim().uppercase()
     val riskStatusLabel = when (syncStatus) {
         SyncStatus.PENDING_CREATE -> if (normalizedStatus.isTerminalRequestStatus()) {
@@ -274,28 +275,15 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
         "CANCELLED" -> "Cancelled"
         else -> null
     }
+    val fallbackResponder = AssignedResponderUiModel(
+        firstName = normalizeDisplayText(helperFirstName),
+        lastName = normalizeDisplayText(helperLastName),
+        phone = normalizeDisplayText(helperPhone),
+        profession = normalizeDisplayText(helperProfession),
+        expertise = formatHelperExpertise(helperExpertise)
+    ).takeIf { it.hasVisibleDetails }
     val responders = helpersJson.jsonArrayToAssignedResponderList()
-        .ifEmpty {
-            buildList {
-                if (
-                    helperFirstName != null ||
-                    helperLastName != null ||
-                    helperPhone != null ||
-                    helperProfession != null ||
-                    helperExpertise != null
-                ) {
-                    add(
-                        AssignedResponderUiModel(
-                            firstName = helperFirstName,
-                            lastName = helperLastName,
-                            phone = helperPhone,
-                            profession = helperProfession,
-                            expertise = helperExpertise
-                        )
-                    )
-                }
-            }
-        }
+        .ifEmpty { listOfNotNull(fallbackResponder) }
     val primaryResponder = responders.firstOrNull()
 
     return MyHelpRequestUiModel(
@@ -304,7 +292,7 @@ internal fun HelpRequestEntity.toUiModel(): MyHelpRequestUiModel {
         guestAccessToken = guestAccessToken,
         helpTypes = helpTypes,
         helpTypeSummary = buildHelpTypeSummary(helpTypes),
-        description = description,
+        description = displayDescription,
         shortDescription = buildShortDescription(description),
         locationLabel = buildLocationLabel(country, city, district, neighborhood, extraAddress),
         status = status,
@@ -343,7 +331,9 @@ private fun String.jsonArrayToAssignedResponderList(): List<AssignedResponderUiM
             buildList {
                 for (index in 0 until json.length()) {
                     val value = json.optJSONObject(index)?.toAssignedResponderUiModel() ?: continue
-                    add(value)
+                    if (value.hasVisibleDetails) {
+                        add(value)
+                    }
                 }
             }
         }
@@ -352,11 +342,11 @@ private fun String.jsonArrayToAssignedResponderList(): List<AssignedResponderUiM
 
 private fun org.json.JSONObject.toAssignedResponderUiModel(): AssignedResponderUiModel {
     return AssignedResponderUiModel(
-        firstName = optString("firstName").trim().takeIf { it.isNotBlank() },
-        lastName = optString("lastName").trim().takeIf { it.isNotBlank() },
-        phone = opt("phone")?.toString()?.takeIf { it.isNotBlank() && it != "null" },
-        profession = optString("profession").trim().takeIf { it.isNotBlank() },
-        expertise = optString("expertise").trim().takeIf { it.isNotBlank() }
+        firstName = normalizeDisplayText(opt("firstName")?.toString()),
+        lastName = normalizeDisplayText(opt("lastName")?.toString()),
+        phone = normalizeDisplayText(opt("phone")?.toString()),
+        profession = normalizeDisplayText(opt("profession")?.toString()),
+        expertise = formatHelperExpertise(opt("expertise")?.toString())
     )
 }
 
@@ -416,14 +406,103 @@ private fun Long.toIsoLikeString(): String {
     return formatter.format(java.util.Date(this))
 }
 
+private const val NoDescriptionProvided = "No description provided."
+
+private fun buildDescriptionText(description: String): String {
+    return normalizeDisplayText(description) ?: NoDescriptionProvided
+}
+
 private fun buildShortDescription(description: String): String {
-    val normalized = description.replace('\n', ' ').replace(Regex("\\s+"), " ").trim()
-    if (normalized.isBlank()) return "No description provided."
+    val normalized = buildDescriptionText(description)
     return if (normalized.length > 160) {
         normalized.take(157).trimEnd() + "..."
     } else {
         normalized
     }
+}
+
+private fun normalizeDisplayText(value: String?): String? {
+    val normalized = value
+        ?.replace('\n', ' ')
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+        .orEmpty()
+
+    return normalized.takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }
+}
+
+private fun formatHelperExpertise(rawValue: String?): String? {
+    val value = normalizeDisplayText(rawValue) ?: return null
+
+    if (value.startsWith("{")) {
+        return parseExpertiseObject(value)
+    }
+
+    if (value.startsWith("[")) {
+        val labels = parseExpertiseArray(value) ?: return null
+        return labels
+            .mapNotNull(::formatHelperExpertise)
+            .distinct()
+            .joinToString(", ")
+            .takeIf { it.isNotBlank() }
+    }
+
+    val normalized = value
+        .lowercase(Locale.ROOT)
+        .replace('_', ' ')
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    val compact = normalized.replace(Regex("[^a-z0-9]+"), "")
+
+    if (
+        normalized.startsWith("no ") && "first aid" in normalized ||
+        "does not know first aid" in normalized ||
+        "doesn't know first aid" in normalized ||
+        "not know first aid" in normalized ||
+        compact == "firstaidfalse"
+    ) {
+        return null
+    }
+
+    if ("first aid" in normalized || compact == "firstaid" || compact == "firstaidtrue") {
+        return "Knows first aid"
+    }
+
+    if (value.endsWith("?")) {
+        return null
+    }
+
+    return value
+}
+
+private fun parseExpertiseArray(value: String): List<String>? {
+    if (!value.startsWith("[")) {
+        return null
+    }
+
+    val array = runCatching { JSONArray(value) }.getOrNull() ?: return null
+    return buildList {
+        for (index in 0 until array.length()) {
+            normalizeDisplayText(array.opt(index)?.toString())?.let(::add)
+        }
+    }
+}
+
+private fun parseExpertiseObject(value: String): String? {
+    if (!value.startsWith("{")) {
+        return null
+    }
+
+    val json = runCatching { JSONObject(value) }.getOrNull() ?: return null
+    if (json.has("firstAid")) {
+        return if (json.optBoolean("firstAid", false)) "Knows first aid" else null
+    }
+
+    if (json.has("first_aid")) {
+        return if (json.optBoolean("first_aid", false)) "Knows first aid" else null
+    }
+
+    return null
 }
 
 private fun formatEpochMillis(raw: Long): String {
