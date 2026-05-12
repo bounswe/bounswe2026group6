@@ -433,9 +433,9 @@ INSERT INTO assignments (
 VALUES
   ('demo_bogazici_assignment_new_hall_medical', 'demo_bogazici_volunteer_assigned_1', 'demo_bogazici_request_new_hall_medical', CURRENT_TIMESTAMP - INTERVAL '18 minutes', FALSE),
   ('demo_bogazici_assignment_hisarustu_food', 'demo_bogazici_volunteer_assigned_2', 'demo_bogazici_request_hisarustu_food', CURRENT_TIMESTAMP - INTERVAL '14 minutes', FALSE)
--- Preserve any existing active assignment in shared environments; never rewrite
--- a non-demo assignment into a demo assignment.
-ON CONFLICT (volunteer_id) WHERE is_cancelled = FALSE DO NOTHING;
+-- Preserve existing assignment rows in shared environments; never overwrite
+-- non-demo data or fail the seed because an assignment already exists.
+ON CONFLICT DO NOTHING;
 
 -- Keep demo request status consistent when DO NOTHING preserves an existing
 -- non-demo active assignment for the intended demo volunteer.
