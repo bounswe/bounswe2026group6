@@ -33,6 +33,7 @@ import com.neph.features.gatheringareas.data.GatheringAreaItem
 import com.neph.features.gatheringareas.data.GatheringAreaCategoryMeta
 import com.neph.features.gatheringareas.data.GatheringAreasRepository
 import com.neph.features.gatheringareas.data.NearbyGatheringAreasResult
+import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.features.onboarding.data.MobileOnboardingStepId
@@ -85,6 +86,10 @@ private const val ResourceProviderUnavailableMessage =
     "Gathering area provider is unavailable. Please try again."
 private const val ResourceStaleCacheMessage =
     "Showing cached gathering areas; provider data may be temporarily unavailable."
+private const val InitialNearbyPermissionDeniedMessage =
+    "Location permission was denied. Showing the default map area."
+private const val InitialNearbyLocationUnavailableMessage =
+    "Current location is unavailable. Showing the default map area."
 internal const val GatheringAreasVisibleCategoriesTitle = "Visible Categories"
 internal const val GatheringAreasVisibleCategoriesSubtitle =
     "Selected categories are shown on the map and in the list."
@@ -188,6 +193,9 @@ fun GatheringAreasScreen(
     var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
     var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
     var mapResetNonce by remember { mutableStateOf(0) }
+    var currentLocation by remember { mutableStateOf<CurrentDeviceLocation?>(null) }
+    var attemptedInitialLocation by remember { mutableStateOf(false) }
+    var initialLocationPermissionRequestPending by remember { mutableStateOf(false) }
     var currentViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
     var pendingViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
     var lastFetchedViewportKey by remember { mutableStateOf<String?>(null) }
@@ -214,11 +222,16 @@ fun GatheringAreasScreen(
         infoMessage = ""
     }
 
-    fun requestCurrentLocationAndRefresh() {
+    fun requestCurrentLocationAndRefresh(
+        silent: Boolean = false,
+        isInitialAttempt: Boolean = false
+    ) {
         scope.launch {
             loading = true
             errorMessage = ""
-            infoMessage = ""
+            if (!silent) {
+                infoMessage = ""
+            }
 
             try {
                 val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
@@ -228,6 +241,7 @@ fun GatheringAreasScreen(
 
                 val location = attempt.location
                 if (location != null) {
+                    currentLocation = location
                     viewportRequestSerial += 1
                     currentViewport = null
                     pendingViewport = null
@@ -238,24 +252,42 @@ fun GatheringAreasScreen(
                     mapResetNonce += 1
                     selectedAreaId = null
                     lastFetchedViewportKey = null
+                    infoMessage = ""
                     loading = false
                     backgroundUpdating = false
                     return@launch
                 }
 
                 loading = false
-                infoMessage = when (attempt.warning) {
+                val locationMessage = when (attempt.warning) {
                     CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Location permission was denied. Nearby results were not updated."
+                        if (isInitialAttempt) {
+                            InitialNearbyPermissionDeniedMessage
+                        } else {
+                            "Location permission was denied. Nearby results were not updated."
+                        }
 
                     CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
-                    null -> "Current location is unavailable. Nearby results were not updated."
+                    null -> if (isInitialAttempt) {
+                        InitialNearbyLocationUnavailableMessage
+                    } else {
+                        "Current location is unavailable. Nearby results were not updated."
+                    }
+                }
+                if (isInitialAttempt || !silent) {
+                    infoMessage = locationMessage
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
                 loading = false
-                infoMessage = "Current location is unavailable. Nearby results were not updated."
+                if (isInitialAttempt || !silent) {
+                    infoMessage = if (isInitialAttempt) {
+                        InitialNearbyLocationUnavailableMessage
+                    } else {
+                        "Current location is unavailable. Nearby results were not updated."
+                    }
+                }
             }
         }
     }
@@ -319,13 +351,22 @@ fun GatheringAreasScreen(
     }
 
     val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        val isInitialRequest = initialLocationPermissionRequestPending
+        initialLocationPermissionRequestPending = false
         if (result.granted) {
-            requestCurrentLocationAndRefresh()
+            requestCurrentLocationAndRefresh(
+                silent = false,
+                isInitialAttempt = isInitialRequest
+            )
         } else {
             errorMessage = ""
             loading = false
             backgroundUpdating = false
-            infoMessage = "Location permission was denied. Nearby results were not updated."
+            if (isInitialRequest) {
+                infoMessage = InitialNearbyPermissionDeniedMessage
+            } else {
+                infoMessage = "Location permission was denied. Nearby results were not updated."
+            }
         }
     }
 
@@ -333,6 +374,17 @@ fun GatheringAreasScreen(
         if (locationPermissionRequester.refreshPermissionState()) {
             requestCurrentLocationAndRefresh()
         } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (attemptedInitialLocation) return@LaunchedEffect
+        attemptedInitialLocation = true
+        if (locationPermissionRequester.refreshPermissionState()) {
+            requestCurrentLocationAndRefresh(silent = false, isInitialAttempt = true)
+        } else {
+            initialLocationPermissionRequestPending = true
             locationPermissionRequester.requestPermission()
         }
     }
@@ -373,6 +425,7 @@ fun GatheringAreasScreen(
             pendingViewport = viewport
         } else {
             viewportRequestSerial += 1
+            pendingViewport = null
             nearbyResult = null
             selectedAreaId = null
             lastFetchedViewportKey = null
@@ -472,6 +525,8 @@ fun GatheringAreasScreen(
                 emptyMarkersMessage = mapEmptyMarkersMessage,
                 mapCenterLatitude = mapCenterLatitude,
                 mapCenterLongitude = mapCenterLongitude,
+                currentLocationLatitude = currentLocation?.latitude,
+                currentLocationLongitude = currentLocation?.longitude,
                 mapZoom = mapZoom,
                 mapResetToken = mapResetNonce,
                 showCenterMarker = false,
@@ -695,6 +750,8 @@ private fun GatheringAreasMapCard(
     emptyMarkersMessage: String = "No gathering area markers are available for this search center.",
     mapCenterLatitude: Double = result.centerLatitude,
     mapCenterLongitude: Double = result.centerLongitude,
+    currentLocationLatitude: Double? = null,
+    currentLocationLongitude: Double? = null,
     mapZoom: Int = 13,
     mapResetToken: Int = 0,
     showCenterMarker: Boolean = true,
@@ -796,6 +853,8 @@ private fun GatheringAreasMapCard(
                     currentMapInstanceId = { currentMapInstanceIdState.value },
                     centerLatitude = mapCenterLatitude,
                     centerLongitude = mapCenterLongitude,
+                    currentLocationLatitude = currentLocationLatitude,
+                    currentLocationLongitude = currentLocationLongitude,
                     markers = markers,
                     selectedMarkerId = selectedAreaId,
                     mapHeightCssPx = GatheringAreasMapHeightCssPx,

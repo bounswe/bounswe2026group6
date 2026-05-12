@@ -188,11 +188,12 @@ fun effectiveLeafletViewportKey(viewport: LeafletMapViewport?): String? {
     val current = viewport ?: return null
     return String.format(
         Locale.US,
-        "%.3f,%.3f,%.3f,%.3f",
+        "%.4f,%.4f,%.4f,%.4f,z%d",
         current.west,
         current.south,
         current.east,
-        current.north
+        current.north,
+        current.zoom
     )
 }
 
@@ -286,6 +287,8 @@ fun LeafletMarkerMap(
     currentMapInstanceId: () -> String,
     centerLatitude: Double,
     centerLongitude: Double,
+    currentLocationLatitude: Double? = null,
+    currentLocationLongitude: Double? = null,
     markers: List<LeafletMapMarker>,
     selectedMarkerId: String?,
     mapHeightCssPx: Int = LeafletMapFallbackHeightCssPx,
@@ -316,6 +319,8 @@ fun LeafletMarkerMap(
             mapInstanceId = mapInstanceId,
             centerLatitude = centerLatitude,
             centerLongitude = centerLongitude,
+            currentLocationLatitude = currentLocationLatitude,
+            currentLocationLongitude = currentLocationLongitude,
             markers = markers,
             selectedMarkerId = selectedMarkerId,
             bridgeName = LeafletMarkerMapBridgeName,
@@ -349,6 +354,8 @@ fun LeafletMarkerMap(
         javaScriptUpdate = buildMarkerMapUpdateScript(
             markers = markers,
             selectedMarkerId = selectedMarkerId,
+            currentLocationLatitude = currentLocationLatitude,
+            currentLocationLongitude = currentLocationLongitude,
             fitBoundsRequestToken = fitBoundsRequestToken
         ),
         modifier = modifier
@@ -358,10 +365,13 @@ fun LeafletMarkerMap(
 private fun buildMarkerMapUpdateScript(
     markers: List<LeafletMapMarker>,
     selectedMarkerId: String?,
+    currentLocationLatitude: Double?,
+    currentLocationLongitude: Double?,
     fitBoundsRequestToken: Int?
 ): String {
     val markersJson = leafletMarkersJson(markers)
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
+    val currentLocationJson = leafletLatLngJson(currentLocationLatitude, currentLocationLongitude)
     val fitBoundsRequestTokenJson = fitBoundsRequestToken?.toString() ?: "null"
     return """
         if (window.nephSetMarkers) {
@@ -369,7 +379,19 @@ private fun buildMarkerMapUpdateScript(
         } else if (window.nephSelectMarker) {
             window.nephSelectMarker($selectedMarkerJson);
         }
+        if (window.nephSetCurrentLocation) {
+            window.nephSetCurrentLocation($currentLocationJson);
+        }
     """.trimIndent()
+}
+
+private fun leafletLatLngJson(latitude: Double?, longitude: Double?): String {
+    val lat = latitude ?: return "null"
+    val lon = longitude ?: return "null"
+    if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) {
+        return "null"
+    }
+    return JSONArray(listOf(lat, lon)).toString()
 }
 
 private fun leafletMarkersJson(markers: List<LeafletMapMarker>): String {
@@ -544,6 +566,8 @@ internal fun buildLeafletMarkerMapHtml(
     mapInstanceId: String,
     centerLatitude: Double,
     centerLongitude: Double,
+    currentLocationLatitude: Double?,
+    currentLocationLongitude: Double?,
     markers: List<LeafletMapMarker>,
     selectedMarkerId: String?,
     bridgeName: String,
@@ -556,6 +580,7 @@ internal fun buildLeafletMarkerMapHtml(
     val formattedLon = String.format(Locale.US, "%.6f", centerLongitude)
     val markersJson = leafletMarkersJson(markers)
     val selectedMarkerJson = selectedMarkerId?.let(JSONObject::quote) ?: "null"
+    val currentLocationJson = leafletLatLngJson(currentLocationLatitude, currentLocationLongitude)
     val fitBoundsToMarkersJson = if (fitBoundsToMarkers) "true" else "false"
     val centerMarkerScript = if (showCenterMarker) {
         """
@@ -585,8 +610,11 @@ internal fun buildLeafletMarkerMapHtml(
                 var center = [$formattedLat, $formattedLon];
                 var markerData = $markersJson;
                 var selectedMarkerId = $selectedMarkerJson;
+                var currentLocation = $currentLocationJson;
                 var fitBoundsToMarkers = $fitBoundsToMarkersJson;
                 var lastAppliedFitBoundsRequestToken = null;
+                var currentLocationMarker = null;
+                var currentLocationRing = null;
                 var mapElement = document.getElementById('map');
                 if (!mapElement) {
                     failMap('Map failed to load.');
@@ -706,7 +734,47 @@ internal fun buildLeafletMarkerMapHtml(
                     }
                 };
 
+                window.nephSetCurrentLocation = function(nextCurrentLocation) {
+                    if (currentLocationMarker) {
+                        map.removeLayer(currentLocationMarker);
+                        currentLocationMarker = null;
+                    }
+                    if (currentLocationRing) {
+                        map.removeLayer(currentLocationRing);
+                        currentLocationRing = null;
+                    }
+
+                    if (
+                        !Array.isArray(nextCurrentLocation) ||
+                        nextCurrentLocation.length !== 2 ||
+                        typeof nextCurrentLocation[0] !== 'number' ||
+                        typeof nextCurrentLocation[1] !== 'number'
+                    ) {
+                        currentLocation = null;
+                        return;
+                    }
+
+                    currentLocation = [nextCurrentLocation[0], nextCurrentLocation[1]];
+                    currentLocationRing = L.circle(currentLocation, {
+                        radius: 24,
+                        color: '#16A34A',
+                        weight: 1,
+                        fillColor: '#22C55E',
+                        fillOpacity: 0.18,
+                        interactive: false
+                    }).addTo(map);
+                    currentLocationMarker = L.circleMarker(currentLocation, {
+                        radius: 6,
+                        color: '#FFFFFF',
+                        weight: 2,
+                        fillColor: '#16A34A',
+                        fillOpacity: 1,
+                        interactive: false
+                    }).addTo(map);
+                };
+
                 window.nephSetMarkers(markerData, selectedMarkerId);
+                window.nephSetCurrentLocation(currentLocation);
 
                 if (fitBoundsToMarkers && bounds.length > 1) {
                     map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
