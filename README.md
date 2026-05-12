@@ -74,6 +74,11 @@ For Android development:
 - Android Studio
 - Android SDK compatible with the project
 
+## Live deployment
+
+- Web app: `LIVE_WEB_URL_TO_BE_FILLED_BEFORE_RELEASE`
+- Backend API: `https://api.neph.app/api`
+
 ## Environment variables
 
 Keep secrets and real credentials out of the repository. Use local env files or shell overrides.
@@ -105,6 +110,7 @@ Notes:
 - Email-based flows require valid SMTP credentials.
 - Placeholder SMTP values in the example file are not usable as-is.
 - In Docker Compose, the backend connects to PostgreSQL through the internal service name `postgres`.
+- Production deployments must use real database credentials and secure secrets. `JWT_SECRET` must not remain at the default value in production.
 
 ### Web
 
@@ -119,8 +125,10 @@ Important variables include:
 
 Notes:
 
-- `NEXT_PUBLIC_API_BASE_URL` is used for browser-facing requests.
-- `API_BASE_URL` can be used for server-side requests inside the Docker network.
+- `NEXT_PUBLIC_API_BASE_URL` is the browser/client-side API base.
+- `API_BASE_URL` is the server-side Next.js rewrite target.
+- `/api` works for Docker and Next.js rewrite usage.
+- `http://localhost:3000/api` works for direct backend access outside the rewrite path.
 
 ### Docker Compose overrides
 
@@ -169,7 +177,52 @@ Notes:
 - the backend waits for PostgreSQL to become healthy before starting
 - the web container is configured to talk to the backend in the local Docker setup
 
-### Optional demo data seed
+### Backend setup
+
+To run the backend directly:
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run migrate
+npm start
+```
+
+Use real database credentials and secure secrets for production. `JWT_SECRET` must not remain at the default value in production.
+
+### Web setup
+
+To run the web app directly:
+
+```bash
+cd web
+cp .env.example .env.local
+npm install
+npm run dev
+npm run build
+npm run start
+```
+
+Use `NEXT_PUBLIC_API_BASE_URL=/api` with the Next.js rewrite, including Docker. Use `NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api` when the browser should call the backend directly.
+
+### Mobile setup
+
+To build the Android app:
+
+```bash
+cd android
+cp .env.example .env
+cp keystore.properties.example keystore.properties
+./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
+```
+
+Debug Android emulator builds use `http://10.0.2.2:3000/api` to reach the host backend. Do not use `localhost` from inside the emulator for the host backend. Release builds use `NEPH_RELEASE_API_BASE_URL`, defaulting to `https://api.neph.app/api`.
+
+The signed release APK must be attached to the GitHub Release manually or by the release workflow.
+
+### Optional legacy demo data seed
 
 Demo-ready data is stored as SQL seed migrations under `backend/demo-migrations/`, but it is not applied by the normal backend migration flow. This keeps regular `npm run migrate` and `start:with-migrations` safe for normal environments.
 
@@ -237,17 +290,18 @@ Relevant files:
 - `web/Dockerfile`
 - `infra/docker/postgres/init.sql`
 
-## Mobile note
-
-The Android application lives in `android/`.
-
-- local debug builds are expected to reach the backend through the emulator bridge at `http://10.0.2.2:3000`
-- Android is not part of the root Docker Compose workflow
-- mobile build and release steps are handled separately from the local Docker setup
-
 ## Deployment note
 
-This README focuses on local development and evaluation. Deployment- and release-related files may exist elsewhere in the repository, but the top-level guide is intentionally centered on how to build and run the project locally.
+The deployed backend API base is `https://api.neph.app/api`. The deployed web URL must be filled into this README and the GitHub Release notes before final submission if it is not already known.
+
+## Final release checklist
+
+- Code is merged to `main`.
+- Tag `final-milestone` points to the final `main` commit.
+- GitHub Release name is `1.0.0`.
+- GitHub Release is official, not a pre-release.
+- Release notes include the deployed web URL.
+- Signed APK is attached to the GitHub Release.
 
 ## Development notes
 
