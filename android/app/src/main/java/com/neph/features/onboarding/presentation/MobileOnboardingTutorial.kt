@@ -37,6 +37,8 @@ import com.neph.features.onboarding.data.MobileOnboardingStep
 import com.neph.ui.theme.LocalNephSpacing
 import kotlin.math.roundToInt
 
+private const val MobileOnboardingGuidePanelAlpha = 0.50f
+
 @Composable
 fun MobileOnboardingGuide(
     step: MobileOnboardingStep,
@@ -93,7 +95,7 @@ fun MobileOnboardingGuide(
                 }
                 .testTag("mobile_onboarding_dialog"),
             shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = MobileOnboardingGuidePanelAlpha),
             tonalElevation = 8.dp,
             shadowElevation = 8.dp
         ) {

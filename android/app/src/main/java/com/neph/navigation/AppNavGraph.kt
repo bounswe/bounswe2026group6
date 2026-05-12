@@ -47,6 +47,7 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: String = Routes.Welcome.route,
     onRestartMobileOnboarding: () -> Unit = {},
+    onAuthenticatedLoginCompleted: () -> Unit = {},
     mobileOnboardingStepId: MobileOnboardingStepId? = null,
     onMobileOnboardingStepCompleted: (String?) -> Unit = {},
     onMobileOnboardingFeedbackChanged: (String?) -> Unit = {},
@@ -564,6 +565,7 @@ fun AppNavGraph(
                         popUpTo(Routes.Welcome.route) { inclusive = true }
                         launchSingleTop = true
                     }
+                    onAuthenticatedLoginCompleted()
                 },
                 onProfileCompletionRequired = {
                     navController.navigate(Routes.CompleteProfile.route) {

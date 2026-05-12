@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import com.neph.BuildConfig
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.ProfileRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 object MobileOnboardingStore {
     private const val PrefsName = "neph_mobile_onboarding"
@@ -13,6 +17,8 @@ object MobileOnboardingStore {
     internal const val CurrentStepPrefix = "mobile_onboarding_current_step"
 
     private lateinit var prefs: SharedPreferences
+    private val revisionState = MutableStateFlow(0)
+    val revisionFlow: StateFlow<Int> = revisionState.asStateFlow()
 
     fun initialize(context: Context) {
         if (!::prefs.isInitialized) {
@@ -21,72 +27,183 @@ object MobileOnboardingStore {
     }
 
     fun markPendingForCurrentUser() {
-        val userKey = currentUserKey() ?: return
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return
         val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
-        prefs.edit()
-            .putBoolean(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey), true)
-            .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), firstStep.id.name)
-            .apply()
+        val editor = prefs.edit()
+        userKeys.forEach { userKey ->
+            editor
+                .putBoolean(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey), true)
+                .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), firstStep.id.name)
+        }
+        editor.apply()
+        notifyOnboardingStateChanged()
+    }
+
+    fun markPendingForCurrentUserIfUnseen() {
+        if (!::prefs.isInitialized) return
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return
+        markPendingForUserKeysIfUnseen(userKeys)
+    }
+
+    fun markPendingForUserIfUnseen(userId: String?, email: String?) {
+        if (!::prefs.isInitialized) return
+        val userKeys = candidateUserKeys(userId = userId, email = email)
+        if (userKeys.isEmpty()) {
+            markPendingForCurrentUserIfUnseen()
+            return
+        }
+        markPendingForUserKeysIfUnseen(userKeys)
+    }
+
+    private fun markPendingForUserKeysIfUnseen(userKeys: List<String>) {
+        val normalizedUserKeys = userKeys
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (normalizedUserKeys.isEmpty()) return
+
+        if (
+            normalizedUserKeys.any { userKey ->
+                prefs.getBoolean(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey), false)
+            }
+        ) {
+            return
+        }
+
+        val storedStep = normalizedUserKeys.firstNotNullOfOrNull { userKey ->
+            prefs.getString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), null)
+                ?.takeIf { it.isNotBlank() }
+        }
+        val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
+        val stepId = storedStep ?: firstStep.id.name
+
+        val editor = prefs.edit()
+        var changed = false
+        normalizedUserKeys.forEach { userKey ->
+            val pendingKey = MobileOnboardingKeys.scopedKey(PendingPrefix, userKey)
+            val currentStepKey = MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey)
+            if (!prefs.getBoolean(pendingKey, false)) {
+                editor.putBoolean(pendingKey, true)
+                changed = true
+            }
+            if (prefs.getString(currentStepKey, null).isNullOrBlank()) {
+                editor.putString(currentStepKey, stepId)
+                changed = true
+            }
+        }
+
+        if (!changed) return
+
+        editor.apply()
+        notifyOnboardingStateChanged()
+    }
+
+    private fun candidateUserKeys(userId: String?, email: String?): List<String> {
+        return buildList {
+            userId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { add("user:$it") }
+            email
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { add("email:$it") }
+        }
     }
 
     fun restartForCurrentUser() {
-        val userKey = currentUserKey() ?: return
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return
         val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated = true)
-        prefs.edit()
-            .putBoolean(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey), true)
-            .remove(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey))
-            .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), firstStep.id.name)
-            .apply()
+        val editor = prefs.edit()
+        userKeys.forEach { userKey ->
+            editor
+                .putBoolean(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey), true)
+                .remove(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey))
+                .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), firstStep.id.name)
+        }
+        editor.apply()
+        notifyOnboardingStateChanged()
     }
 
     fun shouldShowForCurrentUser(): Boolean {
-        val userKey = currentUserKey() ?: return false
-        val pendingKey = MobileOnboardingKeys.scopedKey(PendingPrefix, userKey)
-        val seenKey = MobileOnboardingKeys.scopedKey(SeenPrefix, userKey)
-        val pending = prefs.getBoolean(pendingKey, false)
-        val seen = prefs.getBoolean(seenKey, false)
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return false
+
+        val pendingKeys = userKeys
+            .map { userKey -> MobileOnboardingKeys.scopedKey(PendingPrefix, userKey) }
+            .filter { pendingKey -> prefs.getBoolean(pendingKey, false) }
+        val pending = pendingKeys.isNotEmpty()
+        val seen = userKeys.any { userKey ->
+            prefs.getBoolean(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey), false)
+        }
 
         if (pending && seen) {
-            prefs.edit().remove(pendingKey).apply()
+            val editor = prefs.edit()
+            userKeys.forEach { userKey ->
+                editor
+                    .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
+                    .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
+            }
+            editor.apply()
+            notifyOnboardingStateChanged()
         }
 
         return MobileOnboardingKeys.shouldShow(pending = pending, seen = seen)
     }
 
     fun currentStepForCurrentUser(isAuthenticated: Boolean): MobileOnboardingStepId? {
-        val userKey = currentUserKey() ?: return null
-        val stored = prefs.getString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), null)
-        val parsed = stored?.let { runCatching { MobileOnboardingStepId.valueOf(it) }.getOrNull() }
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return null
+        val parsed = userKeys.firstNotNullOfOrNull { userKey ->
+            prefs.getString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), null)
+                ?.let { stored -> runCatching { MobileOnboardingStepId.valueOf(stored) }.getOrNull() }
+        }
         val valid = parsed?.takeIf { MobileOnboardingJourney.stepFor(it, isAuthenticated) != null }
-        if (valid != null) return valid
+        if (valid != null) {
+            setCurrentStepForUserKeys(userKeys, valid)
+            return valid
+        }
 
         val firstStep = MobileOnboardingJourney.firstStep(isAuthenticated)
-        setCurrentStepForCurrentUser(firstStep.id)
+        setCurrentStepForUserKeys(userKeys, firstStep.id)
         return firstStep.id
     }
 
     fun setCurrentStepForCurrentUser(stepId: MobileOnboardingStepId) {
-        val userKey = currentUserKey() ?: return
-        prefs.edit()
-            .putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), stepId.name)
-            .apply()
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return
+        setCurrentStepForUserKeys(userKeys, stepId)
     }
 
     fun markSeenForCurrentUser() {
-        val userKey = currentUserKey() ?: return
-        prefs.edit()
-            .putBoolean(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey), true)
-            .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
-            .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
-            .apply()
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return
+        val editor = prefs.edit()
+        userKeys.forEach { userKey ->
+            editor
+                .putBoolean(MobileOnboardingKeys.scopedKey(SeenPrefix, userKey), true)
+                .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
+                .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
+        }
+        editor.apply()
+        notifyOnboardingStateChanged()
     }
 
     fun clearPendingForCurrentUser() {
-        val userKey = currentUserKey() ?: return
-        prefs.edit()
-            .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
-            .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
-            .apply()
+        val userKeys = currentUserKeys()
+        if (userKeys.isEmpty()) return
+        val editor = prefs.edit()
+        userKeys.forEach { userKey ->
+            editor
+                .remove(MobileOnboardingKeys.scopedKey(PendingPrefix, userKey))
+                .remove(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey))
+        }
+        editor.apply()
+        notifyOnboardingStateChanged()
     }
 
     fun resetForTesting() {
@@ -94,25 +211,38 @@ object MobileOnboardingStore {
         if (::prefs.isInitialized) {
             prefs.edit().clear().commit()
         }
+        notifyOnboardingStateChanged()
     }
 
-    private fun currentUserKey(): String? {
+    private fun notifyOnboardingStateChanged() {
+        revisionState.update { revision -> revision + 1 }
+    }
+
+    private fun setCurrentStepForUserKeys(userKeys: List<String>, stepId: MobileOnboardingStepId) {
+        val editor = prefs.edit()
+        userKeys.forEach { userKey ->
+            editor.putString(MobileOnboardingKeys.scopedKey(CurrentStepPrefix, userKey), stepId.name)
+        }
+        editor.apply()
+    }
+
+    private fun currentUserKeys(): List<String> {
         ensureInitialized()
         if (AuthSessionStore.getAccessToken().isNullOrBlank()) {
-            return null
+            return emptyList()
         }
 
-        AuthSessionStore.getCurrentUserId()
+        val userId = AuthSessionStore.getCurrentUserId()
             ?.trim()
             ?.takeIf { it.isNotBlank() }
-            ?.let { return "user:$it" }
 
         val email = runCatching { ProfileRepository.getProfile().email }
             .getOrNull()
             ?.trim()
             ?.lowercase()
             ?.takeIf { it.isNotBlank() }
-        return email?.let { "email:$it" }
+
+        return candidateUserKeys(userId = userId, email = email)
     }
 
     private fun ensureInitialized() {

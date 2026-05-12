@@ -12,6 +12,7 @@ import com.neph.features.notifications.data.PushTokenSync
 import com.neph.features.notifications.data.NotificationsBadge
 import com.neph.features.notifications.data.NotificationsRepository
 import com.neph.features.nearbyusers.data.NearbyVisibleUsersRepository
+import com.neph.features.onboarding.data.MobileOnboardingStore
 import com.neph.features.operationallocation.data.OperationalLocationRepository
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
@@ -110,8 +111,9 @@ object AuthRepository {
 
         return try {
             ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
-            ProfileRepository.fetchAndCacheRemoteProfile()
+            val remoteProfile = ProfileRepository.fetchAndCacheRemoteProfile()
             AuthSessionStore.clearPendingVerificationEmail()
+            markMobileOnboardingPendingIfReady(userId = userId, email = remoteProfile.email ?: userEmail)
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "login") }
             LoginDestination.PROFILE
         } catch (cancellationException: CancellationException) {
@@ -172,8 +174,9 @@ object AuthRepository {
 
         return try {
             ProfileRepository.syncPendingLocationPermissionPrivacyHintIfNeeded()
-            ProfileRepository.fetchAndCacheRemoteProfile()
+            val remoteProfile = ProfileRepository.fetchAndCacheRemoteProfile()
             AuthSessionStore.clearPendingVerificationEmail()
+            markMobileOnboardingPendingIfReady(userId = userId, email = remoteProfile.email ?: userEmail)
             NephAppContext.getOrNull()?.let { OfflineSyncScheduler.enqueueSync(it, reason = "google-login") }
             LoginDestination.PROFILE
         } catch (cancellationException: CancellationException) {
@@ -346,6 +349,13 @@ object AuthRepository {
                 Log.w("AuthRepository", "Failed to clear safety status on logout", error)
             }
         }
+    }
+
+    private fun markMobileOnboardingPendingIfReady(userId: String?, email: String?) {
+        NephAppContext.getOrNull()?.let { context ->
+            MobileOnboardingStore.initialize(context)
+        }
+        MobileOnboardingStore.markPendingForUserIfUnseen(userId = userId, email = email)
     }
 
     private fun extractTokenFromLink(tokenOrLink: String): String {

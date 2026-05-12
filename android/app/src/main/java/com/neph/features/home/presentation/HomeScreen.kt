@@ -77,6 +77,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private const val MobileOnboardingWelcomeBlurAlpha = 0.23f
+private const val MobileOnboardingWelcomePanelAlpha = 0.50f
+
 @Composable
 fun HomeScreen(
     onRequestHelp: (String?) -> Unit,
@@ -867,7 +870,7 @@ private fun MobileOnboardingWelcomeMessage() {
                 .matchParentSize()
                 .blur(18.dp)
                 .background(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = MobileOnboardingWelcomeBlurAlpha),
                     shape = RoundedCornerShape(24.dp)
                 )
         )
@@ -880,7 +883,7 @@ private fun MobileOnboardingWelcomeMessage() {
                     shape = RoundedCornerShape(24.dp)
                 ),
             shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = MobileOnboardingWelcomePanelAlpha),
             tonalElevation = 6.dp,
             shadowElevation = 2.dp
         ) {

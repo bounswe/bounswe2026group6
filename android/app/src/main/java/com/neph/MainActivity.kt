@@ -170,6 +170,7 @@ fun NephApp() {
         val currentBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = currentBackStackEntry?.destination?.route
         val accessToken by AuthSessionStore.accessTokenFlow.collectAsState()
+        val mobileOnboardingRevision by MobileOnboardingStore.revisionFlow.collectAsState()
         val isAuthenticated = !accessToken.isNullOrBlank()
         var showMobileOnboarding by remember { mutableStateOf(false) }
         var activeMobileOnboardingStepId by remember { mutableStateOf<MobileOnboardingStepId?>(null) }
@@ -211,6 +212,20 @@ fun NephApp() {
             navigateForMobileOnboarding(firstStep.route)
         }
 
+        fun showPendingMobileOnboardingAfterLogin() {
+            val shouldShow = MobileOnboardingStore.shouldShowForCurrentUser()
+            showMobileOnboarding = shouldShow
+            activeMobileOnboardingStepId = if (shouldShow) {
+                MobileOnboardingStore.currentStepForCurrentUser(isAuthenticated = true)
+            } else {
+                mobileOnboardingFeedback = null
+                null
+            }
+            activeMobileOnboardingStepId
+                ?.let { MobileOnboardingJourney.stepFor(it, isAuthenticated = true) }
+                ?.let { step -> navigateForMobileOnboarding(step.route) }
+        }
+
         fun closeMobileOnboardingAndReturnHome() {
             MobileOnboardingStore.markSeenForCurrentUser()
             showMobileOnboarding = false
@@ -246,7 +261,7 @@ fun NephApp() {
             }
         }
 
-        LaunchedEffect(accessToken, currentRoute) {
+        LaunchedEffect(accessToken, currentRoute, mobileOnboardingRevision) {
             val shouldShow = shouldShowMobileOnboardingForRoute(currentRoute)
             showMobileOnboarding = shouldShow
             activeMobileOnboardingStepId = if (shouldShow) {
@@ -295,17 +310,22 @@ fun NephApp() {
             )
         }
 
-        AppNavGraph(
-            navController = navController,
-            startDestination = when {
+        val initialStartDestination = remember {
+            when {
                 !AuthSessionStore.getAccessToken().isNullOrBlank() -> Routes.Home.route
                 AuthSessionStore.isGuestMode() && RequestHelpRepository.shouldOpenGuestRequestsOnStart() -> {
                     Routes.MyHelpRequests.route
                 }
                 AuthSessionStore.isGuestMode() -> Routes.Home.route
                 else -> Routes.Welcome.route
-            },
+            }
+        }
+
+        AppNavGraph(
+            navController = navController,
+            startDestination = initialStartDestination,
             onRestartMobileOnboarding = ::restartMobileOnboarding,
+            onAuthenticatedLoginCompleted = ::showPendingMobileOnboardingAfterLogin,
             mobileOnboardingStepId = activeMobileOnboardingStepId.takeIf { showMobileOnboarding },
             onMobileOnboardingStepCompleted = ::completeMobileOnboardingStep,
             onMobileOnboardingFeedbackChanged = ::updateMobileOnboardingFeedback,
