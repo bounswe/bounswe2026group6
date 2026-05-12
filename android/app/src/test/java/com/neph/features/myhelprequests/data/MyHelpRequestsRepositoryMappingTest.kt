@@ -7,6 +7,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -24,6 +25,49 @@ class MyHelpRequestsRepositoryMappingTest {
     @After
     fun tearDown() {
         TimeZone.setDefault(previousTimeZone)
+    }
+
+    @Test
+    fun toUiModelUsesDescriptionFallbackForBlankAndNullLikeValues() {
+        val blankDescription = helpRequestEntity(
+            localId = "local_blank_description",
+            description = ""
+        ).toUiModel()
+        val nullLikeDescription = helpRequestEntity(
+            localId = "local_null_description",
+            description = "null"
+        ).toUiModel()
+
+        assertEquals("No description provided.", blankDescription.description)
+        assertEquals("No description provided.", blankDescription.shortDescription)
+        assertEquals("No description provided.", nullLikeDescription.description)
+        assertEquals("No description provided.", nullLikeDescription.shortDescription)
+    }
+
+    @Test
+    fun toUiModelFormatsAssignedHelperExpertiseForRequester() {
+        val model = helpRequestEntity(
+            helperFirstName = "Ece",
+            helperExpertise = "Do you know first aid?"
+        ).toUiModel()
+        val firstAidAnswerModel = helpRequestEntity(
+            helpersJson = """[{"firstName":"Ece","expertise":{"firstAid":true}}]"""
+        ).toUiModel()
+
+        assertEquals("Knows first aid", model.helperExpertise)
+        assertEquals("Knows first aid", model.responders.single().expertise)
+        assertEquals("Knows first aid", firstAidAnswerModel.helperExpertise)
+        assertEquals("Knows first aid", firstAidAnswerModel.responders.single().expertise)
+    }
+
+    @Test
+    fun toUiModelDoesNotRenderUnknownRawExpertiseQuestions() {
+        val model = helpRequestEntity(
+            helpersJson = """[{"firstName":"Ece","expertise":"Do you have a car?"}]"""
+        ).toUiModel()
+
+        assertNull(model.helperExpertise)
+        assertNull(model.responders.single().expertise)
     }
 
     @Test
@@ -241,5 +285,58 @@ class MyHelpRequestsRepositoryMappingTest {
         assertEquals(1, overview.resolvedCount)
         assertEquals(1, overview.assignedResponderCount)
         assertTrue(overview.hasMultipleRequestContext)
+    }
+
+    private fun helpRequestEntity(
+        localId: String = "local_display_test",
+        remoteId: String? = "req_display_test",
+        description: String = "Need first aid support",
+        status: String = "MATCHED",
+        helperFirstName: String? = null,
+        helperLastName: String? = null,
+        helperPhone: String? = null,
+        helperProfession: String? = null,
+        helperExpertise: String? = null,
+        helpersJson: String = "[]"
+    ): HelpRequestEntity {
+        return HelpRequestEntity(
+            localId = localId,
+            remoteId = remoteId,
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            guestAccessToken = null,
+            helpTypesJson = "[\"first_aid\"]",
+            otherHelpText = "",
+            affectedPeopleCount = 1,
+            riskFlagsJson = "[]",
+            vulnerableGroupsJson = "[]",
+            description = description,
+            bloodType = "",
+            country = "Turkey",
+            city = "Istanbul",
+            district = "Kadikoy",
+            neighborhood = "Moda",
+            extraAddress = "Street 1",
+            contactFullName = "Ayse",
+            contactPhone = "5550000001",
+            contactAlternativePhone = null,
+            status = status,
+            urgencyLevel = null,
+            priorityLevel = null,
+            resolvedAt = null,
+            cancelledAt = null,
+            helperFirstName = helperFirstName,
+            helperLastName = helperLastName,
+            helperPhone = helperPhone,
+            helperProfession = helperProfession,
+            helperExpertise = helperExpertise,
+            helpersJson = helpersJson,
+            syncStatus = SyncStatus.SYNCED,
+            pendingError = null,
+            createdAtEpochMillis = 1L,
+            updatedAtEpochMillis = 1L,
+            lastSyncedAtEpochMillis = null,
+            serverCreatedAt = "2026-04-26T10:00:00.000Z",
+            isDeleted = false
+        )
     }
 }

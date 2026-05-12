@@ -124,7 +124,7 @@ private val vulnerableGroupOptions = listOf(
 private const val RequestHelpGpsCoordinateSource = "gps"
 private const val RequestHelpMapCoordinateSource = "map_selection"
 
-private data class RequestHelpFormState(
+internal data class RequestHelpFormState(
     val helpTypes: List<String> = emptyList(),
     val affectedPeopleCount: String = "",
     val riskFlags: List<String> = emptyList(),
@@ -220,19 +220,35 @@ private fun RequestHelpFormState.toMobileOnboardingPracticeHelpRequest(): Mobile
     )
 }
 
-private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
-    val phoneParts = normalizePhoneParts(contactPhone)
+internal fun HelpRequestEntity.toFormState(
+    locations: LocationData = locationData
+): RequestHelpFormState {
+    val phoneParts = normalizeStoredRequestPhoneParts(contactPhone)
+    val alternativePhoneParts = normalizeStoredRequestPhoneParts(contactAlternativePhone)
+    val countryValue = resolveCountryFormValue(country, locations)
+    val cityValue = resolveCityFormValue(countryValue, city, locations)
+    val districtValue = resolveDistrictFormValue(countryValue, cityValue, district, locations)
+    val neighborhoodValue = resolveNeighborhoodFormValue(
+        countryValue = countryValue,
+        cityValue = cityValue,
+        districtValue = districtValue,
+        neighborhood = neighborhood,
+        locations = locations
+    )
     return RequestHelpFormState(
-        helpTypes = helpTypesJson.jsonArrayToStringList().mapNotNull { helpTypeLabelsByApiValue[it] },
+        helpTypes = helpTypesJson.jsonArrayToStringList()
+            .mapNotNull(::persistedHelpTypeToOption),
         affectedPeopleCount = affectedPeopleCount.toString(),
-        riskFlags = riskFlagsJson.jsonArrayToStringList(),
-        vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList(),
+        riskFlags = riskFlagsJson.jsonArrayToStringList()
+            .map { persistedOptionToLabel(it, riskFlagOptions) },
+        vulnerableGroups = vulnerableGroupsJson.jsonArrayToStringList()
+            .map { persistedOptionToLabel(it, vulnerableGroupOptions) },
         situationDescription = description,
         shareProfileHealthInfoWithVolunteer = shareProfileHealthInfoWithVolunteer,
-        country = country,
-        city = city,
-        district = district,
-        neighborhood = neighborhood,
+        country = countryValue,
+        city = cityValue,
+        district = districtValue,
+        neighborhood = neighborhoodValue,
         shortAddress = extraAddress,
         latitude = latitude,
         longitude = longitude,
@@ -243,9 +259,118 @@ private fun HelpRequestEntity.toFormState(): RequestHelpFormState {
         fullName = contactFullName,
         countryCode = phoneParts.countryCode,
         phoneNumber = phoneParts.phone,
-        alternativePhone = contactAlternativePhone.orEmpty(),
+        alternativePhone = alternativePhoneParts.phone,
         confirmationAccepted = true
     )
+}
+
+private fun persistedHelpTypeToOption(value: String): String? {
+    val raw = value.trim()
+    if (raw.isBlank()) return null
+    helpTypeLabelsByApiValue[raw.lowercase(Locale.ROOT)]?.let { return it }
+    return persistedOptionToLabel(raw, helpTypeOptions)
+}
+
+private fun persistedOptionToLabel(value: String, options: List<String>): String {
+    val raw = value.trim()
+    if (raw.isBlank()) return raw
+
+    options.firstOrNull { it.equals(raw, ignoreCase = true) }?.let { return it }
+    val normalizedRaw = normalizePersistedOption(raw)
+    return options.firstOrNull { normalizePersistedOption(it) == normalizedRaw }
+        ?: raw
+}
+
+private fun normalizePersistedOption(value: String): String {
+    return value
+        .trim()
+        .lowercase(Locale.ROOT)
+        .replace("&", "")
+        .replace(Regex("[^a-z0-9]+"), "")
+}
+
+private fun normalizeStoredRequestPhoneParts(phoneNumber: String?): PhoneParts {
+    val raw = phoneNumber?.trim().orEmpty()
+    val digits = raw.filter(Char::isDigit)
+    if (!raw.startsWith("+") && digits.length == 12 && digits.startsWith("90")) {
+        return PhoneParts(countryCode = "+90", phone = digits.removePrefix("90").trimStart('0'))
+    }
+    return normalizePhoneParts(phoneNumber)
+}
+
+private fun resolveCountryFormValue(country: String, locations: LocationData): String {
+    val raw = country.trim()
+    if (raw.isBlank()) return ""
+
+    if (locations.containsKey(raw)) return raw
+    val normalizedKey = raw.lowercase(Locale.ROOT)
+    if (locations.containsKey(normalizedKey)) return normalizedKey
+
+    return findCountryKeyByLabel(raw, locations).ifBlank { raw }
+}
+
+private fun resolveCityFormValue(
+    countryValue: String,
+    city: String,
+    locations: LocationData
+): String {
+    val raw = city.trim()
+    if (countryValue.isBlank() || raw.isBlank()) return raw
+
+    val cities = locations[countryValue]?.cities ?: return raw
+    if (cities.containsKey(raw)) return raw
+    val normalizedKey = raw.lowercase(Locale.ROOT)
+    if (cities.containsKey(normalizedKey)) return normalizedKey
+
+    return findCityKeyByLabel(countryValue, raw, locations).ifBlank { raw }
+}
+
+private fun resolveDistrictFormValue(
+    countryValue: String,
+    cityValue: String,
+    district: String,
+    locations: LocationData
+): String {
+    val raw = district.trim()
+    if (countryValue.isBlank() || cityValue.isBlank() || raw.isBlank()) return raw
+
+    val districts = locations[countryValue]?.cities?.get(cityValue)?.districts ?: return raw
+    if (districts.containsKey(raw)) return raw
+    val normalizedKey = raw.lowercase(Locale.ROOT)
+    if (districts.containsKey(normalizedKey)) return normalizedKey
+
+    return findDistrictKeyByLabel(countryValue, cityValue, raw, locations).ifBlank { raw }
+}
+
+private fun resolveNeighborhoodFormValue(
+    countryValue: String,
+    cityValue: String,
+    districtValue: String,
+    neighborhood: String,
+    locations: LocationData
+): String {
+    val raw = neighborhood.trim()
+    if (countryValue.isBlank() || cityValue.isBlank() || districtValue.isBlank() || raw.isBlank()) {
+        return raw
+    }
+
+    val neighborhoods = locations[countryValue]
+        ?.cities
+        ?.get(cityValue)
+        ?.districts
+        ?.get(districtValue)
+        ?.neighborhoods
+        ?: return raw
+
+    neighborhoods.firstOrNull { it.value.equals(raw, ignoreCase = true) }?.let { return it.value }
+
+    return findNeighborhoodValueByLabel(
+        countryKey = countryValue,
+        cityKey = cityValue,
+        districtKey = districtValue,
+        label = raw,
+        locations = locations
+    ).ifBlank { raw }
 }
 
 private fun toggleSelection(current: List<String>, option: String): List<String> {
@@ -843,7 +968,7 @@ fun RequestHelpScreen(
         }
     }
 
-    LaunchedEffect(sessionToken, activeDraftLocalId) {
+    LaunchedEffect(sessionToken, activeDraftLocalId, locationLoading) {
         val existingDraft = activeDraftLocalId.takeIf { it.isNotBlank() }?.let { localId ->
             RequestHelpRepository.getLocalHelpRequest(localId)
         }
@@ -852,7 +977,10 @@ fun RequestHelpScreen(
                 onNavigateToLogin()
                 return@LaunchedEffect
             }
-            formState = existingDraft.toFormState()
+            if (locationLoading) {
+                return@LaunchedEffect
+            }
+            formState = existingDraft.toFormState(availableLocationData)
             infoMessage = ""
             checkingActiveRequest = false
             return@LaunchedEffect
@@ -1313,7 +1441,7 @@ fun RequestHelpScreen(
             }
 
             PrimaryButton(
-                text = "Send Help Request",
+                text = requestHelpPrimaryActionLabel(activeDraftLocalId),
                 onClick = ::handleSubmit,
                 modifier = Modifier
                     .then(
@@ -1333,6 +1461,10 @@ fun RequestHelpScreen(
             )
         }
     }
+}
+
+internal fun requestHelpPrimaryActionLabel(draftLocalId: String?): String {
+    return if (draftLocalId.isNullOrBlank()) "Send Help Request" else "Save Changes"
 }
 
 @Composable

@@ -229,20 +229,23 @@ The signed release APK must be attached to the GitHub Release manually or by the
 Final demo data is stored in the normal backend migration flow:
 
 - `backend/migrations/20260512_120000__seed_bogazici_final_demo_data.sql`
+- `backend/migrations/20260512_130000__seed_bogazici_final_demo_admin.sql`
 
 It is applied by the normal backend migration runner. In Docker Compose, backend migrations run automatically on startup, so no separate `ENABLE_DEMO_SEED=true npm run seed:demo` command is needed for the Boğaziçi final demo data after migrations run. The old `backend/demo-migrations/` flow is optional legacy demo data only.
 
-Boğaziçi final demo accounts:
+Boğaziçi final demo accounts are applied by the normal migration flow. All listed users use password `DemoPass123!`:
 
-| Email | Password |
-| --- | --- |
-| `bogazici_reserve_1@neph.test` | `DemoPass123!` |
-| `bogazici_reserve_2@neph.test` | `DemoPass123!` |
-| `bogazici_reserve_3@neph.test` | `DemoPass123!` |
-| `bogazici_reserve_4@neph.test` | `DemoPass123!` |
-| `bogazici_assigned_1@neph.test` | `DemoPass123!` |
-| `bogazici_assigned_2@neph.test` | `DemoPass123!` |
-| `bogazici_requester_new_hall@neph.test` | `DemoPass123!` |
+| Role | Email | Password | Notes |
+| --- | --- | --- | --- |
+| Admin | `bogazici_admin@neph.test` | `DemoPass123!` | `SUPER_ADMIN` account for web/admin checks |
+| Requester | `bogazici_requester_new_hall@neph.test` | `DemoPass123!` | Active emergency request near New Hall |
+| Requester | `bogazici_requester_hisarustu@neph.test` | `DemoPass123!` | Hisarüstü request scenario |
+| Volunteer/responder | `bogazici_assigned_1@neph.test` | `DemoPass123!` | Assigned first-aid responder |
+| Volunteer/responder | `bogazici_assigned_2@neph.test` | `DemoPass123!` | Assigned logistics responder |
+| Reserve volunteer | `bogazici_reserve_1@neph.test` | `DemoPass123!` | Available first-aid volunteer |
+| Reserve volunteer | `bogazici_reserve_2@neph.test` | `DemoPass123!` | Available search-and-rescue volunteer |
+| Reserve volunteer | `bogazici_reserve_3@neph.test` | `DemoPass123!` | Available food/water volunteer |
+| Reserve volunteer | `bogazici_reserve_4@neph.test` | `DemoPass123!` | Available shelter/communications volunteer |
 
 ### Optional legacy demo data seed
 
@@ -330,7 +333,7 @@ The deployed backend API base is `https://api.neph.app/api`. The deployed web UR
 - Tag `final-milestone` points to the final `main` commit.
 - GitHub Release name is `1.0.0`.
 - GitHub Release is official, not a pre-release.
-- Release notes include the deployed web URL.
+- Release notes include the deployed web URL. A ready-to-copy draft is available at `docs/releases/final-milestone-release-notes.md`.
 - Signed APK is attached to the GitHub Release.
 
 ## Development notes

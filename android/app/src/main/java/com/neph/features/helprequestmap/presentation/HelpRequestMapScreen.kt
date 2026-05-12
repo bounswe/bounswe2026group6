@@ -43,6 +43,7 @@ import com.neph.features.helprequestmap.data.ActiveHelpRequestsResult
 import com.neph.features.helprequestmap.data.ActiveHelpRequestsRepository
 import com.neph.features.helprequestmap.data.CrisisRequestType
 import com.neph.features.onboarding.data.MobileOnboardingStepId
+import com.neph.features.profile.data.CurrentDeviceLocation
 import com.neph.features.profile.data.CurrentLocationShareWarning
 import com.neph.features.profile.data.DeviceLocationProvider
 import com.neph.navigation.Routes
@@ -56,6 +57,7 @@ import com.neph.ui.location.rememberForegroundLocationPermissionRequester
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
 import com.neph.ui.map.LeafletMapMarker
+import com.neph.ui.map.LeafletMapStatusOverlay
 import com.neph.ui.map.LeafletMapViewport
 import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.MapLocationControl
@@ -66,6 +68,7 @@ import com.neph.ui.map.isLeafletTileLoadedSignal
 import com.neph.ui.map.isLeafletViewportDiscoverable
 import com.neph.ui.map.leafletViewportBboxString
 import com.neph.ui.map.leafletMapErrorForInstance
+import com.neph.ui.map.leafletMapStatusOverlayMessage
 import com.neph.ui.map.logMapDebug
 import com.neph.ui.map.newLeafletMapInstanceId
 import com.neph.ui.map.shouldApplyLeafletMapError
@@ -90,6 +93,10 @@ private const val ResourceUpdatingMessage = "Updating visible area..."
 private const val ResourceEmptyMessage = "No resources were found in this visible area."
 private const val ResourceErrorMessage = "Resources could not be loaded for this area. Please try again."
 private const val ResourceFilterEmptyMessage = "No help requests match the selected request type filters."
+private const val InitialPermissionDeniedFallbackMessage =
+    "Location permission was denied. Showing default help request results."
+private const val InitialLocationUnavailableFallbackMessage =
+    "Current location is unavailable. Showing default help request results."
 
 private val RequestTypeFilterOrder = listOf(
     CrisisRequestType.FIRST_AID,
@@ -239,6 +246,7 @@ fun HelpRequestMapScreen(
     var selectedTypes by remember { mutableStateOf(setOf<CrisisRequestType>()) }
     var currentViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
     var pendingViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
+    var viewportUpdateQueued by remember { mutableStateOf(false) }
     var lastFetchedViewportKey by remember { mutableStateOf<String?>(null) }
     var viewportRefreshNonce by remember { mutableStateOf(0) }
     var viewportRequestSerial by remember { mutableStateOf(0) }
@@ -246,10 +254,20 @@ fun HelpRequestMapScreen(
     var mapCenterLongitude by remember { mutableStateOf(TurkeyOverviewLongitude) }
     var mapZoom by remember { mutableStateOf(TurkeyOverviewZoom) }
     var mapResetNonce by remember { mutableStateOf(0) }
+    var currentLocation by remember { mutableStateOf<CurrentDeviceLocation?>(null) }
+    var attemptedInitialLocation by remember { mutableStateOf(false) }
+    var initialLocationPermissionRequestPending by remember { mutableStateOf(false) }
+    var initialFallbackFetchRequested by remember { mutableStateOf(false) }
+    var initialFallbackFetchCompleted by remember { mutableStateOf(false) }
+    var initialFallbackInfoMessage by remember { mutableStateOf<String?>(null) }
     var initialMarkerFitApplied by remember { mutableStateOf(false) }
     var markerFitBoundsToken by remember { mutableStateOf<Int?>(null) }
 
-    fun applyRequestResult(result: ActiveHelpRequestsResult, viewportKey: String?) {
+    fun applyRequestResult(
+        result: ActiveHelpRequestsResult,
+        viewportKey: String?,
+        infoOverride: String? = null
+    ) {
         if (
             !initialMarkerFitApplied &&
             viewportKey == null &&
@@ -264,6 +282,7 @@ fun HelpRequestMapScreen(
         selectedRequestId = selectedRequestId
             ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
         infoMessage = when {
+            !infoOverride.isNullOrBlank() -> infoOverride
             result.requests.isEmpty() -> ResourceEmptyMessage
             result.skippedCount > 0 ->
                 "${result.skippedCount} inactive or malformed request entries were hidden."
@@ -271,28 +290,89 @@ fun HelpRequestMapScreen(
         }
     }
 
-    fun queueViewportRefresh() {
-        val viewport = currentViewport
+    fun queueInitialFallbackFetch(message: String) {
+        if (initialFallbackFetchCompleted || initialFallbackFetchRequested) {
+            if (infoMessage.isBlank()) {
+                infoMessage = message
+            }
+            return
+        }
+        initialFallbackInfoMessage = message
+        initialFallbackFetchRequested = true
+    }
+
+    fun queueViewportFetch(
+        viewport: LeafletMapViewport?,
+        manualRefresh: Boolean = false
+    ) {
         if (!isLeafletViewportDiscoverable(viewport)) {
+            viewportRequestSerial += 1
+            pendingViewport = null
             requests = emptyList()
             selectedRequestId = null
             errorMessage = ""
             loading = false
             backgroundUpdating = false
+            viewportUpdateQueued = false
             infoMessage = ""
             return
         }
+
+        val viewportKey = effectiveLeafletViewportKey(viewport)
+        if (viewportKey == null) {
+            viewportRequestSerial += 1
+            pendingViewport = null
+            viewportUpdateQueued = false
+            loading = false
+            backgroundUpdating = false
+            return
+        }
+
+        val previousPendingViewportKey = effectiveLeafletViewportKey(pendingViewport)
+        val viewportChanged = viewportKey != previousPendingViewportKey
+        val shouldQueue = shouldFetchLeafletViewport(
+            viewportKey = viewportKey,
+            lastFetchedViewportKey = lastFetchedViewportKey,
+            manualRefresh = manualRefresh
+        )
+
         errorMessage = ""
         pendingViewport = viewport
-        viewportRefreshNonce += 1
+        if (shouldQueue) {
+            viewportRequestSerial += 1
+            viewportUpdateQueued = true
+            if (manualRefresh) {
+                viewportRefreshNonce += 1
+            }
+        } else {
+            if (viewportChanged) {
+                viewportRequestSerial += 1
+                loading = false
+                backgroundUpdating = false
+            }
+            viewportUpdateQueued = false
+        }
     }
 
-    fun requestCurrentLocationAndRefresh() {
+    fun queueViewportRefresh() {
+        queueViewportFetch(
+            viewport = currentViewport,
+            manualRefresh = true
+        )
+    }
+
+    fun requestCurrentLocationAndRefresh(
+        silent: Boolean = false,
+        isInitialAttempt: Boolean = false
+    ) {
         scope.launch {
             loading = true
             backgroundUpdating = false
+            viewportUpdateQueued = false
             errorMessage = ""
-            infoMessage = ""
+            if (!silent) {
+                infoMessage = ""
+            }
 
             try {
                 val attempt = DeviceLocationProvider.captureCurrentLocationForSharing(
@@ -302,9 +382,11 @@ fun HelpRequestMapScreen(
 
                 val location = attempt.location
                 if (location != null) {
+                    currentLocation = location
                     viewportRequestSerial += 1
                     currentViewport = null
                     pendingViewport = null
+                    viewportUpdateQueued = false
                     requests = emptyList()
                     mapCenterLatitude = location.latitude
                     mapCenterLongitude = location.longitude
@@ -313,24 +395,44 @@ fun HelpRequestMapScreen(
                     markerFitBoundsToken = null
                     selectedRequestId = null
                     lastFetchedViewportKey = null
+                    infoMessage = ""
                     loading = false
                     backgroundUpdating = false
                     return@launch
                 }
 
                 loading = false
-                infoMessage = when (attempt.warning) {
+                val fallbackMessage = when (attempt.warning) {
                     CurrentLocationShareWarning.PERMISSION_DENIED ->
-                        "Location permission was denied. Help request map was not recentered."
+                        if (isInitialAttempt) {
+                            InitialPermissionDeniedFallbackMessage
+                        } else {
+                            "Location permission was denied. Help request map was not recentered."
+                        }
 
                     CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
-                    null -> "Current location is unavailable. Help request map was not recentered."
+                    null -> if (isInitialAttempt) {
+                        InitialLocationUnavailableFallbackMessage
+                    } else {
+                        "Current location is unavailable. Help request map was not recentered."
+                    }
+                }
+                if (isInitialAttempt) {
+                    queueInitialFallbackFetch(fallbackMessage)
+                    infoMessage = fallbackMessage
+                } else if (!silent) {
+                    infoMessage = fallbackMessage
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
                 loading = false
-                infoMessage = "Current location is unavailable. Help request map was not recentered."
+                if (isInitialAttempt) {
+                    queueInitialFallbackFetch(InitialLocationUnavailableFallbackMessage)
+                    infoMessage = InitialLocationUnavailableFallbackMessage
+                } else if (!silent) {
+                    infoMessage = "Current location is unavailable. Help request map was not recentered."
+                }
             }
         }
     }
@@ -359,42 +461,61 @@ fun HelpRequestMapScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialFallbackFetchRequested) {
+        if (!initialFallbackFetchRequested) return@LaunchedEffect
         loading = true
+        backgroundUpdating = false
         errorMessage = ""
-        infoMessage = ResourceLoadingMessage
 
         try {
             val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests()
-            applyRequestResult(result, viewportKey = null)
+            applyRequestResult(
+                result = result,
+                viewportKey = null,
+                infoOverride = initialFallbackInfoMessage
+            )
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (error: ApiException) {
             errorMessage = error.message.ifBlank { ResourceErrorMessage }
             requests = emptyList()
             selectedRequestId = null
-            infoMessage = ""
+            if (infoMessage.isBlank()) {
+                infoMessage = initialFallbackInfoMessage.orEmpty()
+            }
         } catch (_: Exception) {
             errorMessage = ResourceErrorMessage
             requests = emptyList()
             selectedRequestId = null
-            infoMessage = ""
+            if (infoMessage.isBlank()) {
+                infoMessage = initialFallbackInfoMessage.orEmpty()
+            }
         } finally {
             loading = false
+            initialFallbackFetchRequested = false
+            initialFallbackFetchCompleted = true
         }
     }
 
-    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce) {
-        val viewport = pendingViewport ?: return@LaunchedEffect
-        if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
-        val viewportKey = effectiveLeafletViewportKey(viewport) ?: return@LaunchedEffect
-        val manualRefresh = viewportRefreshNonce > 0
-        if (!shouldFetchLeafletViewport(viewportKey, lastFetchedViewportKey, manualRefresh)) {
+    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce, viewportRequestSerial) {
+        val viewport = pendingViewport
+        if (viewport == null || !isLeafletViewportDiscoverable(viewport)) {
+            viewportUpdateQueued = false
             return@LaunchedEffect
         }
+        val viewportKey = effectiveLeafletViewportKey(viewport)
+        if (viewportKey == null) {
+            viewportUpdateQueued = false
+            return@LaunchedEffect
+        }
+        val manualRefresh = viewportRefreshNonce > 0
+        if (!shouldFetchLeafletViewport(viewportKey, lastFetchedViewportKey, manualRefresh)) {
+            viewportUpdateQueued = false
+            return@LaunchedEffect
+        }
+        val requestSerial = viewportRequestSerial
         delay(450)
-        val requestSerial = viewportRequestSerial + 1
-        viewportRequestSerial = requestSerial
+        viewportUpdateQueued = false
         val blockingLoading = !shouldShowPreviousHelpRequestsDuringViewportFetch(
             requests = requests,
             manualRefresh = manualRefresh
@@ -431,6 +552,7 @@ fun HelpRequestMapScreen(
             }
         } finally {
             if (requestSerial == viewportRequestSerial) {
+                viewportUpdateQueued = false
                 loading = false
                 backgroundUpdating = false
             }
@@ -438,13 +560,24 @@ fun HelpRequestMapScreen(
     }
 
     val locationPermissionRequester = rememberForegroundLocationPermissionRequester { result ->
+        val isInitialRequest = initialLocationPermissionRequestPending
+        initialLocationPermissionRequestPending = false
         if (result.granted) {
-            requestCurrentLocationAndRefresh()
+            requestCurrentLocationAndRefresh(
+                silent = false,
+                isInitialAttempt = isInitialRequest
+            )
         } else {
             errorMessage = ""
             loading = false
             backgroundUpdating = false
-            infoMessage = "Location permission was denied. Help request map was not recentered."
+            viewportUpdateQueued = false
+            if (isInitialRequest) {
+                infoMessage = InitialPermissionDeniedFallbackMessage
+                queueInitialFallbackFetch(InitialPermissionDeniedFallbackMessage)
+            } else {
+                infoMessage = "Location permission was denied. Help request map was not recentered."
+            }
         }
     }
 
@@ -452,6 +585,17 @@ fun HelpRequestMapScreen(
         if (locationPermissionRequester.refreshPermissionState()) {
             requestCurrentLocationAndRefresh()
         } else {
+            locationPermissionRequester.requestPermission()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (attemptedInitialLocation) return@LaunchedEffect
+        attemptedInitialLocation = true
+        if (locationPermissionRequester.refreshPermissionState()) {
+            requestCurrentLocationAndRefresh(silent = false, isInitialAttempt = true)
+        } else {
+            initialLocationPermissionRequestPending = true
             locationPermissionRequester.requestPermission()
         }
     }
@@ -471,22 +615,16 @@ fun HelpRequestMapScreen(
             if (infoMessage == ResourceZoomedOutMessage) {
                 infoMessage = ""
             }
-            pendingViewport = viewport
+            queueViewportFetch(viewport)
         } else {
-            viewportRequestSerial += 1
-            requests = emptyList()
-            selectedRequestId = null
             lastFetchedViewportKey = null
-            errorMessage = ""
-            loading = false
-            backgroundUpdating = false
-            infoMessage = ""
+            queueViewportFetch(viewport = null)
         }
     }
 
     val selectedRequest = visibleRequests.firstOrNull { it.requestId == selectedRequestId }
     val isFilterEmpty = !loading && requests.isNotEmpty() && visibleRequests.isEmpty()
-    val mapActionsEnabled = !loading && !backgroundUpdating
+    val mapActionsEnabled = !loading && !backgroundUpdating && !viewportUpdateQueued
     val mapEmptyMarkersMessage = helpRequestMapEmptyMessage(
         blockingLoading = loading,
         errorMessage = errorMessage,
@@ -541,9 +679,11 @@ fun HelpRequestMapScreen(
                     selectedRequestId = selectedRequest?.requestId,
                     emptyMarkersMessage = mapEmptyMarkersMessage,
                     loadingResources = loading,
-                    updatingResources = backgroundUpdating,
+                    updatingResources = backgroundUpdating || viewportUpdateQueued,
                     mapCenterLatitude = mapCenterLatitude,
                     mapCenterLongitude = mapCenterLongitude,
+                    currentLocationLatitude = currentLocation?.latitude,
+                    currentLocationLongitude = currentLocation?.longitude,
                     mapZoom = mapZoom,
                     mapResetToken = mapResetNonce,
                     fitBoundsRequestToken = markerFitBoundsToken,
@@ -918,6 +1058,8 @@ private fun CrisisRequestMapPanel(
     updatingResources: Boolean = false,
     mapCenterLatitude: Double = TurkeyOverviewLatitude,
     mapCenterLongitude: Double = TurkeyOverviewLongitude,
+    currentLocationLatitude: Double? = null,
+    currentLocationLongitude: Double? = null,
     mapZoom: Int = TurkeyOverviewZoom,
     mapResetToken: Int = 0,
     fitBoundsRequestToken: Int? = null,
@@ -950,6 +1092,12 @@ private fun CrisisRequestMapPanel(
         tileLoadedInstanceId = tileLoadedInstanceIdState.value,
         errorInstanceId = errorInstanceIdState.value,
         errorMessage = mapError
+    )
+    val mapOverlayMessage = leafletMapStatusOverlayMessage(
+        mapInitialized = activeMapInitialized,
+        mapError = activeMapError,
+        loadingResources = loadingResources,
+        updatingResources = updatingResources
     )
     val selectedRequest = requests.firstOrNull { it.requestId == selectedRequestId }
     val markers = helpRequestLeafletMarkers(requests)
@@ -1009,6 +1157,8 @@ private fun CrisisRequestMapPanel(
                 currentMapInstanceId = { currentMapInstanceIdState.value },
                 centerLatitude = effectiveCenterLatitude,
                 centerLongitude = effectiveCenterLongitude,
+                currentLocationLatitude = currentLocationLatitude,
+                currentLocationLongitude = currentLocationLongitude,
                 markers = markers,
                 selectedMarkerId = selectedRequestId,
                 mapHeightCssPx = HelpRequestMapHeightCssPx,
@@ -1055,6 +1205,12 @@ private fun CrisisRequestMapPanel(
                         .padding(spacing.sm)
                 )
             }
+            LeafletMapStatusOverlay(
+                message = mapOverlayMessage,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(spacing.sm)
+            )
         }
 
         if (!activeMapInitialized && activeMapError.isBlank()) {
