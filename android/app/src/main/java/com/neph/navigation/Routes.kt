@@ -6,6 +6,7 @@ sealed class Routes(
 ) {
     data object Home : Routes("home", "Home")
     data object News : Routes("news", "News & Announcements")
+    data object NewsDetail : Routes("news_detail", "Announcement")
     data object RequestHelp : Routes("request_help")
     data object MyHelpRequests : Routes("my_help_requests", "My Help Requests")
     data object AssignedRequest : Routes("assigned_request", "Assigned Request")
@@ -33,6 +34,11 @@ sealed class Routes(
         const val RequestHelpDraftArg = "draftLocalId"
 
         fun requestHelpWithDraft(localId: String): String = "${RequestHelp.route}?$RequestHelpDraftArg=$localId"
+
+        const val NewsAnnouncementIdArg = "announcementId"
+
+        fun newsDetail(announcementId: String): String =
+            "${NewsDetail.route}/$announcementId"
 
         val authenticatedDrawerItems = listOf(
             Home,
