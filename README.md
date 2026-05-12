@@ -76,7 +76,7 @@ For Android development:
 
 ## Live deployment
 
-- Web app: `LIVE_WEB_URL_TO_BE_FILLED_BEFORE_RELEASE`
+- Web app: `https://neph.app/`
 - Backend API: `https://api.neph.app/api`
 
 ## Environment variables
