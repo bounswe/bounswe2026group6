@@ -49,6 +49,7 @@ import com.neph.ui.map.LeafletMapMarker
 import com.neph.ui.map.LeafletMarkerMap
 import com.neph.ui.map.LeafletMapInitializationTimeoutMessage
 import com.neph.ui.map.LeafletMapInitializationTimeoutMillis
+import com.neph.ui.map.LeafletMapStatusOverlay
 import com.neph.ui.map.LeafletMapViewport
 import com.neph.ui.map.MapLocationControl
 import com.neph.ui.map.NephMapIntegration
@@ -58,6 +59,7 @@ import com.neph.ui.map.isLeafletTileLoadedSignal
 import com.neph.ui.map.isLeafletViewportDiscoverable
 import com.neph.ui.map.leafletViewportBboxString
 import com.neph.ui.map.leafletMapErrorForInstance
+import com.neph.ui.map.leafletMapStatusOverlayMessage
 import com.neph.ui.map.logMapDebug
 import com.neph.ui.map.newLeafletMapInstanceId
 import com.neph.ui.map.shouldApplyLeafletMapError
@@ -170,6 +172,22 @@ internal fun shouldShowPreviousGatheringAreasDuringViewportFetch(
     return currentResult != null && !manualRefresh
 }
 
+internal fun shouldMarkGatheringAreasViewportFetched(result: NearbyGatheringAreasResult): Boolean {
+    return !isGatheringAreasProviderUnavailable(result)
+}
+
+internal fun shouldQueueGatheringAreasViewportFetch(
+    viewportKey: String,
+    lastFetchedViewportKey: String?,
+    manualRefresh: Boolean,
+    providerFailedViewportKey: String?
+): Boolean {
+    if (!shouldFetchLeafletViewport(viewportKey, lastFetchedViewportKey, manualRefresh)) {
+        return false
+    }
+    return manualRefresh || viewportKey != providerFailedViewportKey
+}
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun GatheringAreasScreen(
@@ -198,7 +216,9 @@ fun GatheringAreasScreen(
     var initialLocationPermissionRequestPending by remember { mutableStateOf(false) }
     var currentViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
     var pendingViewport by remember { mutableStateOf<LeafletMapViewport?>(null) }
+    var viewportUpdateQueued by remember { mutableStateOf(false) }
     var lastFetchedViewportKey by remember { mutableStateOf<String?>(null) }
+    var providerFailedViewportKey by remember { mutableStateOf<String?>(null) }
     var viewportRefreshNonce by remember { mutableStateOf(0) }
     var viewportRequestSerial by remember { mutableStateOf(0) }
     var nearbyResult by remember { mutableStateOf<NearbyGatheringAreasResult?>(null) }
@@ -222,12 +242,76 @@ fun GatheringAreasScreen(
         infoMessage = ""
     }
 
+    fun queueViewportFetch(
+        viewport: LeafletMapViewport?,
+        manualRefresh: Boolean = false,
+        clearResultsWhenUnavailable: Boolean = false
+    ) {
+        if (!isLeafletViewportDiscoverable(viewport)) {
+            viewportRequestSerial += 1
+            pendingViewport = null
+            viewportUpdateQueued = false
+            loading = false
+            backgroundUpdating = false
+            errorMessage = ""
+            infoMessage = ""
+            if (clearResultsWhenUnavailable) {
+                nearbyResult = null
+                selectedAreaId = null
+                lastFetchedViewportKey = null
+                providerFailedViewportKey = null
+            }
+            return
+        }
+
+        val viewportKey = effectiveLeafletViewportKey(viewport)
+        if (viewportKey == null) {
+            viewportRequestSerial += 1
+            pendingViewport = null
+            viewportUpdateQueued = false
+            loading = false
+            backgroundUpdating = false
+            return
+        }
+
+        val previousPendingViewportKey = effectiveLeafletViewportKey(pendingViewport)
+        val viewportChanged = viewportKey != previousPendingViewportKey
+        if (viewportKey != providerFailedViewportKey || manualRefresh) {
+            providerFailedViewportKey = null
+        }
+
+        val shouldQueue = shouldQueueGatheringAreasViewportFetch(
+            viewportKey = viewportKey,
+            lastFetchedViewportKey = lastFetchedViewportKey,
+            manualRefresh = manualRefresh,
+            providerFailedViewportKey = providerFailedViewportKey
+        )
+        pendingViewport = viewport
+
+        if (shouldQueue) {
+            viewportRequestSerial += 1
+            viewportUpdateQueued = true
+            if (manualRefresh) {
+                viewportRefreshNonce += 1
+            }
+        } else {
+            if (viewportChanged) {
+                viewportRequestSerial += 1
+                loading = false
+                backgroundUpdating = false
+            }
+            viewportUpdateQueued = false
+        }
+    }
+
     fun requestCurrentLocationAndRefresh(
         silent: Boolean = false,
         isInitialAttempt: Boolean = false
     ) {
         scope.launch {
             loading = true
+            backgroundUpdating = false
+            viewportUpdateQueued = false
             errorMessage = ""
             if (!silent) {
                 infoMessage = ""
@@ -245,6 +329,7 @@ fun GatheringAreasScreen(
                     viewportRequestSerial += 1
                     currentViewport = null
                     pendingViewport = null
+                    viewportUpdateQueued = false
                     nearbyResult = null
                     mapCenterLatitude = location.latitude
                     mapCenterLongitude = location.longitude
@@ -252,6 +337,7 @@ fun GatheringAreasScreen(
                     mapResetNonce += 1
                     selectedAreaId = null
                     lastFetchedViewportKey = null
+                    providerFailedViewportKey = null
                     infoMessage = ""
                     loading = false
                     backgroundUpdating = false
@@ -292,17 +378,31 @@ fun GatheringAreasScreen(
         }
     }
 
-    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce) {
-        val viewport = pendingViewport ?: return@LaunchedEffect
-        if (!isLeafletViewportDiscoverable(viewport)) return@LaunchedEffect
-        val viewportKey = effectiveLeafletViewportKey(viewport) ?: return@LaunchedEffect
-        val manualRefresh = viewportRefreshNonce > 0
-        if (!shouldFetchLeafletViewport(viewportKey, lastFetchedViewportKey, manualRefresh)) {
+    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce, viewportRequestSerial) {
+        val viewport = pendingViewport
+        if (viewport == null || !isLeafletViewportDiscoverable(viewport)) {
+            viewportUpdateQueued = false
             return@LaunchedEffect
         }
+        val viewportKey = effectiveLeafletViewportKey(viewport)
+        if (viewportKey == null) {
+            viewportUpdateQueued = false
+            return@LaunchedEffect
+        }
+        val manualRefresh = viewportRefreshNonce > 0
+        if (!shouldQueueGatheringAreasViewportFetch(
+                viewportKey = viewportKey,
+                lastFetchedViewportKey = lastFetchedViewportKey,
+                manualRefresh = manualRefresh,
+                providerFailedViewportKey = providerFailedViewportKey
+            )
+        ) {
+            viewportUpdateQueued = false
+            return@LaunchedEffect
+        }
+        val requestSerial = viewportRequestSerial
         delay(450)
-        val requestSerial = viewportRequestSerial + 1
-        viewportRequestSerial = requestSerial
+        viewportUpdateQueued = false
         val blockingLoading = !shouldShowPreviousGatheringAreasDuringViewportFetch(
             currentResult = nearbyResult,
             manualRefresh = manualRefresh
@@ -320,7 +420,12 @@ fun GatheringAreasScreen(
                 widestVisibleDimensionKm = viewport.widestVisibleDimensionKm
             )
             if (requestSerial == viewportRequestSerial) {
-                lastFetchedViewportKey = viewportKey
+                if (isGatheringAreasProviderUnavailable(result)) {
+                    providerFailedViewportKey = viewportKey
+                } else if (shouldMarkGatheringAreasViewportFetched(result)) {
+                    providerFailedViewportKey = null
+                    lastFetchedViewportKey = viewportKey
+                }
                 viewportRefreshNonce = 0
                 applyViewportResult(result)
             }
@@ -344,6 +449,7 @@ fun GatheringAreasScreen(
             }
         } finally {
             if (requestSerial == viewportRequestSerial) {
+                viewportUpdateQueued = false
                 loading = false
                 backgroundUpdating = false
             }
@@ -362,6 +468,7 @@ fun GatheringAreasScreen(
             errorMessage = ""
             loading = false
             backgroundUpdating = false
+            viewportUpdateQueued = false
             if (isInitialRequest) {
                 infoMessage = InitialNearbyPermissionDeniedMessage
             } else {
@@ -422,17 +529,12 @@ fun GatheringAreasScreen(
             if (infoMessage == ResourceZoomedOutMessage) {
                 infoMessage = ""
             }
-            pendingViewport = viewport
+            queueViewportFetch(viewport)
         } else {
-            viewportRequestSerial += 1
-            pendingViewport = null
-            nearbyResult = null
-            selectedAreaId = null
-            lastFetchedViewportKey = null
-            errorMessage = ""
-            loading = false
-            backgroundUpdating = false
-            infoMessage = ""
+            queueViewportFetch(
+                viewport = null,
+                clearResultsWhenUnavailable = true
+            )
         }
     }
 
@@ -449,7 +551,7 @@ fun GatheringAreasScreen(
         activeFilterKeys.contains(item.category.trim().lowercase())
     }.orEmpty()
     val isFilterEmpty = currentResult != null && currentResult.areas.isNotEmpty() && visibleAreas.isEmpty()
-    val mapActionsEnabled = !loading && !backgroundUpdating
+    val mapActionsEnabled = !loading && !backgroundUpdating && !viewportUpdateQueued
 
     if (selectedAreaId != null && visibleAreas.none { it.id == selectedAreaId }) {
         selectedAreaId = null
@@ -499,16 +601,11 @@ fun GatheringAreasScreen(
                     SecondaryButton(
                         text = "Refresh Visible Area",
                         onClick = {
-                            val viewport = currentViewport
-                            if (!isLeafletViewportDiscoverable(viewport)) {
-                                errorMessage = ""
-                                loading = false
-                                infoMessage = ""
-                                return@SecondaryButton
-                            }
                             errorMessage = ""
-                            pendingViewport = viewport
-                            viewportRefreshNonce += 1
+                            queueViewportFetch(
+                                viewport = currentViewport,
+                                manualRefresh = true
+                            )
                         },
                         enabled = mapActionsEnabled
                     )
@@ -531,7 +628,7 @@ fun GatheringAreasScreen(
                 mapResetToken = mapResetNonce,
                 showCenterMarker = false,
                 loadingResources = loading,
-                updatingResources = backgroundUpdating,
+                updatingResources = backgroundUpdating || viewportUpdateQueued,
                 onShowCurrentLocation = ::showCurrentLocationOnMap,
                 showCurrentLocationEnabled = mapActionsEnabled,
                 onViewportChanged = ::handleViewportChanged
@@ -553,8 +650,10 @@ fun GatheringAreasScreen(
                                 SecondaryButton(
                                     text = "Retry",
                                     onClick = {
-                                        pendingViewport = currentViewport
-                                        viewportRefreshNonce += 1
+                                        queueViewportFetch(
+                                            viewport = currentViewport,
+                                            manualRefresh = true
+                                        )
                                     },
                                     enabled = mapActionsEnabled
                                 )
@@ -574,8 +673,10 @@ fun GatheringAreasScreen(
                                 SecondaryButton(
                                     text = "Retry",
                                     onClick = {
-                                        pendingViewport = currentViewport
-                                        viewportRefreshNonce += 1
+                                        queueViewportFetch(
+                                            viewport = currentViewport,
+                                            manualRefresh = true
+                                        )
                                     },
                                     enabled = mapActionsEnabled
                                 )
@@ -719,8 +820,10 @@ fun GatheringAreasScreen(
                             SecondaryButton(
                                 text = "Retry",
                                 onClick = {
-                                    pendingViewport = currentViewport
-                                    viewportRefreshNonce += 1
+                                    queueViewportFetch(
+                                        viewport = currentViewport,
+                                        manualRefresh = true
+                                    )
                                 },
                                 enabled = mapActionsEnabled
                             )
@@ -781,6 +884,12 @@ private fun GatheringAreasMapCard(
         tileLoadedInstanceId = tileLoadedInstanceIdState.value,
         errorInstanceId = errorInstanceIdState.value,
         errorMessage = mapError
+    )
+    val mapOverlayMessage = leafletMapStatusOverlayMessage(
+        mapInitialized = activeMapInitialized,
+        mapError = activeMapError,
+        loadingResources = loadingResources,
+        updatingResources = updatingResources
     )
 
     fun markMapAlive(instanceId: String, source: String) {
@@ -900,6 +1009,12 @@ private fun GatheringAreasMapCard(
                             .padding(spacing.sm)
                     )
                 }
+                LeafletMapStatusOverlay(
+                    message = mapOverlayMessage,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(spacing.sm)
+                )
             }
 
             if (!activeMapInitialized && activeMapError.isBlank()) {

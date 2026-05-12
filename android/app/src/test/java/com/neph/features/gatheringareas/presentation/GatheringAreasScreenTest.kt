@@ -110,6 +110,7 @@ class GatheringAreasScreenTest {
         )
 
         assertTrue(isGatheringAreasProviderUnavailable(fallback))
+        assertFalse(shouldMarkGatheringAreasViewportFetched(fallback))
         assertEquals(
             "Provider did not return markers for this area.",
             gatheringAreasMapEmptyMessage(
@@ -123,6 +124,36 @@ class GatheringAreasScreenTest {
     }
 
     @Test
+    fun shouldQueueGatheringAreasViewportFetch_blocksAutomaticRetryForProviderFailedViewport() {
+        val viewportKey = "29.0000,40.9000,29.1000,41.1000,z12"
+
+        assertFalse(
+            shouldQueueGatheringAreasViewportFetch(
+                viewportKey = viewportKey,
+                lastFetchedViewportKey = null,
+                manualRefresh = false,
+                providerFailedViewportKey = viewportKey
+            )
+        )
+        assertTrue(
+            shouldQueueGatheringAreasViewportFetch(
+                viewportKey = viewportKey,
+                lastFetchedViewportKey = null,
+                manualRefresh = true,
+                providerFailedViewportKey = viewportKey
+            )
+        )
+        assertTrue(
+            shouldQueueGatheringAreasViewportFetch(
+                viewportKey = "29.2000,40.9000,29.3000,41.1000,z12",
+                lastFetchedViewportKey = null,
+                manualRefresh = false,
+                providerFailedViewportKey = viewportKey
+            )
+        )
+    }
+
+    @Test
     fun gatheringAreasResultHelperMessage_distinguishesStaleCache() {
         val stale = sampleNearbyResult().copy(source = "stale_cache", stale = true)
 
@@ -130,6 +161,7 @@ class GatheringAreasScreenTest {
             "Showing cached gathering areas; provider data may be temporarily unavailable.",
             gatheringAreasResultHelperMessage(stale)
         )
+        assertTrue(shouldMarkGatheringAreasViewportFetched(stale))
     }
 
     @Test

@@ -7,6 +7,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
 
@@ -19,12 +20,17 @@ object JsonHttpClient {
         method: String = "GET",
         body: JSONObject? = null,
         token: String? = null,
-        headers: Map<String, String> = emptyMap()
+        headers: Map<String, String> = emptyMap(),
+        connectTimeoutMillis: Int = ConnectTimeoutMillis,
+        readTimeoutMillis: Int = ReadTimeoutMillis,
+        timeoutMessage: String = "Something went wrong while connecting to the server. Please try again.",
+        timeoutStatus: Int = 0,
+        timeoutCode: String = "NETWORK_ERROR"
     ): JSONObject = withContext(Dispatchers.IO) {
         val connection = (URL(buildUrl(path)).openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = ConnectTimeoutMillis
-            readTimeout = ReadTimeoutMillis
+            connectTimeout = connectTimeoutMillis
+            readTimeout = readTimeoutMillis
             doInput = true
             setRequestProperty("Accept", "application/json")
 
@@ -75,6 +81,12 @@ object JsonHttpClient {
             }
         } catch (error: ApiException) {
             throw error
+        } catch (_: SocketTimeoutException) {
+            throw ApiException(
+                message = timeoutMessage,
+                status = timeoutStatus,
+                code = timeoutCode
+            )
         } catch (_: UnknownHostException) {
             throw ApiException(
                 message = "Something went wrong while connecting to the server. Please try again.",
