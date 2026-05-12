@@ -883,11 +883,11 @@ internal fun JSONObject.toHelpRequestEntity(
         description = optString("description"),
         bloodType = optString("bloodType"),
         shareProfileHealthInfoWithVolunteer = optBoolean("shareProfileHealthInfoWithVolunteer", false),
-        country = location.optString("country"),
-        city = location.optString("city"),
-        district = location.optString("district"),
-        neighborhood = location.optString("neighborhood"),
-        extraAddress = location.optString("extraAddress"),
+        country = readLocationText(location, "country", existing?.country),
+        city = readLocationText(location, "city", existing?.city),
+        district = readLocationText(location, "district", existing?.district),
+        neighborhood = readLocationText(location, "neighborhood", existing?.neighborhood),
+        extraAddress = readLocationText(location, "extraAddress", existing?.extraAddress),
         latitude = readLocationLatitude(location, existing),
         longitude = readLocationLongitude(location, existing),
         coordinateSource = readLocationCoordinateSource(location, existing),
@@ -954,6 +954,13 @@ private fun readLocationLongitude(location: JSONObject, existing: HelpRequestEnt
     return location.optNullableDouble("longitude")
         ?: location.optJSONObject("coordinate")?.optNullableDouble("longitude")
         ?: existing?.longitude
+}
+
+private fun readLocationText(location: JSONObject, key: String, existingValue: String?): String {
+    if (location.has(key) && !location.isNull(key)) {
+        return location.optString(key)
+    }
+    return existingValue.orEmpty()
 }
 
 private fun readLocationCoordinateSource(location: JSONObject, existing: HelpRequestEntity?): String? {

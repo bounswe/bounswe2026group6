@@ -190,6 +190,57 @@ class RequestHelpOfflineMappingTest {
     }
 
     @Test
+    fun remoteMappingPreservesExistingLocationWhenRemoteLocationIsPartial() {
+        val existing = sampleSubmission().copy(
+            location = sampleSubmission().location.copy(
+                latitude = 40.987,
+                longitude = 29.025,
+                coordinateSource = "gps",
+                coordinateCapturedAt = "2026-05-02T10:00:00.000Z",
+                coordinateAccuracyMeters = 18.5
+            )
+        ).toEntity(
+            localId = "local-existing-location",
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            now = 1234L,
+            syncStatus = SyncStatus.SYNCED
+        ).copy(remoteId = "req_remote_partial_location")
+
+        val entity = JSONObject().apply {
+            put("id", "req_remote_partial_location")
+            put("helpTypes", JSONArray(listOf("food_water")))
+            put("otherHelpText", "")
+            put("affectedPeopleCount", 4)
+            put("riskFlags", JSONArray(listOf("fire")))
+            put("vulnerableGroups", JSONArray(listOf("elderly")))
+            put("description", "Need support")
+            put("shareProfileHealthInfoWithVolunteer", true)
+            put("status", "SYNCED")
+            put("location", JSONObject())
+            put(
+                "contact",
+                JSONObject().put("fullName", "Ayse Yilmaz").put("phone", "5551234567")
+            )
+        }.toHelpRequestEntity(
+            ownerType = LocalOwnerType.AUTHENTICATED,
+            existing = existing,
+            guestAccessToken = null,
+            now = 5678L
+        )
+
+        assertEquals("Turkey", entity.country)
+        assertEquals("Istanbul", entity.city)
+        assertEquals("Kadikoy", entity.district)
+        assertEquals("Moda", entity.neighborhood)
+        assertEquals("Near park", entity.extraAddress)
+        assertEquals(40.987, entity.latitude ?: 0.0, 0.0)
+        assertEquals(29.025, entity.longitude ?: 0.0, 0.0)
+        assertEquals("gps", entity.coordinateSource)
+        assertEquals("2026-05-02T10:00:00.000Z", entity.coordinateCapturedAt)
+        assertEquals(18.5, entity.coordinateAccuracyMeters ?: 0.0, 0.0)
+    }
+
+    @Test
     fun emergencyDraftRequiresRealContactAndLocation() {
         assertThrows(EmergencyDraftRequirementsException::class.java) {
             buildEmergencyDraftSubmission(
