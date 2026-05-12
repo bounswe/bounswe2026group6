@@ -301,9 +301,13 @@ fun HelpRequestMapScreen(
         initialFallbackFetchRequested = true
     }
 
-    fun queueViewportRefresh() {
-        val viewport = currentViewport
+    fun queueViewportFetch(
+        viewport: LeafletMapViewport?,
+        manualRefresh: Boolean = false
+    ) {
         if (!isLeafletViewportDiscoverable(viewport)) {
+            viewportRequestSerial += 1
+            pendingViewport = null
             requests = emptyList()
             selectedRequestId = null
             errorMessage = ""
@@ -313,10 +317,48 @@ fun HelpRequestMapScreen(
             infoMessage = ""
             return
         }
+
+        val viewportKey = effectiveLeafletViewportKey(viewport)
+        if (viewportKey == null) {
+            viewportRequestSerial += 1
+            pendingViewport = null
+            viewportUpdateQueued = false
+            loading = false
+            backgroundUpdating = false
+            return
+        }
+
+        val previousPendingViewportKey = effectiveLeafletViewportKey(pendingViewport)
+        val viewportChanged = viewportKey != previousPendingViewportKey
+        val shouldQueue = shouldFetchLeafletViewport(
+            viewportKey = viewportKey,
+            lastFetchedViewportKey = lastFetchedViewportKey,
+            manualRefresh = manualRefresh
+        )
+
         errorMessage = ""
         pendingViewport = viewport
-        viewportUpdateQueued = true
-        viewportRefreshNonce += 1
+        if (shouldQueue) {
+            viewportRequestSerial += 1
+            viewportUpdateQueued = true
+            if (manualRefresh) {
+                viewportRefreshNonce += 1
+            }
+        } else {
+            if (viewportChanged) {
+                viewportRequestSerial += 1
+                loading = false
+                backgroundUpdating = false
+            }
+            viewportUpdateQueued = false
+        }
+    }
+
+    fun queueViewportRefresh() {
+        queueViewportFetch(
+            viewport = currentViewport,
+            manualRefresh = true
+        )
     }
 
     fun requestCurrentLocationAndRefresh(
@@ -455,7 +497,7 @@ fun HelpRequestMapScreen(
         }
     }
 
-    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce) {
+    LaunchedEffect(pendingViewport, lastFetchedViewportKey, viewportRefreshNonce, viewportRequestSerial) {
         val viewport = pendingViewport
         if (viewport == null || !isLeafletViewportDiscoverable(viewport)) {
             viewportUpdateQueued = false
@@ -471,10 +513,9 @@ fun HelpRequestMapScreen(
             viewportUpdateQueued = false
             return@LaunchedEffect
         }
+        val requestSerial = viewportRequestSerial
         delay(450)
         viewportUpdateQueued = false
-        val requestSerial = viewportRequestSerial + 1
-        viewportRequestSerial = requestSerial
         val blockingLoading = !shouldShowPreviousHelpRequestsDuringViewportFetch(
             requests = requests,
             manualRefresh = manualRefresh
@@ -574,25 +615,10 @@ fun HelpRequestMapScreen(
             if (infoMessage == ResourceZoomedOutMessage) {
                 infoMessage = ""
             }
-            val viewportKey = effectiveLeafletViewportKey(viewport)
-            viewportUpdateQueued = viewportKey != null &&
-                shouldFetchLeafletViewport(
-                    viewportKey = viewportKey,
-                    lastFetchedViewportKey = lastFetchedViewportKey,
-                    manualRefresh = false
-                )
-            pendingViewport = viewport
+            queueViewportFetch(viewport)
         } else {
-            viewportRequestSerial += 1
-            pendingViewport = null
-            viewportUpdateQueued = false
-            requests = emptyList()
-            selectedRequestId = null
             lastFetchedViewportKey = null
-            errorMessage = ""
-            loading = false
-            backgroundUpdating = false
-            infoMessage = ""
+            queueViewportFetch(viewport = null)
         }
     }
 

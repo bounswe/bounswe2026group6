@@ -124,6 +124,36 @@ class GatheringAreasScreenTest {
     }
 
     @Test
+    fun shouldQueueGatheringAreasViewportFetch_blocksAutomaticRetryForProviderFailedViewport() {
+        val viewportKey = "29.0000,40.9000,29.1000,41.1000,z12"
+
+        assertFalse(
+            shouldQueueGatheringAreasViewportFetch(
+                viewportKey = viewportKey,
+                lastFetchedViewportKey = null,
+                manualRefresh = false,
+                providerFailedViewportKey = viewportKey
+            )
+        )
+        assertTrue(
+            shouldQueueGatheringAreasViewportFetch(
+                viewportKey = viewportKey,
+                lastFetchedViewportKey = null,
+                manualRefresh = true,
+                providerFailedViewportKey = viewportKey
+            )
+        )
+        assertTrue(
+            shouldQueueGatheringAreasViewportFetch(
+                viewportKey = "29.2000,40.9000,29.3000,41.1000,z12",
+                lastFetchedViewportKey = null,
+                manualRefresh = false,
+                providerFailedViewportKey = viewportKey
+            )
+        )
+    }
+
+    @Test
     fun gatheringAreasResultHelperMessage_distinguishesStaleCache() {
         val stale = sampleNearbyResult().copy(source = "stale_cache", stale = true)
 

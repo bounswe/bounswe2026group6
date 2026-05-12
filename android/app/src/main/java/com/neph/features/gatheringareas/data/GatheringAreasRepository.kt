@@ -53,7 +53,10 @@ object GatheringAreasRepository {
     internal const val DefaultLimit = 50
     private const val MaxRadiusMeters = 10000
     private const val MaxLimit = 50
-    private const val NearbyRequestTimeoutMillis = 15_000L
+    private const val NearbyRequestTimeoutMillis = 12_000L
+    private const val NearbyRequestHttpTimeoutMillis = 12_000
+    private const val NearbyRequestTimeoutMessage = "Gathering areas request timed out."
+    private const val NearbyRequestTimeoutCode = "OVERPASS_TIMEOUT"
     private const val DebugLogTag = "GatheringAreasRepo"
 
     suspend fun fetchNearbyGatheringAreas(
@@ -74,12 +77,17 @@ object GatheringAreasRepository {
                     longitude,
                     normalizedRadius,
                     normalizedLimit
-                )
+                ),
+                connectTimeoutMillis = NearbyRequestHttpTimeoutMillis,
+                readTimeoutMillis = NearbyRequestHttpTimeoutMillis,
+                timeoutMessage = NearbyRequestTimeoutMessage,
+                timeoutStatus = 504,
+                timeoutCode = NearbyRequestTimeoutCode
             )
         } ?: throw ApiException(
-            message = "Gathering areas request timed out.",
+            message = NearbyRequestTimeoutMessage,
             status = 504,
-            code = "OVERPASS_TIMEOUT"
+            code = NearbyRequestTimeoutCode
         )
 
         return parseNearbyGatheringAreasResponse(
@@ -105,12 +113,17 @@ object GatheringAreasRepository {
 
         val response = withTimeoutOrNull(NearbyRequestTimeoutMillis) {
             JsonHttpClient.request(
-                path = "/gathering-areas/viewport?bbox=${urlEncode(bbox)}&limit=$normalizedLimit"
+                path = "/gathering-areas/viewport?bbox=${urlEncode(bbox)}&limit=$normalizedLimit",
+                connectTimeoutMillis = NearbyRequestHttpTimeoutMillis,
+                readTimeoutMillis = NearbyRequestHttpTimeoutMillis,
+                timeoutMessage = NearbyRequestTimeoutMessage,
+                timeoutStatus = 504,
+                timeoutCode = NearbyRequestTimeoutCode
             )
         } ?: throw ApiException(
-            message = "Gathering areas request timed out.",
+            message = NearbyRequestTimeoutMessage,
             status = 504,
-            code = "OVERPASS_TIMEOUT"
+            code = NearbyRequestTimeoutCode
         )
 
         val parsed = parseNearbyGatheringAreasResponse(
