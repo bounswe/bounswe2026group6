@@ -14,6 +14,11 @@ import com.neph.MainActivity
 import com.neph.features.auth.data.AuthSessionStore
 import com.neph.features.profile.data.ProfileData
 import com.neph.features.profile.data.ProfileRepository
+import com.neph.features.requesthelp.data.RequestHelpContactSubmission
+import com.neph.features.requesthelp.data.RequestHelpLocationSubmission
+import com.neph.features.requesthelp.data.RequestHelpRepository
+import com.neph.features.requesthelp.data.RequestHelpSubmission
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -115,6 +120,62 @@ class AuthenticatedSessionAndroidE2ETest {
 
         waitForText("Welcome back")
         composeRule.onNodeWithText("Welcome back").assertIsDisplayed()
+    }
+
+    @Test
+    fun systemBackFromHelpRequestEdit_homeBottomNavReturnsHome() {
+        waitForText("I need help now")
+        seedActiveHelpRequest()
+
+        waitForClickable("Requests")
+        clickableNode("Requests").performClick()
+        waitForClickable("Edit Request")
+
+        clickableNode("Edit Request").performClick()
+        waitForText("Edit help request?")
+        clickableNode("Edit").performClick()
+
+        waitForText("Request Help")
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.onBackPressedDispatcher.onBackPressed()
+        }
+
+        waitForText("My Help Requests")
+        waitForClickable("Home")
+        clickableNode("Home").performClick()
+
+        waitForText("I need help now")
+        composeRule.onNodeWithText("I need help now").assertIsDisplayed()
+    }
+
+    private fun seedActiveHelpRequest() {
+        RequestHelpRepository.initialize(composeRule.activity.applicationContext)
+        runBlocking {
+            RequestHelpRepository.createHelpRequest(
+                token = "access-token-1",
+                submission = RequestHelpSubmission(
+                    helpTypes = listOf("Search & Rescue"),
+                    otherHelpText = "",
+                    affectedPeopleCount = 2,
+                    description = "Need help after structural damage.",
+                    riskFlags = listOf("Fire"),
+                    vulnerableGroups = listOf("Children"),
+                    shareProfileHealthInfoWithVolunteer = true,
+                    location = RequestHelpLocationSubmission(
+                        country = "Turkey",
+                        city = "Istanbul",
+                        district = "Kadıköy",
+                        neighborhood = "Bostancı",
+                        extraAddress = "Existing Street 5"
+                    ),
+                    contact = RequestHelpContactSubmission(
+                        fullName = "Alex Helper",
+                        phone = 905551112233
+                    ),
+                    consentGiven = true
+                )
+            )
+        }
     }
 
     private fun clickableNode(text: String) = composeRule.onNode(hasText(text) and hasClickAction())
