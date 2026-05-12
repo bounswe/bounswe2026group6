@@ -149,33 +149,33 @@ class LeafletMapWebViewTest {
 
     @Test
     fun effectiveLeafletViewportKey_roundsBoundsForDuplicateSuppression() {
-        val first = viewport(widthKm = 20.0, heightKm = 20.0, west = 29.0004, east = 29.1004)
-        val sameEffectiveViewport = viewport(widthKm = 20.0, heightKm = 20.0, west = 29.00049, east = 29.10049)
+        val first = viewport(widthKm = 20.0, heightKm = 20.0, west = 29.00044, east = 29.10044)
+        val sameEffectiveViewport = viewport(widthKm = 20.0, heightKm = 20.0, west = 29.000449, east = 29.100449)
 
         assertEquals(effectiveLeafletViewportKey(first), effectiveLeafletViewportKey(sameEffectiveViewport))
-        assertEquals("29.000,40.900,29.100,41.100", effectiveLeafletViewportKey(first))
+        assertEquals("29.0004,40.9000,29.1004,41.1000,z12", effectiveLeafletViewportKey(first))
     }
 
     @Test
     fun shouldFetchLeafletViewport_skipsSameViewportUnlessManualRefresh() {
         assertFalse(
             shouldFetchLeafletViewport(
-                viewportKey = "29.000,40.900,29.100,41.100",
-                lastFetchedViewportKey = "29.000,40.900,29.100,41.100",
+                viewportKey = "29.0004,40.9000,29.1004,41.1000,z12",
+                lastFetchedViewportKey = "29.0004,40.9000,29.1004,41.1000,z12",
                 manualRefresh = false
             )
         )
         assertTrue(
             shouldFetchLeafletViewport(
-                viewportKey = "29.000,40.900,29.100,41.100",
-                lastFetchedViewportKey = "29.000,40.900,29.100,41.100",
+                viewportKey = "29.0004,40.9000,29.1004,41.1000,z12",
+                lastFetchedViewportKey = "29.0004,40.9000,29.1004,41.1000,z12",
                 manualRefresh = true
             )
         )
         assertTrue(
             shouldFetchLeafletViewport(
-                viewportKey = "29.001,40.900,29.101,41.100",
-                lastFetchedViewportKey = "29.000,40.900,29.100,41.100",
+                viewportKey = "29.0010,40.9000,29.1010,41.1000,z12",
+                lastFetchedViewportKey = "29.0004,40.9000,29.1004,41.1000,z12",
                 manualRefresh = false
             )
         )
@@ -242,6 +242,8 @@ class LeafletMapWebViewTest {
             mapInstanceId = "test-map-1",
             centerLatitude = 41.0,
             centerLongitude = 29.0,
+            currentLocationLatitude = null,
+            currentLocationLongitude = null,
             markers = listOf(
                 LeafletMapMarker(
                     id = "area-1",
@@ -274,6 +276,8 @@ class LeafletMapWebViewTest {
             mapInstanceId = "test-map-no-center",
             centerLatitude = 39.0,
             centerLongitude = 35.0,
+            currentLocationLatitude = null,
+            currentLocationLongitude = null,
             markers = emptyList(),
             selectedMarkerId = null,
             bridgeName = "AndroidLeafletMarkerMap",
@@ -290,6 +294,8 @@ class LeafletMapWebViewTest {
             mapInstanceId = "test-map-2",
             centerLatitude = 41.0,
             centerLongitude = 29.0,
+            currentLocationLatitude = null,
+            currentLocationLongitude = null,
             markers = emptyList(),
             selectedMarkerId = null,
             bridgeName = "AndroidLeafletMarkerMap",
@@ -333,6 +339,8 @@ class LeafletMapWebViewTest {
             mapInstanceId = "test-map-discovery",
             centerLatitude = 39.0,
             centerLongitude = 35.0,
+            currentLocationLatitude = null,
+            currentLocationLongitude = null,
             markers = emptyList(),
             selectedMarkerId = null,
             bridgeName = "AndroidLeafletMarkerMap",

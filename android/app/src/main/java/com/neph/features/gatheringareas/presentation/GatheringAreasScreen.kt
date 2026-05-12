@@ -86,6 +86,10 @@ private const val ResourceProviderUnavailableMessage =
     "Gathering area provider is unavailable. Please try again."
 private const val ResourceStaleCacheMessage =
     "Showing cached gathering areas; provider data may be temporarily unavailable."
+private const val InitialNearbyPermissionDeniedMessage =
+    "Location permission was denied. Showing the default map area."
+private const val InitialNearbyLocationUnavailableMessage =
+    "Current location is unavailable. Showing the default map area."
 internal const val GatheringAreasVisibleCategoriesTitle = "Visible Categories"
 internal const val GatheringAreasVisibleCategoriesSubtitle =
     "Selected categories are shown on the map and in the list."
@@ -218,7 +222,10 @@ fun GatheringAreasScreen(
         infoMessage = ""
     }
 
-    fun requestCurrentLocationAndRefresh(silent: Boolean = false) {
+    fun requestCurrentLocationAndRefresh(
+        silent: Boolean = false,
+        isInitialAttempt: Boolean = false
+    ) {
         scope.launch {
             loading = true
             errorMessage = ""
@@ -252,21 +259,34 @@ fun GatheringAreasScreen(
                 }
 
                 loading = false
-                if (!silent) {
-                    infoMessage = when (attempt.warning) {
-                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                val locationMessage = when (attempt.warning) {
+                    CurrentLocationShareWarning.PERMISSION_DENIED ->
+                        if (isInitialAttempt) {
+                            InitialNearbyPermissionDeniedMessage
+                        } else {
                             "Location permission was denied. Nearby results were not updated."
+                        }
 
-                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
-                        null -> "Current location is unavailable. Nearby results were not updated."
+                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                    null -> if (isInitialAttempt) {
+                        InitialNearbyLocationUnavailableMessage
+                    } else {
+                        "Current location is unavailable. Nearby results were not updated."
                     }
+                }
+                if (isInitialAttempt || !silent) {
+                    infoMessage = locationMessage
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
                 loading = false
-                if (!silent) {
-                    infoMessage = "Current location is unavailable. Nearby results were not updated."
+                if (isInitialAttempt || !silent) {
+                    infoMessage = if (isInitialAttempt) {
+                        InitialNearbyLocationUnavailableMessage
+                    } else {
+                        "Current location is unavailable. Nearby results were not updated."
+                    }
                 }
             }
         }
@@ -334,12 +354,17 @@ fun GatheringAreasScreen(
         val isInitialRequest = initialLocationPermissionRequestPending
         initialLocationPermissionRequestPending = false
         if (result.granted) {
-            requestCurrentLocationAndRefresh(silent = isInitialRequest)
+            requestCurrentLocationAndRefresh(
+                silent = false,
+                isInitialAttempt = isInitialRequest
+            )
         } else {
             errorMessage = ""
             loading = false
             backgroundUpdating = false
-            if (!isInitialRequest) {
+            if (isInitialRequest) {
+                infoMessage = InitialNearbyPermissionDeniedMessage
+            } else {
                 infoMessage = "Location permission was denied. Nearby results were not updated."
             }
         }
@@ -357,7 +382,7 @@ fun GatheringAreasScreen(
         if (attemptedInitialLocation) return@LaunchedEffect
         attemptedInitialLocation = true
         if (locationPermissionRequester.refreshPermissionState()) {
-            requestCurrentLocationAndRefresh(silent = true)
+            requestCurrentLocationAndRefresh(silent = false, isInitialAttempt = true)
         } else {
             initialLocationPermissionRequestPending = true
             locationPermissionRequester.requestPermission()

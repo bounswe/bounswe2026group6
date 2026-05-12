@@ -91,6 +91,10 @@ private const val ResourceUpdatingMessage = "Updating visible area..."
 private const val ResourceEmptyMessage = "No resources were found in this visible area."
 private const val ResourceErrorMessage = "Resources could not be loaded for this area. Please try again."
 private const val ResourceFilterEmptyMessage = "No help requests match the selected request type filters."
+private const val InitialPermissionDeniedFallbackMessage =
+    "Location permission was denied. Showing default help request results."
+private const val InitialLocationUnavailableFallbackMessage =
+    "Current location is unavailable. Showing default help request results."
 
 private val RequestTypeFilterOrder = listOf(
     CrisisRequestType.FIRST_AID,
@@ -250,10 +254,17 @@ fun HelpRequestMapScreen(
     var currentLocation by remember { mutableStateOf<CurrentDeviceLocation?>(null) }
     var attemptedInitialLocation by remember { mutableStateOf(false) }
     var initialLocationPermissionRequestPending by remember { mutableStateOf(false) }
+    var initialFallbackFetchRequested by remember { mutableStateOf(false) }
+    var initialFallbackFetchCompleted by remember { mutableStateOf(false) }
+    var initialFallbackInfoMessage by remember { mutableStateOf<String?>(null) }
     var initialMarkerFitApplied by remember { mutableStateOf(false) }
     var markerFitBoundsToken by remember { mutableStateOf<Int?>(null) }
 
-    fun applyRequestResult(result: ActiveHelpRequestsResult, viewportKey: String?) {
+    fun applyRequestResult(
+        result: ActiveHelpRequestsResult,
+        viewportKey: String?,
+        infoOverride: String? = null
+    ) {
         if (
             !initialMarkerFitApplied &&
             viewportKey == null &&
@@ -268,11 +279,23 @@ fun HelpRequestMapScreen(
         selectedRequestId = selectedRequestId
             ?.takeIf { selected -> result.requests.any { it.requestId == selected } }
         infoMessage = when {
+            !infoOverride.isNullOrBlank() -> infoOverride
             result.requests.isEmpty() -> ResourceEmptyMessage
             result.skippedCount > 0 ->
                 "${result.skippedCount} inactive or malformed request entries were hidden."
             else -> ""
         }
+    }
+
+    fun queueInitialFallbackFetch(message: String) {
+        if (initialFallbackFetchCompleted || initialFallbackFetchRequested) {
+            if (infoMessage.isBlank()) {
+                infoMessage = message
+            }
+            return
+        }
+        initialFallbackInfoMessage = message
+        initialFallbackFetchRequested = true
     }
 
     fun queueViewportRefresh() {
@@ -291,7 +314,10 @@ fun HelpRequestMapScreen(
         viewportRefreshNonce += 1
     }
 
-    fun requestCurrentLocationAndRefresh(silent: Boolean = false) {
+    fun requestCurrentLocationAndRefresh(
+        silent: Boolean = false,
+        isInitialAttempt: Boolean = false
+    ) {
         scope.launch {
             loading = true
             backgroundUpdating = false
@@ -327,20 +353,35 @@ fun HelpRequestMapScreen(
                 }
 
                 loading = false
-                if (!silent) {
-                    infoMessage = when (attempt.warning) {
-                        CurrentLocationShareWarning.PERMISSION_DENIED ->
+                val fallbackMessage = when (attempt.warning) {
+                    CurrentLocationShareWarning.PERMISSION_DENIED ->
+                        if (isInitialAttempt) {
+                            InitialPermissionDeniedFallbackMessage
+                        } else {
                             "Location permission was denied. Help request map was not recentered."
+                        }
 
-                        CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
-                        null -> "Current location is unavailable. Help request map was not recentered."
+                    CurrentLocationShareWarning.LOCATION_UNAVAILABLE,
+                    null -> if (isInitialAttempt) {
+                        InitialLocationUnavailableFallbackMessage
+                    } else {
+                        "Current location is unavailable. Help request map was not recentered."
                     }
+                }
+                if (isInitialAttempt) {
+                    queueInitialFallbackFetch(fallbackMessage)
+                    infoMessage = fallbackMessage
+                } else if (!silent) {
+                    infoMessage = fallbackMessage
                 }
             } catch (cancellationException: CancellationException) {
                 throw cancellationException
             } catch (_: Exception) {
                 loading = false
-                if (!silent) {
+                if (isInitialAttempt) {
+                    queueInitialFallbackFetch(InitialLocationUnavailableFallbackMessage)
+                    infoMessage = InitialLocationUnavailableFallbackMessage
+                } else if (!silent) {
                     infoMessage = "Current location is unavailable. Help request map was not recentered."
                 }
             }
@@ -371,28 +412,39 @@ fun HelpRequestMapScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialFallbackFetchRequested) {
+        if (!initialFallbackFetchRequested) return@LaunchedEffect
         loading = true
+        backgroundUpdating = false
         errorMessage = ""
-        infoMessage = ResourceLoadingMessage
 
         try {
             val result = ActiveHelpRequestsRepository.fetchWaitingHelpRequests()
-            applyRequestResult(result, viewportKey = null)
+            applyRequestResult(
+                result = result,
+                viewportKey = null,
+                infoOverride = initialFallbackInfoMessage
+            )
         } catch (cancellationException: CancellationException) {
             throw cancellationException
         } catch (error: ApiException) {
             errorMessage = error.message.ifBlank { ResourceErrorMessage }
             requests = emptyList()
             selectedRequestId = null
-            infoMessage = ""
+            if (infoMessage.isBlank()) {
+                infoMessage = initialFallbackInfoMessage.orEmpty()
+            }
         } catch (_: Exception) {
             errorMessage = ResourceErrorMessage
             requests = emptyList()
             selectedRequestId = null
-            infoMessage = ""
+            if (infoMessage.isBlank()) {
+                infoMessage = initialFallbackInfoMessage.orEmpty()
+            }
         } finally {
             loading = false
+            initialFallbackFetchRequested = false
+            initialFallbackFetchCompleted = true
         }
     }
 
@@ -453,12 +505,18 @@ fun HelpRequestMapScreen(
         val isInitialRequest = initialLocationPermissionRequestPending
         initialLocationPermissionRequestPending = false
         if (result.granted) {
-            requestCurrentLocationAndRefresh(silent = isInitialRequest)
+            requestCurrentLocationAndRefresh(
+                silent = false,
+                isInitialAttempt = isInitialRequest
+            )
         } else {
             errorMessage = ""
             loading = false
             backgroundUpdating = false
-            if (!isInitialRequest) {
+            if (isInitialRequest) {
+                infoMessage = InitialPermissionDeniedFallbackMessage
+                queueInitialFallbackFetch(InitialPermissionDeniedFallbackMessage)
+            } else {
                 infoMessage = "Location permission was denied. Help request map was not recentered."
             }
         }
@@ -476,7 +534,7 @@ fun HelpRequestMapScreen(
         if (attemptedInitialLocation) return@LaunchedEffect
         attemptedInitialLocation = true
         if (locationPermissionRequester.refreshPermissionState()) {
-            requestCurrentLocationAndRefresh(silent = true)
+            requestCurrentLocationAndRefresh(silent = false, isInitialAttempt = true)
         } else {
             initialLocationPermissionRequestPending = true
             locationPermissionRequester.requestPermission()
