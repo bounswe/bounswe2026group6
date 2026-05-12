@@ -7,7 +7,6 @@ import { SectionCard } from "@/components/ui/display/SectionCard";
 import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import {
-    FALLBACK_ANNOUNCEMENTS,
     announcementToNewsItem,
     cacheAnnouncements,
     fetchAnnouncements,
@@ -28,16 +27,26 @@ function buildFailureMessage(err: unknown, sourceLabel: string) {
     return `Announcements could not be refreshed (${detail}). Showing ${sourceLabel} instead.`;
 }
 
+function buildLoadFailureMessage(err: unknown) {
+    const rawDetail = err instanceof Error ? err.message : "";
+    const detail = /could not reach the server/i.test(rawDetail)
+        ? "the live announcements service did not respond"
+        : rawDetail || "the announcements API did not respond";
+    return `Could not load announcements (${detail}).`;
+}
+
 export default function NewsPage() {
     const [items, setItems] = React.useState<NewsItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState("");
+    const [loadError, setLoadError] = React.useState("");
     const [lastUpdated, setLastUpdated] = React.useState("");
     const [sourceLabel, setSourceLabel] = React.useState("live announcements");
 
     const loadAnnouncements = React.useCallback(async () => {
         setLoading(true);
         setError("");
+        setLoadError("");
 
         try {
             const announcements = await fetchAnnouncements({ limit: 100 });
@@ -55,10 +64,10 @@ export default function NewsPage() {
                 setSourceLabel("cached announcements");
                 setError(buildFailureMessage(err, "cached announcements"));
             } else {
-                setItems(FALLBACK_ANNOUNCEMENTS.map(announcementToNewsItem));
-                setLastUpdated(FALLBACK_ANNOUNCEMENTS[0]?.createdAt || "");
-                setSourceLabel("demo announcements");
-                setError(buildFailureMessage(err, "demo announcements"));
+                setItems([]);
+                setLastUpdated("");
+                setSourceLabel("");
+                setLoadError(buildLoadFailureMessage(err));
             }
         } finally {
             setLoading(false);
@@ -91,13 +100,25 @@ export default function NewsPage() {
                         </div>
                     ) : (
                         <>
-                            <div className={error ? "news-status-box is-warning" : "news-status-box"}>
+                            <div
+                                className={
+                                    loadError
+                                        ? "news-status-box is-error"
+                                        : error
+                                            ? "news-status-box is-warning"
+                                            : "news-status-box"
+                                }
+                            >
                                 <div>
                                     <p className="news-status-title">
-                                        {error ? "Using fallback news" : "Announcements are up to date"}
+                                        {loadError
+                                            ? "Couldn't load announcements"
+                                            : error
+                                                ? "Using cached announcements"
+                                                : "Announcements are up to date"}
                                     </p>
                                     <p className="news-status-copy">
-                                        {error || `Showing ${sourceLabel}.`}
+                                        {loadError || error || `Showing ${sourceLabel}.`}
                                     </p>
                                     {lastUpdated ? (
                                         <p className="news-status-copy">
@@ -112,7 +133,11 @@ export default function NewsPage() {
 
                             {items.length === 0 ? (
                                 <div className="admin-empty-state">
-                                    <p>No announcements have been published yet.</p>
+                                    <p>
+                                        {loadError
+                                            ? "No announcements could be loaded right now."
+                                            : "No announcements have been published yet."}
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="news-list">
@@ -131,7 +156,7 @@ export default function NewsPage() {
                                                 className="news-read-more-link"
                                                 href={`/news/${encodeURIComponent(item.id)}`}
                                             >
-                                                {item.hasMore ? "Read full announcement" : "Open announcement"}
+                                                Open announcement
                                             </Link>
                                         </article>
                                     ))}

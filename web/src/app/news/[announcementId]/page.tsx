@@ -9,7 +9,6 @@ import { SectionHeader } from "@/components/ui/display/SectionHeader";
 import { PrimaryButton } from "@/components/ui/buttons/PrimaryButton";
 import {
     ANNOUNCEMENTS_CACHE_KEY,
-    FALLBACK_ANNOUNCEMENTS,
     fetchAnnouncement,
     formatAnnouncementDate,
     type Announcement,
@@ -70,16 +69,13 @@ export default function NewsDetailPage() {
             const nextAnnouncement = await fetchAnnouncement(announcementId);
             setAnnouncement(nextAnnouncement);
         } catch (err) {
-            const fallback =
-                findCachedAnnouncement(announcementId) ||
-                FALLBACK_ANNOUNCEMENTS.find((item) => item.id === announcementId) ||
-                null;
+            const fallback = findCachedAnnouncement(announcementId);
 
             if (fallback) {
                 const detail = describeAnnouncementFailure(err);
                 setAnnouncement(fallback);
                 setUsingFallback(true);
-                setError(`Announcement could not be refreshed (${detail}). Showing cached/demo content.`);
+                setError(`Announcement could not be refreshed (${detail}). Showing cached content.`);
             } else {
                 setError(`Announcement could not be refreshed (${describeAnnouncementFailure(err)}).`);
                 setAnnouncement(null);
@@ -115,7 +111,7 @@ export default function NewsDetailPage() {
                             <div className={usingFallback ? "news-status-box is-warning" : "news-status-box is-error"}>
                                 <div>
                                     <p className="news-status-title">
-                                        {usingFallback ? "Using fallback announcement" : "Announcement load failed"}
+                                        {usingFallback ? "Using cached announcement" : "Announcement load failed"}
                                     </p>
                                     <p className="news-status-copy">{error}</p>
                                 </div>
