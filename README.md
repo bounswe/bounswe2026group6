@@ -220,6 +220,8 @@ cp keystore.properties.example keystore.properties
 
 Debug Android emulator builds use `http://10.0.2.2:3000/api` to reach the host backend. Do not use `localhost` from inside the emulator for the host backend. Release builds use `NEPH_RELEASE_API_BASE_URL`, defaulting to `https://api.neph.app/api`.
 
+`android/.env.example` is included for submission documentation. Local Gradle builds read release values from `keystore.properties`, environment variables, or Gradle properties. Before running `./gradlew :app:assembleRelease`, replace the placeholder values in `keystore.properties` with real signing values and make sure the keystore file exists at `ANDROID_KEYSTORE_PATH`. Do not include real secrets in the repository.
+
 The signed release APK must be attached to the GitHub Release manually or by the release workflow.
 
 ### Optional legacy demo data seed
@@ -289,6 +291,14 @@ Relevant files:
 - `backend/Dockerfile`
 - `web/Dockerfile`
 - `infra/docker/postgres/init.sql`
+
+### Production setup
+
+Production deployment requires backend production environment values for database credentials or `DATABASE_URL`, a secure `JWT_SECRET`, SMTP values if email flows are used, Google OAuth values if Google Sign-In is used, and push notification values if push delivery is enabled. It also requires web production values for `NEXT_PUBLIC_API_BASE_URL` and `API_BASE_URL`.
+
+Use secure secrets instead of demo/default values. Start the backend with the normal migration-enabled startup flow so SQL migrations are applied before serving traffic.
+
+Before final release, verify the backend health endpoint, the backend API base at `https://api.neph.app/api`, and the deployed web URL. The signed Android APK must be attached to the GitHub Release.
 
 ## Deployment note
 
