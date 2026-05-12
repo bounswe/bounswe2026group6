@@ -502,9 +502,13 @@ fun AppNavGraph(
                     navigateToLogin()
                 },
                 onNavigateToMyHelpRequests = {
-                    val popped = navController.popBackStack(Routes.MyHelpRequests.route, inclusive = false)
-                    if (!popped) {
-                        navigateToDrawerRoute(Routes.MyHelpRequests.route)
+                    navController.navigate(Routes.MyHelpRequests.route) {
+                        popUpTo(Routes.Home.route) {
+                            inclusive = false
+                            saveState = false
+                        }
+                        launchSingleTop = true
+                        restoreState = false
                     }
                 },
                 mobileOnboardingStepId = mobileOnboardingStepId,
